@@ -19,6 +19,7 @@ int encrypt_message(byte_t *out,
                     byte_t *msg,
                     size_t msg_len,
                     element_t public_key,
+                    element_t g,
                     byte_t *recv_id,
                     size_t recv_id_len,
                     pairing_t pairing) {
@@ -35,6 +36,23 @@ int encrypt_message(byte_t *out,
   element_init(r, pairing->Zr);
   element_random(r);
   element_pow_zn(Gid, Gid, r);
+  size_t elem_length = (size_t) element_length_in_bytes(Gid);
+  byte_t Gid_bytes[elem_length];
+  element_to_bytes(Gid_bytes, Gid);
+  byte_t Gid_hash[crypto_generichash_BYTES];
+  crypto_generichash(Gid_hash, crypto_generichash_BYTES, Gid_bytes, elem_length, NULL, 0);
+
+  byte_t symmetric_key[crypto_aead_chacha20poly1305_KEYBYTES];
+  byte_t nonce[crypto_aead_chacha20poly1305_NPUBBYTES];
+  randombytes_buf(symmetric_key, crypto_aead_chacha20poly1305_KEYBYTES);
+  randombytes_buf(nonce, crypto_aead_chacha20poly1305_NPUBBYTES);
+
+  element_t rP;
+  element_init(rP, pairing->G1);
+  element_pow_zn(rP, g, r);
+
+  byte_t asym_ciphertxt[element_length_in_bytes(rP) + crypto_generichash_BYTES];
+
 
   return 0;
 }
