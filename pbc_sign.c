@@ -109,7 +109,6 @@ int main(int argc, char **argv) {
   element_init(sigs[1], pairing->G1);
   element_init(sigs[2], pairing->G1);
   sign_message(sigs[0], hash, crypto_generichash_BYTES, secret_keys[0], pairing);
-  printf("BLEEP BVLOPDFK\n");
   sign_message(sigs[1], hash, crypto_generichash_BYTES, secret_keys[1], pairing);
   sign_message(sigs[2], hash, crypto_generichash_BYTES, secret_keys[2], pairing);
   element_t sig_sum;

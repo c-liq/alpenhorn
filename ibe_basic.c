@@ -15,14 +15,9 @@ struct ibe_params {
   element_t private_key;
 };
 
-int encrypt_message(byte_t *out,
-                    byte_t *msg,
-                    size_t msg_len,
-                    element_t public_key,
-                    element_t g,
-                    byte_t *recv_id,
-                    size_t recv_id_len,
-                    pairing_t pairing) {
+int encrypt_message(byte_t *out, byte_t *msg, size_t msg_len, element_t public_key,
+                    element_t g, byte_t *recv_id, size_t recv_id_len, pairing_t pairing) {
+
   byte_t id_hash[crypto_generichash_BYTES];
   crypto_generichash(id_hash, crypto_generichash_BYTES, recv_id, recv_id_len, NULL, 0);
   element_t id_hash_elem;
@@ -52,7 +47,6 @@ int encrypt_message(byte_t *out,
   element_pow_zn(rP, g, r);
 
   byte_t asym_ciphertxt[element_length_in_bytes(rP) + crypto_generichash_BYTES];
-
 
   return 0;
 }
