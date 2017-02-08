@@ -1,16 +1,23 @@
-
+#define PBC_DEBUG
 #include <sodium.h>
 #include <sys/socket.h>
 #include <string.h>
 #include "alpenhorn.h"
 #include "client.h"
 #include "ibe_basic.h"
+#include "pbc_sign.h"
 
 struct keywheel_entry {
   const char *user_id;
   byte_t *secret_key;
   size_t dialling_round;
 };
+
+static const char lt_sig_pub_string[] =
+    "[[7845683980021142523911088789755455087738544739258241500888927706370523685212,"
+        " 11478437541977836230043100693190338042676869244752547188362459606132213510483],"
+        " [6534676079084626651045612253521232999360310241564494450571997561809752996034,"
+        " 7515683846741902151708588136593823601982997300286378745873809572586275967790]]";
 
 struct keywheel {
   size_t num_entries;
@@ -29,9 +36,9 @@ struct client_state {
   byte_t *lt_pub_sig_key;
   byte_t *eph_priv_key;
   byte_t *eph_pub_key;
-  size_t num_pkg_servers;
-  size_t num_mix_servers;
-  size_t mailbox_count;
+  uint32_t num_pkg_servers;
+  uint32_t num_mix_servers;
+  uint32_t mailbox_count;
   int *pkg_sockets;
   int *mix_sockets;
   byte_t **pkg_lt_pub_keys;
@@ -47,23 +54,19 @@ struct client_state {
   byte_t *pkg_multisig_combined;
   char *friend_request_id;
   size_t friend_request_id_length;
-  size_t max_email_length;
+  uint32_t max_email_length;
   byte_t *af_dh_key;
   pairing_t sig_pairing;
   struct af_id_signature *sig_container;
-  size_t dialling_round;
+  uint32_t dialling_round;
   size_t af_round;
   element_t lt_priv_sig_key_elem;
-
+  element_t lt_pub_sig_key_elem;
+  element_t pkg_eph_pub_elems;
 };
 
 int af_calc_mailbox_num(client_state *cli_st);
 int sum_signatures(client_state *cli_st);
-int generate_dh_keypair(byte_t *sk_out, byte_t *pk_out, size_t key_size) {
-  randombytes_buf(sk_out, key_size);
-  crypto_scalarmult_base(pk_out, sk_out);
-  return 0;
-}
 
 int sum_signatures(client_state *cli_st) {
   element_t sig_sum;
@@ -75,18 +78,18 @@ int sum_signatures(client_state *cli_st) {
 }
 
 void af_gen_request(client_state *cli_st) {
-  byte_t *friend_req_buf = cli_st->friend_request_buf + sizeof(int);
+  byte_t *friend_req_buf = cli_st->friend_request_buf + 108;
   byte_t *dh_pub_key_ptr = friend_req_buf + cli_st->max_email_length;
   byte_t *dialling_round_ptr = dh_pub_key_ptr + crypto_box_PUBLICKEYBYTES;
-  byte_t *multisig_ptr = dialling_round_ptr + sizeof(size_t);
+  byte_t *multisig_ptr = dialling_round_ptr + sizeof(uint32_t);
   byte_t *client_sig_ptr = multisig_ptr + pbc_sig_length;
-  size_t dialling_round = cli_st->dialling_round + 3;
+  uint32_t dialling_round = cli_st->dialling_round + 3;
 
   memcpy(friend_req_buf, cli_st->friend_request_id, cli_st->friend_request_id_length);
   sum_signatures(cli_st);
   byte_t dh_secret[crypto_box_PUBLICKEYBYTES];
-  generate_dh_keypair(dh_secret, dh_pub_key_ptr, crypto_box_SECRETKEYBYTES);
-  size_t signature_input_length = (int) cli_st->max_email_length + crypto_box_PUBLICKEYBYTES + sizeof dialling_round;
+  crypto_box_keypair(dh_pub_key_ptr, dh_secret);
+  size_t signature_input_length = cli_st->max_email_length + crypto_box_PUBLICKEYBYTES + sizeof dialling_round;
   memcpy(dialling_round_ptr, &dialling_round, sizeof(dialling_round));
   memcpy(multisig_ptr, cli_st->pkg_multisig_combined, pbc_sig_length);
   element_t personal_sig;
@@ -99,15 +102,35 @@ void af_gen_request(client_state *cli_st) {
                      crypto_generichash_BYTES,
                      cli_st->lt_priv_sig_key_elem,
                      cli_st->sig_pairing);
-  int mailbox_num = af_calc_mailbox_num(cli_st);
+  int mailbox_num = 1;
   memcpy(cli_st->friend_request_buf, &mailbox_num, sizeof(int));
-
 }
 
 int af_onion_encrypt_request(client_state *cli_st, size_t srv_id);
 
 size_t calc_encrypted_request_bytes(size_t num_mix_servers) {
-  return af_request_BYTES + (af_request_ABYTES * num_mix_servers);
+  size_t sum;
+
+  size_t email_string_bytes = af_email_string_bytes;
+  size_t lt_sig_key = af_sig_key_bytes;
+  size_t client_sig = af_sig_bytes;
+  size_t multisig = af_sig_bytes;
+  size_t dh_key = crypto_box_PUBLICKEYBYTES;
+  size_t dialling_round = sizeof(int);
+
+  size_t request_bytes = email_string_bytes + lt_sig_key + client_sig + multisig + dh_key + dialling_round;
+  size_t cc_nonce = crypto_aead_chacha20poly1305_NPUBBYTES;
+  size_t cc_mac = crypto_aead_chacha20poly1305_ABYTES;
+  size_t ibe_ciphertext = ibe_elem_g1_bytes + crypto_aead_chacha20poly1305_KEYBYTES;
+
+  size_t ibe_encrypted_request = request_bytes + ibe_ciphertext + cc_nonce + cc_mac;
+  size_t mailbox_bytes = sizeof(int);
+  sum = mailbox_bytes + ibe_encrypted_request + (num_mix_servers * af_request_ABYTES);
+  printf("request bytes: %lu\n", request_bytes);
+  printf("ibe ciphertext: %lu\n", ibe_ciphertext);
+  printf("total request size: %lu\n", sum);
+
+  return sum;
 }
 
 int socket_send_bytes(int socket, byte_t *data, size_t data_length) {
@@ -153,25 +176,27 @@ void crypto_shared_secret(byte_t *shared_secret, byte_t *scalar_mult, byte_t *cl
 int encrypt_friend_request(client_state *cli_st) {
   for (size_t i = 0; i < cli_st->num_mix_servers; i++) {
     int res = af_onion_encrypt_request(cli_st, i);
-    if (res) return -1;
+    if (res)
+      return -1;
   }
   return 0;
 }
 
 int af_onion_encrypt_request(client_state *cli_st, size_t srv_id) {
 
-  if (!cli_st || srv_id >= cli_st->num_mix_servers) return -1;
+  if (!cli_st || srv_id >= cli_st->num_mix_servers)
+    return -1;
   // Add another layer of encryption to the request, append public DH key for server + nonce in clear (but authenticated)
   size_t message_length = af_request_BYTES + (af_request_ABYTES * srv_id);
   byte_t *message_end_ptr = cli_st->friend_request_buf + message_length;
-  byte_t *dh_pub_ptr = message_end_ptr + crypto_aead_chacha20poly1305_IETF_ABYTES;
-  byte_t *nonce_ptr = dh_pub_ptr + crypto_aead_chacha20poly1305_IETF_KEYBYTES;
+  byte_t *dh_pub_ptr = message_end_ptr + crypto_aead_chacha20poly1305_ABYTES;
+  byte_t *nonce_ptr = dh_pub_ptr + crypto_aead_chacha20poly1305_KEYBYTES;
   byte_t *dh_mix_pub = cli_st->mix_eph_pub_keys[srv_id];
 
-  byte_t dh_priv[crypto_aead_chacha20poly1305_IETF_KEYBYTES];
-  byte_t scalar_mult[crypto_aead_chacha20poly1305_IETF_KEYBYTES];
-  byte_t shared_secret[crypto_aead_chacha20poly1305_IETF_KEYBYTES];
-  randombytes_buf(dh_priv, crypto_aead_chacha20poly1305_IETF_KEYBYTES);
+  byte_t dh_priv[crypto_aead_chacha20poly1305_KEYBYTES];
+  byte_t scalar_mult[crypto_aead_chacha20poly1305_KEYBYTES];
+  byte_t shared_secret[crypto_aead_chacha20poly1305_KEYBYTES];
+  randombytes_buf(dh_priv, crypto_aead_chacha20poly1305_KEYBYTES);
   crypto_scalarmult_base(dh_pub_ptr, dh_priv);
   int res = crypto_scalarmult(scalar_mult, dh_priv, dh_mix_pub);
   if (res) {
@@ -179,23 +204,25 @@ int af_onion_encrypt_request(client_state *cli_st, size_t srv_id) {
     return -1;
   }
   crypto_shared_secret(shared_secret, scalar_mult, dh_pub_ptr, dh_mix_pub);
-  randombytes_buf(nonce_ptr, crypto_aead_chacha20poly1305_IETF_NPUBBYTES);
-  crypto_aead_chacha20poly1305_ietf_encrypt(cli_st->friend_request_buf,
-                                            NULL,
-                                            cli_st->friend_request_buf,
-                                            message_length,
-                                            dh_pub_ptr,
-                                            crypto_aead_chacha20poly1305_IETF_KEYBYTES
-                                                + crypto_aead_chacha20poly1305_IETF_NPUBBYTES,
-                                            NULL,
-                                            nonce_ptr,
-                                            shared_secret);
+  randombytes_buf(nonce_ptr, crypto_aead_chacha20poly1305_NPUBBYTES);
+  crypto_aead_chacha20poly1305_encrypt(cli_st->friend_request_buf,
+                                       NULL,
+                                       cli_st->friend_request_buf,
+                                       message_length,
+                                       dh_pub_ptr,
+                                       crypto_aead_chacha20poly1305_KEYBYTES
+                                           + crypto_aead_chacha20poly1305_NPUBBYTES,
+                                       NULL,
+                                       nonce_ptr,
+                                       shared_secret);
 
   return 0;
 };
 
-client_state *init() {
+client_state *init(int argc, char **argv) {
   client_state *cli_state = malloc(sizeof(client_state));
+  cli_state->friend_request_id = "bob@google.com";
+  cli_state->friend_request_id_length = strlen(cli_state->friend_request_id);
   cli_state->lt_priv_sig_key = malloc(sizeof(byte_t) * crypto_box_PUBLICKEYBYTES);
   cli_state->lt_pub_sig_key = malloc(sizeof(byte_t) * crypto_box_PUBLICKEYBYTES);
   cli_state->lt_priv_enc_key = malloc(sizeof(byte_t) * crypto_box_PUBLICKEYBYTES);
@@ -207,6 +234,7 @@ client_state *init() {
   cli_state->mix_sockets = malloc(sizeof(int) * cli_state->num_mix_servers);
   cli_state->pkg_sockets = malloc(sizeof(int) * cli_state->num_pkg_servers);
   cli_state->pkg_eph_pub_keys = malloc(sizeof(byte_t) * crypto_box_PUBLICKEYBYTES * cli_state->num_mix_servers);
+
   cli_state->pkg_lt_pub_keys = malloc(sizeof(byte_t) * crypto_box_PUBLICKEYBYTES * cli_state->num_mix_servers);
   cli_state->mix_eph_pub_keys = malloc(sizeof(byte_t) * crypto_box_PUBLICKEYBYTES * cli_state->num_mix_servers);
   cli_state->keywheel = malloc(sizeof(struct keywheel));
@@ -219,17 +247,31 @@ client_state *init() {
                  NULL,
                  NULL);
   cli_state->mix_eph_pub_keys[0] = mix_pk;
+
+  pbc_demo_pairing_init(cli_state->sig_pairing, argc, argv);
+
+  element_init(&(cli_state->pkg_eph_pub_elems[0]), cli_state->sig_pairing->G2);
+  element_set_str(&cli_state->pkg_eph_pub_elems[0], pk[0], 10);
+  element_init(cli_state->lt_priv_sig_key_elem, cli_state->sig_pairing->Zr);
+  element_init(cli_state->lt_pub_sig_key_elem, cli_state->sig_pairing->G2);
+  element_set_str(cli_state->lt_priv_sig_key_elem,
+                  "8589193232658963659316676722979046388504644078679542572293571476815064508542",
+                  10);
+  element_set_str(cli_state->lt_pub_sig_key_elem, lt_sig_pub_string, 10);
   memcpy(cli_state->friend_request_buf, "Test message", strlen("Test message"));
   return cli_state;
 };
 
-int main() {
+int main(int argc, char **argv) {
+  calc_encrypted_request_bytes(1);
+  calc_encrypted_request_bytes(2);
   int res = sodium_init();
   if (res) {
     fprintf(stderr, "Failed to load sodium library\n");
     exit(EXIT_FAILURE);
   }
-  client_state *client = init();
-  encrypt_friend_request(client);
-  decrypt_request(client->friend_request_buf, af_request_BYTES + af_request_ABYTES);
+  client_state *client = init(argc, argv);
+  printf("Bleep\n");
+  af_gen_request(client);
+  //decrypt_request(client->friend_request_buf, af_request_BYTES + af_request_ABYTES);
 }
