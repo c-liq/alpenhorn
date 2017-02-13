@@ -1,13 +1,19 @@
-
 #include <stdio.h>
 #include <stdint.h>
 #include "alpenhorn.h"
 #include <math.h>
 #include <string.h>
-#include <stdlib.h>
 #include <sodium.h>
 #include "xxHash-master/xxhash.h"
 #include "prime_gen.h"
+
+struct bloomfilter {
+  byte_t *f_base_ptr;
+  uint32_t *partition_lengths_bits;
+  uint32_t num_partitions;
+  uint64_t hash_key;
+  uint32_t *partition_offsets;
+};
 
 void bloom_calc_parts(const int m_target, uint32_t *m_actual_bytes,
                       const uint32_t num_partitions,
@@ -63,13 +69,6 @@ void bloom_calc_parts(const int m_target, uint32_t *m_actual_bytes,
   }
 }
 
-struct bloomfilter {
-  byte_t *f_base_ptr;
-  uint32_t *partition_lengths_bits;
-  uint32_t num_partitions;
-  uint64_t hash_key;
-  uint32_t *partition_offsets;
-};
 
 void bloom_add_elem(struct bloomfilter *bf, byte_t *data, uint32_t data_len) {
   byte_t *f_base_ptr = bf->f_base_ptr;
