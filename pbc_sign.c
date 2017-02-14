@@ -64,7 +64,7 @@ void bls_sign_message(byte_t *out_buf, element_s *sig_elem, element_s *hash_elem
   element_from_hash(hash_elem, msg_hash, crypto_generichash_BYTES);
 
   element_pow_zn(sig_elem, hash_elem, secret_key);
-  element_to_bytes_x_only(out_buf, sig_elem);
+  element_to_bytes_compressed(out_buf, sig_elem);
 }
 
 int bls_verify_signature(element_s *sig, element_s *hash_elem, byte_t *sig_buf, byte_t *msg, uint32_t msg_len,
@@ -73,7 +73,7 @@ int bls_verify_signature(element_s *sig, element_s *hash_elem, byte_t *sig_buf, 
   byte_t msg_hash[crypto_generichash_BYTES];
   crypto_generichash(msg_hash, crypto_generichash_BYTES, msg, msg_len, NULL, 0);
   element_from_hash(hash_elem, msg_hash, crypto_generichash_BYTES);
-  element_from_bytes_x_only(sig, sig_buf);
+  element_from_bytes_compressed(sig, sig_buf);
   element_t u, v;
   element_init(u, pairing->GT);
   element_init(v, pairing->GT);

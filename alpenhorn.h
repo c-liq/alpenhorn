@@ -1,5 +1,6 @@
 #ifndef ALPENHORN_ALPENHORN_H
 #define ALPENHORN_ALPENHORN_H
+#define PBC_DEBUG
 #include <stddef.h>
 #include <pbc/pbc.h>
 #include <pbc/pbc_test.h>
@@ -24,18 +25,22 @@ static const char GENERATOR[] = "[[157242573309240970621606836958802509332325544
     " 11675890099551911688180980551831034403007152045230694854797640069104655082534], "
     "[13349283408131010710625633177944918626847137179157740569651489234485272434916,"
     " 14614450416672873406836739706484919090526432906183872742307134718470620099277]]";
-#define pbc_sig_length 32U
+
 #define num_pkg_servers 1U
 #define num_mix_servers 1U
 #define af_email_string_bytes 60U
 #define af_request_ABYTES (crypto_aead_chacha20poly1305_ietf_NPUBBYTES + crypto_aead_chacha20poly1305_ietf_KEYBYTES + crypto_aead_chacha20poly1305_IETF_ABYTES)
 
-#define bls_signature_length 32U
+#define bls_signature_length 33U
 #define bls_public_key_length 65U
 #define ibe_public_key_length 33U
 #define ibe_secret_key_length 65U
 #define pkg_auth_res_length (bls_signature_length + ibe_secret_key_length)
-#define pkg_encr_auth_re_length (pkg_auth_res_length + crypto_aead_chacha20poly1305_ietf_ABYTES + crypto_aead_chacha20poly1305_ietf_NPUBBYTES)
+
+#define pkg_encr_auth_re_length (pkg_auth_res_length + \
+        crypto_aead_chacha20poly1305_ietf_ABYTES + \
+        crypto_aead_chacha20poly1305_ietf_NPUBBYTES)
+
 #define broadcast_message_length (ibe_public_key_length + crypto_box_PUBLICKEYBYTES)
 #define round_sig_message_length (af_email_string_bytes + crypto_box_PUBLICKEYBYTES + sizeof (uint32_t))
 
