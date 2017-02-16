@@ -12,7 +12,7 @@ typedef struct pkg_client pkg_client;
 struct pkg_server {
   int srv_id;
   uint32_t num_clients;
-  uint32_t *current_round;
+  uint32_t current_round;
   pairing_t pairing;
   pkg_client *clients;
   // Long term BLS signatures, used to sign messages aiding verifying friend requests by recipients
@@ -27,13 +27,13 @@ struct pkg_server {
   byte_t eph_broadcast_message[broadcast_message_length];
   byte_t *broadcast_dh_pkey_ptr;  // Pointer into message buffer where public dh key will be stored
   // Generator element for pairings, used to derive public keys from secret keys
-  element_s pbc_gen_element_g2;
+  element_s bls_gen_element_g2;
   element_s ibe_gen_element_g1;
 };
 
 struct pkg_client {
   // Invariant - user email address & public signing key
-  char user_id[af_email_string_bytes];
+  byte_t user_id[af_email_string_bytes];
   byte_t long_term_sig_pub_key[crypto_sign_PUBLICKEYBYTES];
   // Contains DH key and a signature over (server eph ibe public key/eph dh key) to authenticate user
   byte_t auth_msg_from_client[crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES];
@@ -41,7 +41,6 @@ struct pkg_client {
   byte_t eph_symmetric_key[crypto_generichash_BYTES];
   // Buffer holding message server will sign to authenticate friend requests for recipients
   byte_t round_signature_message[round_sig_message_length];
-  byte_t *round_signature_numptr;
   // Post-auth response: contains IBE signature fragment + IBE secret key for user, encrypted
   // symmetrically using key derived from fresh ECDH exchange
   byte_t eph_client_data[pkg_encr_auth_re_length];
@@ -53,7 +52,7 @@ struct pkg_client {
   element_t eph_secret_key_g2; // Round-specific IBE secret key for client
 };
 
-void pkg_client_init(pkg_client *client, pkg_server *server);
+void pkg_client_init(pkg_client *client, pkg_server *server, byte_t *user_id, byte_t *lt_sig_key);
 void pkg_new_ibe_keypair(pkg_server *server);
 int pkg_server_init(pkg_server *server, int argc, char **argv);
 void pkg_new_ibe_keypair(pkg_server *server);

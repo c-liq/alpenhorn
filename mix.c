@@ -1,55 +1,54 @@
 #include "alpenhorn.h"
 #include "mix.h"
-#include <sodium.h>
+#include "client.h"
 
-typedef unsigned char byte_t;
+const char skhex1[] = "bc8a02f200c6163ba70d0d9c377cebaa44274bb1e0da097e6c81466f8d5c3d45";
+const char pkhex1[] = "b2f511269f818c10bc897845e6282fc3f17a1e861f8d080c727bfffc7393842a";
 
-const char sk_hex[] = "a81e5af67012c87ea3553210c2620037f56141c6bf58df6a75da1512500865e8";
-const char pk_hex[] = "dc2a5d0ad83acd9027ffc587530cc26b0eb68679783bb0145e855fb03eaf1739";
-
-void decrypt_request(byte_t *c, size_t len) {
+int mix_remove_encryption_layer(byte_t *c, uint32_t num_layers) {
   byte_t sk[crypto_aead_chacha20poly1305_IETF_KEYBYTES];
   byte_t pk[crypto_aead_chacha20poly1305_IETF_KEYBYTES];
-  byte_t msg[af_request_BYTES];
-  sodium_hex2bin(sk, crypto_aead_chacha20poly1305_IETF_KEYBYTES, sk_hex, 64, NULL, NULL, NULL);
-  sodium_hex2bin(pk, crypto_aead_chacha20poly1305_IETF_KEYBYTES, pk_hex, 64, NULL, NULL, NULL);
-  byte_t *nonce = c + len - crypto_aead_chacha20poly1305_IETF_NPUBBYTES;
-  byte_t *client_pub_dh = nonce - crypto_aead_chacha20poly1305_IETF_KEYBYTES;
-  byte_t scalar_mult[crypto_aead_chacha20poly1305_IETF_KEYBYTES];
-  int res = crypto_scalarmult(scalar_mult, sk, client_pub_dh);
+  sodium_hex2bin(sk, crypto_aead_chacha20poly1305_IETF_KEYBYTES, skhex1, 64, NULL, NULL, NULL);
+  sodium_hex2bin(pk, crypto_aead_chacha20poly1305_IETF_KEYBYTES, pkhex1, 64, NULL, NULL, NULL);
+
+  uint32_t message_length = ibe_encrypted_request_length + mailbox_length + (num_layers * af_request_ABYTES);
+  byte_t *nonce_ptr = c + message_length - crypto_aead_chacha20poly1305_IETF_NPUBBYTES;
+  byte_t *client_pub_dh_ptr = nonce_ptr - crypto_box_PUBLICKEYBYTES;
+  byte_t msg[ibe_encrypted_request_length + mailbox_length + (num_layers * af_request_ABYTES)];
+
+  byte_t scalar_mult[crypto_scalarmult_BYTES];
+  int res = crypto_scalarmult(scalar_mult, sk, client_pub_dh_ptr);
   if (res) {
     printf("Scalarmult error\n");
+    return -1;
   }
-  byte_t shared_secret[crypto_aead_chacha20poly1305_IETF_KEYBYTES];
-  crypto_shared_secret(shared_secret, scalar_mult, client_pub_dh, pk);
-  char shared_hex[crypto_aead_chacha20poly1305_IETF_KEYBYTES * 2 + 1];
-  sodium_bin2hex(shared_hex,
-                 crypto_aead_chacha20poly1305_IETF_KEYBYTES * 2 + 1,
-                 shared_secret,
-                 crypto_aead_chacha20poly1305_IETF_KEYBYTES);
-  printf("xy: %s\n", shared_hex);
-  char nonce_hex[crypto_aead_chacha20poly1305_IETF_NPUBBYTES * 2 + 1];
-  sodium_bin2hex(nonce_hex,
-                 crypto_aead_chacha20poly1305_IETF_NPUBBYTES * 2 + 1,
-                 nonce,
-                 crypto_aead_chacha20poly1305_IETF_NPUBBYTES);
-  printf("on: %s\n", nonce_hex);
-  uint32_t clen = af_request_BYTES + crypto_aead_chacha20poly1305_IETF_ABYTES;
+  printhex(":::::::: MIX SCALAR MULT", scalar_mult, crypto_scalarmult_BYTES);
+  byte_t shared_secret[crypto_generichash_BYTES];
+  crypto_shared_secret(shared_secret, scalar_mult, client_pub_dh_ptr, pk);
+  // printhex("dh pub ptr", client_pub_dh_ptr, crypto_box_PUBLICKEYBYTES);
+  // printhex("nonce", nonce_ptr, crypto_aead_chacha20poly1305_IETF_NPUBBYTES);
+  printhex("mix shared secret", shared_secret, crypto_generichash_BYTES);
+  // printhex("ciphertext", c, message_length);
+
+
+  uint32_t clen = request_bytes + crypto_aead_chacha20poly1305_IETF_ABYTES;
   res = crypto_aead_chacha20poly1305_ietf_decrypt(msg,
                                                   NULL,
                                                   NULL,
                                                   c,
-                                                  clen,
-                                                  client_pub_dh,
-                                                  crypto_aead_chacha20poly1305_IETF_KEYBYTES
+                                                  message_length - (crypto_box_PUBLICKEYBYTES
+                                                      + crypto_aead_chacha20poly1305_IETF_NPUBBYTES),
+                                                  client_pub_dh_ptr,
+                                                  crypto_box_PUBLICKEYBYTES
                                                       + crypto_aead_chacha20poly1305_IETF_NPUBBYTES,
-                                                  nonce,
+                                                  nonce_ptr,
                                                   shared_secret);
   if (res) {
     printf("Decrypt error\n");
+    return -1;
   }
   printf("%s\n", msg);
-
+  return 0;
 }
 
 

@@ -80,25 +80,10 @@ int bls_verify_signature(element_s *sig, element_s *hash_elem, byte_t *sig_buf, 
   element_pairing(u, sig, g2);
   element_pairing(v, hash_elem, public_key);
 
-  int res = 0;
-  // Signature is transmitted as just an x-coordinate, which could match one of two y coords
-  // If the comparison fails initially, flip a point and compare again
-  if (element_cmp(u, v)) {
-    //printf("--------------\nFIRST SIG FAILED, INVERTING\n-----------\n");
-    element_invert(u, u);
-    res = (element_cmp(u, v));
-  }
-  if (res) {
-    element_printf("u: %B\n", u);
-    element_printf("v: %B\n", v);
-  }
+  int res = element_cmp(u, v);
   element_clear(u);
   element_clear(v);
-  if (res == 0) {
-    return 1;
-  } else {
-    return 0;
-  }
+  return res;
 }
 
 #if 0
