@@ -1,19 +1,10 @@
-#ifndef ALPENHORN_ALPENHORN_H
-#define ALPENHORN_ALPENHORN_H
-#define PBC_DEBUG
-#include <stddef.h>
-#include <pbc/pbc.h>
-#include <pbc/pbc_test.h>
+#ifndef ALPENHORN_CONFIG_H
+#define ALPENHORN_CONFIG_H
 #include <sodium.h>
-typedef unsigned char byte_t;
-typedef struct element_s element_s;
-typedef struct pairing_s pairing_s;
-
-void printhex(char *msg, byte_t *data, uint32_t len);
 
 static const char *sk[] = {"10778343094975392135581974247340460372164289692929233030125470550571339685912",
-                    "9688549132935229128161053765094784437559599536117169899827480125341223824030",
-                    "14754489302236821884533158176717016782900034847354657195783194213647848389200"
+                           "9688549132935229128161053765094784437559599536117169899827480125341223824030",
+                           "14754489302236821884533158176717016782900034847354657195783194213647848389200"
 };
 
 static const char *pk[] =
@@ -29,25 +20,33 @@ static const char bls_generator[] = "[[15724257330924097062160683695880250933232
 static const char ibe_gen_g3[] =
     "[13445309910996477276498115007761070335613715482521447244233072900478772718670, 1756633159976726073430018948123414634726480138612936748031091597585345575016]";
 
-#define intent_length 4U
+#define crypto_ghash_BYTES crypto_generichash_BYTES
+#define crypto_maxhash_BYTES crypto_generichash_BYTES_MAX
+#define crypto_MACBYTES crypto_aead_chacha20poly1305_ietf_ABYTES
+#define crypto_NBYTES crypto_aead_chacha20poly1305_ietf_NPUBBYTES
+// PBC constants
+#define g1_elem_compressed_BYTES 33U
+#define g2_elem_compressed_BYTES 65U
+
+#define intent_BYTES 4U
+#define mailbox_BYTES 4U
+#define dialling_round_BYTES 4U
+#define af_round_BYTES 4U
+#define dialling_token_BYTES 32U
 #define num_pkg_servers 1U
 #define num_mix_servers 1U
-#define af_email_string_bytes 60U
-#define af_request_ABYTES (crypto_aead_chacha20poly1305_ietf_NPUBBYTES \
-        + crypto_aead_chacha20poly1305_ietf_KEYBYTES + crypto_aead_chacha20poly1305_IETF_ABYTES)
+#define user_id_BYTES 60U
 
-#define bls_signature_length 33U
-#define ibe_public_key_length 33U
-#define ibe_secret_key_length 65U
-#define pkg_auth_res_length (bls_signature_length + ibe_secret_key_length)
+#define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + dialling_round_BYTES)
+#define af_ibeenc_request_BYTES (af_request_BYTES + crypto_ghash_BYTES + g1_elem_compressed_BYTES)
+#define onion_layer_BYTES (crypto_aead_chacha20poly1305_ietf_NPUBBYTES + crypto_aead_chacha20poly1305_ietf_KEYBYTES + crypto_aead_chacha20poly1305_IETF_ABYTES)
+#define onionenc_friend_request_BYTES (mailbox_BYTES + af_ibeenc_request_BYTES + (num_mix_servers * onion_layer_BYTES))
 
-#define pkg_encr_auth_re_length (pkg_auth_res_length + \
-        crypto_aead_chacha20poly1305_ietf_ABYTES + \
-        crypto_aead_chacha20poly1305_ietf_NPUBBYTES)
+#define pkg_auth_res_BYTES (g1_elem_compressed_BYTES + g2_elem_compressed_BYTES)
+#define pkg_enc_auth_res_BYTES (pkg_auth_res_BYTES + crypto_MACBYTES + crypto_NBYTES)
+#define pkg_broadcast_msg_BYTES (g2_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES)
+#define pkg_sig_message_BYTES (user_id_BYTES + crypto_box_PUBLICKEYBYTES + af_round_BYTES)
 
-#define broadcast_message_length (ibe_public_key_length + crypto_box_PUBLICKEYBYTES)
-#define round_sig_message_length (af_email_string_bytes + crypto_box_PUBLICKEYBYTES + sizeof (uint32_t))
+#define initial_table_size 50U
 
-void decrypt_request(byte_t *c, size_t len);
-
-#endif //ALPENHORN_ALPENHORN_H
+#endif //ALPENHORN_CONFIG_H

@@ -1,9 +1,10 @@
-//
-// Created by chris on 08/02/17.
-//
-
 #ifndef ALPENHORN_PBC_SIGN_H
 #define ALPENHORN_PBC_SIGN_H
+
+#include "pbc/pbc.h"
+#include "config.h"
+#include "utils.h"
+
 struct bls_instance;
 typedef struct bls_instance bls_instance;
 

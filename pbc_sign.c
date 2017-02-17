@@ -1,8 +1,7 @@
 #include <pbc/pbc.h>
 #include <memory.h>
-#include "alpenhorn.h"
 #include "pbc_sign.h"
-#include "aaparams.h"
+
 struct bls_instance {
   pairing_ptr pairing;
   element_t gen_elem;

@@ -1,11 +1,8 @@
-//
-// Created by chris on 01/02/17.
-//
-
 #ifndef ALPENHORN_IBE_BASIC_H
 #define ALPENHORN_IBE_BASIC_H
 #include <pbc/pbc.h>
-#include "alpenhorn.h"
+#include "config.h"
+#include "utils.h"
 
 int ibe_extract(element_t out, element_t master_priv_key, const byte_t *id, uint32_t id_length);
 int ibe_encrypt(byte_t *out, byte_t *msg, uint32_t, element_t public_key,

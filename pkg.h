@@ -1,9 +1,8 @@
-//
-// Created by chris on 09/02/17.
-//
-
 #ifndef ALPENHORN_PKG_H
 #define ALPENHORN_PKG_H
+
+#include "config.h"
+#include "utils.h"
 struct pkg_server;
 struct pkg_client;
 typedef struct pkg_server pkg_server;
@@ -24,7 +23,7 @@ struct pkg_server {
   element_t eph_secret_key_elem_zr;
   byte_t eph_secret_dh_key[crypto_box_SECRETKEYBYTES];
   // Broadcast message buffer - contains fresh IBE public key_state + fresh DH key_state + signature
-  byte_t eph_broadcast_message[broadcast_message_length];
+  byte_t eph_broadcast_message[pkg_broadcast_msg_BYTES];
   byte_t *broadcast_dh_pkey_ptr;  // Pointer into message buffer where public dh key_state will be stored
   // Generator element for pairings, used to derive public keys from secret keys
   element_s bls_gen_element_g2;
@@ -33,17 +32,17 @@ struct pkg_server {
 
 struct pkg_client {
   // Invariant - user email address & public signing key_state
-  byte_t user_id[af_email_string_bytes];
+  byte_t user_id[user_id_BYTES];
   byte_t long_term_sig_pub_key[crypto_sign_PUBLICKEYBYTES];
   // Contains DH key_state and a signature over (server eph ibe public key_state/eph dh key_state) to authenticate user
   byte_t auth_msg_from_client[crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES];
   // Symmetric key_state buffer, storing server-client key_state generated from ECDH exchange
   byte_t eph_symmetric_key[crypto_generichash_BYTES];
   // Buffer holding message server will sign to authenticate friend requests for recipients
-  byte_t round_signature_message[round_sig_message_length];
+  byte_t round_signature_message[pkg_sig_message_BYTES];
   // Post-auth response: contains IBE signature fragment + IBE secret key_state for user, encrypted
   // symmetrically using key_state derived from fresh ECDH exchange
-  byte_t eph_client_data[pkg_encr_auth_re_length];
+  byte_t eph_client_data[pkg_enc_auth_res_BYTES];
   byte_t *auth_response_ibe_key_ptr; // Pointer into response buffer where secret key_state will be placed
   // IBE elements
   element_t hashed_id_elem_g2; // Permanent
