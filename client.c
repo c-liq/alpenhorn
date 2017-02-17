@@ -5,20 +5,24 @@
 #include "client.h"
 #include "ibe.h"
 #include "pbc_sign.h"
-#include "keywheel.h"
+#include "keywheel_table.h"
 #include "xxHash-master/xxhash.h"
 
 const char *sig_pk = "301537283d8e6c36fc602e4fb907e9e9a87b3476a3c5c71c0ddbfbcac100fe74";
 const char *signature_pk =
     "4ba846375db0fb8dbea0d9a4b32743a54b1209c5b8aa5cd9e9bc81a875941f3e301537283d8e6c36fc602e4fb907e9e9a87b3476a3c5c71c0ddbfbcac100fe74";
 
-void crypto_shared_secret(byte_t *shared_secret, byte_t *scalar_mult, byte_t *client_pub, byte_t *server_pub) {
+void crypto_shared_secret(byte_t *shared_secret,
+                          byte_t *scalar_mult,
+                          byte_t *client_pub,
+                          byte_t *server_pub,
+                          uint32_t output_size) {
   crypto_generichash_state hash_state;
-  crypto_generichash_init(&hash_state, NULL, 0U, crypto_generichash_BYTES);
-  crypto_generichash_update(&hash_state, scalar_mult, crypto_generichash_BYTES);
-  crypto_generichash_update(&hash_state, client_pub, crypto_generichash_BYTES);
-  crypto_generichash_update(&hash_state, server_pub, crypto_generichash_BYTES);
-  crypto_generichash_final(&hash_state, shared_secret, crypto_generichash_BYTES);
+  crypto_generichash_init(&hash_state, NULL, 0U, output_size);
+  crypto_generichash_update(&hash_state, scalar_mult, output_size);
+  crypto_generichash_update(&hash_state, client_pub, output_size);
+  crypto_generichash_update(&hash_state, server_pub, output_size);
+  crypto_generichash_final(&hash_state, shared_secret, output_size);
 };
 
 uint32_t af_calc_mailbox_num(client *cli_st) {
@@ -35,8 +39,8 @@ void serialize_uint32(byte_t *out, uint32_t in) {
 
 void print_friend_request(friend_request *req) {
   printf("Sender id: %s\n", req->user_id);
-  printhex("Sender DH key", req->dh_public_key, crypto_box_PUBLICKEYBYTES);
-  printhex("Sender signing key: ", req->lt_sig_key, crypto_sign_PUBLICKEYBYTES);
+  printhex("Sender DH key_state", req->dh_public_key, crypto_box_PUBLICKEYBYTES);
+  printhex("Sender signing key_state: ", req->lt_sig_key, crypto_sign_PUBLICKEYBYTES);
   printf("Dialling round: %d\n", req->dialling_round);
 }
 
@@ -120,8 +124,7 @@ int af_decrypt_request(client *client, byte_t *request_buf) {
     return -1;
   }
 
-  res = crypto_sign_verify_detached(personal_sig_ptr,
-                                    dialling_round_ptr,
+  res = crypto_sign_verify_detached(personal_sig_ptr, dialling_round_ptr,
                                     sizeof(uint32_t) + af_email_string_bytes + crypto_sign_PUBLICKEYBYTES,
                                     lt_sig_key_ptr);
 
@@ -166,7 +169,7 @@ int af_auth_with_pkgs(client *client) {
     if (crypto_scalarmult(scalar_mult, secret_key, pkg_pub_key_ptr)) {
       printf("HELP\n");
     }
-    crypto_shared_secret(symmetric_key_ptr, scalar_mult, cli_pub_key_ptr, pkg_pub_key_ptr);
+    crypto_shared_secret(symmetric_key_ptr, scalar_mult, cli_pub_key_ptr, pkg_pub_key_ptr, crypto_box_SECRETKEYBYTES);
   }
   pbc_sum_bytes_G1_compressed(&client->pkg_eph_pub_combined_g1,
                               client->pkg_broadcast_msgs[0],
@@ -227,7 +230,7 @@ int af_onion_encrypt_request(client *cli_st, size_t srv_id) {
 
   if (!cli_st || srv_id >= num_mix_servers)
     return -1;
-  // Add another layer of encryption to the request, append public DH key for server + nonce in clear (but authenticated)
+  // Add another layer of encryption to the request, append public DH key_state for server + nonce in clear (but authenticated)
   uint32_t message_length = ibe_encrypted_request_length + mailbox_length + (af_request_ABYTES * srv_id);
   byte_t *message_end_ptr = cli_st->friend_request_buf + message_length;
   byte_t *dh_pub_ptr = message_end_ptr + crypto_aead_chacha20poly1305_IETF_ABYTES;
@@ -246,7 +249,7 @@ int af_onion_encrypt_request(client *cli_st, size_t srv_id) {
     return -1;
   }
   printhex("SCALAR MULT", scalar_mult, crypto_scalarmult_BYTES);
-  crypto_shared_secret(shared_secret, scalar_mult, dh_pub_ptr, dh_mix_pub);
+  crypto_shared_secret(shared_secret, scalar_mult, dh_pub_ptr, dh_mix_pub, crypto_generichash_BYTES);
 
   printhex("shared secret", shared_secret, crypto_generichash_BYTES);
   randombytes_buf(nonce_ptr, crypto_aead_chacha20poly1305_ietf_NPUBBYTES);

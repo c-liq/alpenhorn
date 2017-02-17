@@ -6,6 +6,7 @@
 #include "pkg.h"
 #include "ibe.h"
 #include "client.h"
+
 byte_t fid[af_email_string_bytes] = "chris@fmail.co.uk";
 byte_t ltsig[] = "301537283d8e6c36fc602e4fb907e9e9a87b3476a3c5c71c0ddbfbcac100fe74";
 void printhex(char *msg, byte_t *data, uint32_t len) {
@@ -32,7 +33,7 @@ int pkg_server_init(pkg_server *server, int argc, char **argv) {
   element_set_str(server->lt_public_sig_key_elem_g2, pk[0], 10);
   server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + ibe_public_key_length;
 
-  // Initialise elements for epheremal IBE key generation and create an initial keypair
+  // Initialise elements for epheremal IBE key_state generation and create an initial keypair
   element_init(server->eph_secret_key_elem_zr, pairing->Zr);
   element_init(server->eph_pub_key_elem_g1, pairing->G1);
   // Allocate and initialise clients
@@ -125,11 +126,15 @@ int pkg_auth_client(pkg_server *server, pkg_client *client) {
   byte_t scalar_mult[crypto_scalarmult_BYTES];
   int suc = crypto_scalarmult(scalar_mult, server->eph_secret_dh_key, client_dh_ptr);
   printf("%d\n", suc);
-  crypto_shared_secret(client->eph_symmetric_key, scalar_mult, client_dh_ptr, server->broadcast_dh_pkey_ptr);
-  //printhex("symm key", client->eph_symmetric_key, crypto_box_SECRETKEYBYTES);
+  crypto_shared_secret(client->eph_symmetric_key,
+                       scalar_mult,
+                       client_dh_ptr,
+                       server->broadcast_dh_pkey_ptr,
+                       crypto_generichash_BYTES);
+  //printhex("symm key_state", client->eph_symmetric_key, crypto_box_SECRETKEYBYTES);
   //printhex("scalar mult", scalar_mult, crypto_scalarmult_BYTES);
-  //printhex("client pub key", client_dh_ptr, crypto_box_PUBLICKEYBYTES);
-  //printhex("server pub key", server->broadcast_dh_pkey_ptr, crypto_generichash_BYTES);
+  //printhex("client pub key_state", client_dh_ptr, crypto_box_PUBLICKEYBYTES);
+  //printhex("server pub key_state", server->broadcast_dh_pkey_ptr, crypto_generichash_BYTES);
   pkg_encrypt_client_response(server, client);
   //send response
   return 0;
@@ -166,7 +171,7 @@ void pkg_extract_client_sk(pkg_server *server, pkg_client *client) {
   element_printf("Extractin SK for client from hash elem: %B\n", client->hashed_id_elem_g2);
   element_pow_zn(client->eph_secret_key_g2, client->hashed_id_elem_g2, server->eph_secret_key_elem_zr);
   element_to_bytes_compressed(client->auth_response_ibe_key_ptr, client->eph_secret_key_g2);
-  element_printf("Client epheremal secret key: %B\n", client->eph_secret_key_g2);
+  element_printf("Client epheremal secret key_state: %B\n", client->eph_secret_key_g2);
 }
 
 void pkg_sign_for_client(pkg_server *server, pkg_client *client) {

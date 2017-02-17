@@ -3,7 +3,7 @@
 #ifndef ALPENHORN_CLIENT_H
 #define ALPENHORN_CLIENT_H
 #include "alpenhorn.h"
-#include "keywheel.h"
+#include "keywheel_table.h"
 
 struct client;
 typedef struct client client;
@@ -27,23 +27,23 @@ struct client {
   uint32_t mailbox_count;
   pairing_s pairing;
   uint32_t dialling_round;
-  struct keywheel keywheel;
+  struct keywheel_table keywheel;
   byte_t friend_request_id[af_email_string_bytes];
   uint32_t af_round;
   // Long term BLS pub keys, private counterpart signs auth messages in friend requests
   element_s pkg_lt_sig_keys_combined;
   byte_t pkg_eph_pub_fragments_g1[num_pkg_servers][ibe_public_key_length]; // Epheremal public IBE keys from PKG's
-  element_s pkg_eph_pub_combined_g1; // Combined epheremal master public IBE key
+  element_s pkg_eph_pub_combined_g1; // Combined epheremal master public IBE key_state
   element_s bls_gen_element_g2;
-  element_s pkg_friend_elem; // Epheremal IBE key for friend request recipient
-  // Buffers for client -> PKG authrequests, filled with DH public key and signature over PKG's
+  element_s pkg_friend_elem; // Epheremal IBE key_state for friend request recipient
+  // Buffers for client -> PKG authrequests, filled with DH public key_state and signature over PKG's
   // broadcast messages to prove identity
   byte_t pkg_auth_request[num_pkg_servers][crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES + 100];
   // Buffers that hold PKG authentication responses if authentication is successful
-  // Contains BLS signature fragment (verifies friend request for recipient), and IBE secret key fragment
+  // Contains BLS signature fragment (verifies friend request for recipient), and IBE secret key_state fragment
   byte_t pkg_auth_responses[num_pkg_servers][pkg_encr_auth_re_length];
   element_s pkg_multisig_combined_g1;
-  // Epheremal IBE secret key - decrypts friend requests
+  // Epheremal IBE secret key_state - decrypts friend requests
   element_s pkg_ibe_secret_combined_g2;
   // Buffer for the fully encrypted add friend request
   // Contains the plaintext request, encrypted through IBE, with a mailbox identifier prepended
@@ -51,9 +51,9 @@ struct client {
   byte_t friend_request_buf[encrypted_friend_request_length];
   // Epheremal public DH keys from mix servers - used to onion encrypt friend requests
   byte_t mix_eph_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
-  // Epheremal client DH keys, mix combines with their secret DH key to remove layer of encryption
+  // Epheremal client DH keys, mix combines with their secret DH key_state to remove layer of encryption
   byte_t cli_mix_dh_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
-  // Epheremal secret key, used to add a layer of encryption to friend requests, removable only by corresponding
+  // Epheremal secret key_state, used to add a layer of encryption to friend requests, removable only by corresponding
   // mix server
   byte_t cli_mix_dh_secret_keys[num_mix_servers][crypto_box_SECRETKEYBYTES];
 
@@ -61,7 +61,7 @@ struct client {
       pkg_broadcast_msgs[num_pkg_servers][broadcast_message_length]; // At start of round, contains public IBE & DH keys
   byte_t pkg_eph_ibe_sk_fragments_g2[num_pkg_servers][ibe_secret_key_length]; // Client's secret DH keys used with PKG's
   byte_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES
-  ]; // Shared DH key, client decrypts round data from pkg
+  ]; // Shared DH key_state, client decrypts round data from pkg
   element_s ibe_gen_element_g1;
 };
 
@@ -76,7 +76,11 @@ typedef struct friend_request friend_request;
 client *client_init(int argc, char **argv);
 int af_auth_with_pkgs(client *client);
 void af_create_request(client *client);
-void crypto_shared_secret(byte_t *shared_secret, byte_t *scalar_mult, byte_t *client_pub, byte_t *server_pub);
+void crypto_shared_secret(byte_t *shared_secret,
+                          byte_t *scalar_mult,
+                          byte_t *client_pub,
+                          byte_t *server_pub,
+                          uint32_t output_size);
 int af_process_auth_responses(client *client);
 int af_decrypt_auth_responses(client *client);
 void client_fill(client *client, int argc, char **argv);
