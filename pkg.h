@@ -51,9 +51,9 @@ struct pkg_client {
   element_t eph_secret_key_g2; // Round-specific IBE secret key_state for client
 };
 
-void pkg_client_init(pkg_client *client, pkg_server *server, byte_t *user_id, byte_t *lt_sig_key);
+void pkg_client_init(pkg_client *client, pkg_server *server, const byte_t *user_id, const byte_t *lt_sig_key);
 void pkg_new_ibe_keypair(pkg_server *server);
-int pkg_server_init(pkg_server *server);
+int pkg_server_init(pkg_server *server, uint32_t id);
 void pkg_new_ibe_keypair(pkg_server *server);
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client);
 void pkg_sign_for_client(pkg_server *server, pkg_client *client);

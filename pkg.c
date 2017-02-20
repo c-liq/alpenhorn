@@ -5,26 +5,22 @@
 #include "pbc_sign.h"
 #include "pkg.h"
 
-byte_t fid[user_id_BYTES] = "chris@fmail.co.uk";
-byte_t ltsig[] = "301537283d8e6c36fc602e4fb907e9e9a87b3476a3c5c71c0ddbfbcac100fe74";
-
-int pkg_server_init(pkg_server *server) {
+int pkg_server_init(pkg_server *server, uint32_t server_id) {
   pairing_init_set_str(server->pairing, pbc_params);
   server->current_round = 0;
-  server->num_clients = 1;
-  server->srv_id = 1;
+  server->num_clients = 10;
+  server->srv_id = server_id;
   pairing_ptr pairing = server->pairing;
   // Initialise gen_elem element + long term ibe public/secret signature keypair
   element_init(&server->bls_gen_element_g2, pairing->G2);
   element_init(&server->ibe_gen_element_g1, pairing->G1);
-  element_set_str(&server->ibe_gen_element_g1, ibe_gen_g3, 10);
+  element_set_str(&server->ibe_gen_element_g1, ibe_generator, 10);
   element_set_str(&server->bls_gen_element_g2, bls_generator, 10);
   element_init(server->lt_secret_sig_key_elem_zr, pairing->Zr);
-  element_set_str(server->lt_secret_sig_key_elem_zr, sk[0], 10);
+  element_set_str(server->lt_secret_sig_key_elem_zr, sk[server_id], 10);
   element_init(server->lt_public_sig_key_elem_g2, pairing->G2);
-  element_set_str(server->lt_public_sig_key_elem_g2, pk[0], 10);
+  element_set_str(server->lt_public_sig_key_elem_g2, pk[server_id], 10);
   server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + g1_elem_compressed_BYTES;
-
   // Initialise elements for epheremal IBE key_state generation and create an initial keypair
   element_init(server->eph_secret_key_elem_zr, pairing->Zr);
   element_init(server->eph_pub_key_elem_g1, pairing->G1);
@@ -32,13 +28,13 @@ int pkg_server_init(pkg_server *server) {
   server->clients = malloc(sizeof(pkg_client) * server->num_clients);
   for (int i = 0; i < server->num_clients; i++) {
     memset(&server->clients[i], 0, sizeof(pkg_client));
-    pkg_client_init(&server->clients[i], server, fid, ltsig);
+    pkg_client_init(&server->clients[i], server, user_ids[i], user_lt_pub_sig_keys[i]);
   }
   pkg_new_round(server);
   return 0;
 }
 
-void pkg_client_init(pkg_client *client, pkg_server *server, byte_t *user_id, byte_t *lt_sig_key) {
+void pkg_client_init(pkg_client *client, pkg_server *server, const byte_t *user_id, const byte_t *lt_sig_key) {
 
   client->auth_response_ibe_key_ptr = client->eph_client_data + g1_elem_compressed_BYTES;
 
@@ -99,8 +95,6 @@ void pkg_new_round(pkg_server *server) {
     pkg_extract_client_sk(server, &server->clients[i]);
     pkg_sign_for_client(server, &server->clients[i]);
   }
-
-  //printhex("broadcast msg at srv", server->eph_broadcast_message, broadcast_message_length);
 }
 
 int pkg_auth_client(pkg_server *server, pkg_client *client) {
@@ -110,13 +104,13 @@ int pkg_auth_client(pkg_server *server, pkg_client *client) {
                                       client->long_term_sig_pub_key);
 
   if (s) {
-    printf("%d sig verification failed\n", s);
+    //printf("%d sig verification failed\n", s);
     return -1;
   }
   byte_t *client_dh_ptr = client->auth_msg_from_client + crypto_sign_BYTES;
   byte_t scalar_mult[crypto_scalarmult_BYTES];
   int suc = crypto_scalarmult(scalar_mult, server->eph_secret_dh_key, client_dh_ptr);
-  printf("%d\n", suc);
+  //printf("%d\n", suc);
   crypto_shared_secret(client->eph_symmetric_key,
                        scalar_mult,
                        client_dh_ptr,
@@ -158,7 +152,7 @@ void pkg_new_ibe_keypair(pkg_server *server) {
 }
 
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client) {
-//  element_printf("Extractin SK for client from hash elem: %B\n", client->hashed_id_elem_g2);
+  //element_printf("Extractin SK for %s from hash elem: %B\n", client->user_id, client->hashed_id_elem_g2);
   element_pow_zn(client->eph_secret_key_g2, client->hashed_id_elem_g2, server->eph_secret_key_elem_zr);
   element_to_bytes_compressed(client->auth_response_ibe_key_ptr, client->eph_secret_key_g2);
   // element_printf("Client epheremal secret key_state: %B\n", client->eph_secret_key_g2);

@@ -5,16 +5,35 @@
 #include "xxHash-master/xxhash.h"
 #include "pbc/pbc_test.h"
 
-const char *sig_pk = "301537283d8e6c36fc602e4fb907e9e9a87b3476a3c5c71c0ddbfbcac100fe74";
-const char *signature_pk =
-    "4ba846375db0fb8dbea0d9a4b32743a54b1209c5b8aa5cd9e9bc81a875941f3e301537283d8e6c36fc602e4fb907e9e9a87b3476a3c5c71c0ddbfbcac100fe74";
 
 uint32_t af_calc_mailbox_num(client *cli_st) {
   uint64_t hash = XXH64(cli_st->friend_request_id, user_id_BYTES, 0);
   return (uint32_t) hash % cli_st->mailbox_count;
 }
 
+int dial_call_friend(client *client, byte_t *user_id, uint32_t intent) {
+  //verify userid string
+  uint64_t mailbox = XXH64(user_id, user_id_BYTES, 0);
+  serialize_uint32(client->dial_request_buf, (uint32_t) mailbox);
+  int res = kw_generate_dialling_token(client->dial_request_buf + mailbox_BYTES, &client->keywheel, user_id, intent);
+  if (res) {
+    fprintf(stderr, "could not create dialling token for %s\n", user_id);
+    return -1;
+  }
 
+  res = kw_generate_session_key(client->session_key_buf, &client->keywheel, user_id);
+  if (res) {
+    fprintf(stderr, "could not generate session key for %s\n", user_id);
+  }
+
+  return 0;
+}
+
+void af_add_friend(client *client, char *user_id) {
+  // verify userid string
+  memcpy(client->friend_request_id, user_id, user_id_BYTES);
+  af_create_request(client);
+}
 
 void af_create_request(client *client) {
   byte_t *dialling_round_ptr =
@@ -48,6 +67,7 @@ void af_create_request(client *client) {
   uint32_t mn = af_calc_mailbox_num(client);
   serialize_uint32(client->friend_request_buf, mn);
   // Encrypt the request in layers ready for the mixnet
+
   af_onion_encrypt_request(client);
 }
 
@@ -58,6 +78,7 @@ int af_decrypt_request(client *client, byte_t *request_buf) {
                     &client->pkg_ibe_secret_combined_g2, &client->pairing);
 
   if (res) {
+    fprintf(stderr, "%s: ibe decryption failure\n", client->user_id);
     return -1;
   }
 
@@ -157,11 +178,10 @@ int af_decrypt_auth_responses(client *client) {
                                                         nonce_ptr, crypto_NBYTES,
                                                         nonce_ptr, client->pkg_eph_symmetric_keys[i]);
     if (res) {
-      fprintf(stderr, "Decryption failure\n");
+      fprintf(stderr, "%s: Decryption failure\n", client->user_id);
       return -1;
     }
     memcpy(client->pkg_eph_ibe_sk_fragments_g2[i], auth_response + g1_elem_compressed_BYTES, g2_elem_compressed_BYTES);
-
   }
   return 0;
 }
@@ -171,7 +191,6 @@ int af_process_auth_responses(client *client) {
                               num_pkg_servers, &client->pairing);
   pbc_sum_bytes_G2_compressed(&client->pkg_ibe_secret_combined_g2, client->pkg_eph_ibe_sk_fragments_g2[0],
                               num_pkg_servers, &client->pairing);
-  //element_printf("multisig: %B\n", &client->pkg_multisig_combined_g1);
   return 0;
 }
 
@@ -192,7 +211,6 @@ int add_onion_layer(client *cli_st, uint32_t srv_id) {
   byte_t *nonce_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
   byte_t *dh_mix_pub = cli_st->mix_eph_pub_keys[num_mix_servers - 1 - srv_id];
 
-
   byte_t dh_secret[crypto_box_SECRETKEYBYTES];
   byte_t scalar_mult[crypto_scalarmult_BYTES];
   byte_t shared_secret[crypto_ghash_BYTES];
@@ -205,21 +223,17 @@ int add_onion_layer(client *cli_st, uint32_t srv_id) {
     return -1;
   }
   crypto_shared_secret(shared_secret, scalar_mult, dh_pub_ptr, dh_mix_pub, crypto_ghash_BYTES);
-  printhex("client dh pub", dh_pub_ptr, crypto_box_PUBLICKEYBYTES);
-  printhex("mix dh pub", dh_mix_pub, crypto_box_PUBLICKEYBYTES);
-  printhex("shared secret", shared_secret, crypto_ghash_BYTES);
-  //randombytes_buf(nonce_ptr, crypto_NBYTES);
-  memset(nonce_ptr, 1, crypto_NBYTES);
+  randombytes_buf(nonce_ptr, crypto_NBYTES);
   crypto_aead_chacha20poly1305_ietf_encrypt(cli_st->friend_request_buf, NULL, cli_st->friend_request_buf,
                                             message_length, dh_pub_ptr, crypto_box_PUBLICKEYBYTES + crypto_NBYTES,
                                             NULL, nonce_ptr, shared_secret);
   return 0;
 };
 
-void client_fill(client *client, byte_t *user_id) {
+void client_fill(client *client, const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key) {
   memset(client->friend_request_buf, 0, sizeof client->friend_request_buf);
-  client->mailbox_count = 7;
-  client->dialling_round = 5;
+  client->mailbox_count = 1;
+  client->dialling_round = 1;
   memcpy(client->user_id, user_id, user_id_BYTES);
   pairing_init_set_str(&client->pairing, pbc_params);
   element_init(&client->pkg_multisig_combined_g1, client->pairing.G1);
@@ -228,14 +242,24 @@ void client_fill(client *client, byte_t *user_id) {
   element_init(&client->pkg_friend_elem, client->pairing.G2);
   element_init(&client->ibe_gen_element_g1, client->pairing.G1);
   element_init(&client->bls_gen_element_g2, client->pairing.G2);
-  element_set_str(&client->ibe_gen_element_g1, ibe_gen_g3, 10);
+  element_set_str(&client->ibe_gen_element_g1, ibe_generator, 10);
   element_set_str(&client->bls_gen_element_g2, bls_generator, 10);
   element_init(&client->pkg_lt_sig_keys_combined, client->pairing.G2);
-  element_set_str(&client->pkg_lt_sig_keys_combined, pk[0], 10);
+  element_s pkg_sig_keys[num_pkg_servers];
+  byte_t pkg_sig_key_bytes[num_pkg_servers][g2_elem_compressed_BYTES];
+  for (int i = 0; i < num_pkg_servers; i++) {
+    element_init(&pkg_sig_keys[i], client->pairing.G2);
+    element_set_str(&pkg_sig_keys[i], pk[i], 10);
+    element_to_bytes_compressed(pkg_sig_key_bytes[i], &pkg_sig_keys[i]);
+  }
+  pbc_sum_bytes_G2_compressed(&client->pkg_lt_sig_keys_combined,
+                              pkg_sig_key_bytes[0],
+                              num_pkg_servers,
+                              &client->pairing);
   client->af_round = 1;
   sodium_hex2bin(client->lt_pub_sig_key,
                  crypto_sign_PUBLICKEYBYTES,
-                 sig_pk,
+                 (char *) ltp_key,
                  64,
                  NULL,
                  NULL,
@@ -243,7 +267,7 @@ void client_fill(client *client, byte_t *user_id) {
 
   sodium_hex2bin(client->lt_secret_sig_key,
                  crypto_sign_SECRETKEYBYTES,
-                 signature_pk,
+                 (char *) lts_key,
                  128,
                  NULL,
                  NULL,

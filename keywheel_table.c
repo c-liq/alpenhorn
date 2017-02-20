@@ -78,25 +78,6 @@ int kw_generate_dialling_token(byte_t *out, keywheel_table *table, byte_t *useri
 }
 
 void kw_advance_table(keywheel_table *table) {
-/*  keywheel_queue *queue = table->queue->next;
-  while (queue) {
-    keywheel *queue_kw = queue->entry;
-    if (queue_kw->dialling_round == table->current_round) {
-      table->keywheels[table->num_keywheels++] = *queue_kw;
-      *queue_kw = empty_keywheel;
-      free(queue_kw);
-      queue->prev->next = queue->next;
-      if (queue->next) {
-        queue->next->prev = queue->prev;
-      }
-      keywheel_queue *tmp = queue->next;
-      free(queue);
-      queue = tmp;
-    } else {
-      queue = queue->next;
-    }
-  }*/
-
   for (int i = 0; i < table->num_keywheels; i++) {
     keywheel *cur_kw = &table->keywheels[i];
     crypto_generichash(cur_kw->key_ptr, crypto_maxhash_BYTES, cur_kw->key_ptr,
@@ -148,7 +129,6 @@ size_t kw_complete_keywheel(keywheel_table *table,
                        friend_public_key,
                        crypto_maxhash_BYTES);
   while (dial_round_sync != table->current_round) {
-    printf("BLEEP BLOOP\n");
     crypto_generichash(new_keywheel->key_ptr,
                        crypto_maxhash_BYTES,
                        new_keywheel->key_ptr,
@@ -157,7 +137,6 @@ size_t kw_complete_keywheel(keywheel_table *table,
                        0);
   }
   new_keywheel->dialling_round = dial_round_sync;
-
   return 0;
 }
 

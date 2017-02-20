@@ -89,6 +89,8 @@ struct client {
   // Contains the plaintext request, encrypted through IBE, with a mailbox identifier prepended
   // Then onion-encrypted in layers for the mix servers
   byte_t friend_request_buf[onionenc_friend_request_BYTES];
+  byte_t dial_request_buf[onionenc_dial_token_BYTES];
+  byte_t session_key_buf[crypto_ghash_BYTES];
   // Epheremal public DH keys from mix servers - used to onion encrypt friend requests
   byte_t mix_eph_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
   // Epheremal client DH keys, mix combines with their secret DH key_state to remove layer of encryption
@@ -96,12 +98,9 @@ struct client {
   // Epheremal secret key_state, used to add a layer of encryption to friend requests, removable only by corresponding
   // mix server
   byte_t cli_mix_dh_secret_keys[num_mix_servers][crypto_box_SECRETKEYBYTES];
-  byte_t
-      pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES]; // At start of round, contains public IBE & DH keys
-  byte_t
-      pkg_eph_ibe_sk_fragments_g2[num_pkg_servers][g2_elem_compressed_BYTES]; // Client's secret DH keys used with PKG's
-  byte_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES
-  ]; // Shared DH key_state, client decrypts round data from pkg
+  byte_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
+  byte_t pkg_eph_ibe_sk_fragments_g2[num_pkg_servers][g2_elem_compressed_BYTES];
+  byte_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES];
   element_s ibe_gen_element_g1;
 };
 
@@ -114,7 +113,7 @@ struct friend_request {
 typedef struct friend_request friend_request;
 
 client *client_init(int argc, char **argv);
-void client_fill(client *client, byte_t *user_id);
+void client_fill(client *client, const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key);
 int af_create_pkg_auth_request(client *client);
 void af_create_request(client *client);
 int af_process_auth_responses(client *client);
@@ -123,6 +122,7 @@ int af_decrypt_request(client *client, byte_t *request_buf);
 void print_friend_request(friend_request *req);
 int af_onion_encrypt_request(client *cli_st);
 int add_onion_layer(client *cli_st, uint32_t srv_id);
+void af_add_friend(client *client, char *user_id);
 #endif //ALPENHORN_CLIENT_H
 
 #pragma clang diagnostic pop

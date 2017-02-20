@@ -30,4 +30,14 @@ uint32_t deserialize_uint32(byte_t *in);
 void serialize_uint32(byte_t *out, uint32_t in);
 void print_b64(char *msg, byte_t *data,
                size_t input_length);
+
+int crypto_chacha_decrypt(unsigned char *m,
+                          unsigned long long *mlen_p,
+                          unsigned char *nsec,
+                          const unsigned char *c,
+                          unsigned long long clen,
+                          const unsigned char *ad,
+                          unsigned long long adlen,
+                          const unsigned char *npub,
+                          const unsigned char *k);
 #endif //ALPENHORN_UTILS_H

@@ -38,4 +38,12 @@ struct keywheel_unconfirmed {
 };
 
 int kw_table_init(keywheel_table *table);
+int kw_generate_dialling_token(byte_t *out, keywheel_table *table, byte_t *userid, uint32_t intent);
+int kw_generate_session_key(byte_t *out, keywheel_table *table, byte_t *user_id);
+void kw_advance_table(keywheel_table *table);
+size_t kw_new_keywheel(keywheel_table *table, byte_t *user_id, uint32_t round_sentt);
+size_t kw_complete_keywheel(keywheel_table *table,
+                            byte_t *user_id,
+                            byte_t *friend_public_key,
+                            uint32_t dial_round_sync);
 #endif //ALPENHORN_KEYWHEEL_H

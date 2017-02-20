@@ -127,8 +127,8 @@ int mix_remove_encryption_layer(mix *mix, byte_t *out, byte_t *c, uint32_t messa
   byte_t *client_pub_dh_ptr = nonce_ptr - crypto_box_PUBLICKEYBYTES;
   byte_t scalar_mult[crypto_scalarmult_BYTES];
   int res = crypto_scalarmult(scalar_mult, mix->eph_dh_secret_key, client_pub_dh_ptr);
-  printhex("MIX: dh pub ptr", client_pub_dh_ptr, crypto_box_PUBLICKEYBYTES);
-  printhex("MIX before decryption: ctext", c, message_length);
+  //printhex("MIX: dh pub ptr", client_pub_dh_ptr, crypto_box_PUBLICKEYBYTES);
+  //printhex("MIX before decryption: ctext", c, message_length);
   if (res) {
     printf("Scalarmult error\n");
     return -1;
@@ -137,7 +137,7 @@ int mix_remove_encryption_layer(mix *mix, byte_t *out, byte_t *c, uint32_t messa
   byte_t shared_secret[crypto_generichash_BYTES];
   crypto_shared_secret(shared_secret, scalar_mult, client_pub_dh_ptr, mix->eph_dh_public_key, crypto_ghash_BYTES);
 
-  printhex("MIX: shared secret at mix", shared_secret, crypto_generichash_BYTES);
+  //printhex("MIX: shared secret at mix", shared_secret, crypto_generichash_BYTES);
   uint32_t clen = message_length - (crypto_box_PUBLICKEYBYTES + crypto_NBYTES);
   unsigned long long mlen;
   res = crypto_aead_chacha20poly1305_ietf_decrypt(out,
@@ -152,7 +152,7 @@ int mix_remove_encryption_layer(mix *mix, byte_t *out, byte_t *c, uint32_t messa
     printf("Decrypt error\n");
     return -1;
   }
-  printhex("MIX decrypted", out, mlen);
+  printf("mlen after mix decrypt: %llu\n", mlen);
   return 0;
 }
 

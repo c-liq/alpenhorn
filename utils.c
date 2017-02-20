@@ -70,3 +70,15 @@ void serialize_uint32(byte_t *out, uint32_t in) {
   out[2] = (byte_t) ((in >> 8) & 0xFF);
   out[3] = (byte_t) (in & 0xFF);
 };
+
+int crypto_chacha_decrypt(unsigned char *m,
+                          unsigned long long *mlen_p,
+                          unsigned char *nsec,
+                          const unsigned char *c,
+                          unsigned long long clen,
+                          const unsigned char *ad,
+                          unsigned long long adlen,
+                          const unsigned char *npub,
+                          const unsigned char *k) {
+  return crypto_aead_chacha20poly1305_decrypt(m, mlen_p, nsec, c, clen, ad, adlen, npub, k);
+};
