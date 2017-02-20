@@ -8,9 +8,8 @@
 byte_t fid[user_id_BYTES] = "chris@fmail.co.uk";
 byte_t ltsig[] = "301537283d8e6c36fc602e4fb907e9e9a87b3476a3c5c71c0ddbfbcac100fe74";
 
-
-int pkg_server_init(pkg_server *server, int argc, char **argv) {
-  pbc_demo_pairing_init(server->pairing, argc, argv);
+int pkg_server_init(pkg_server *server) {
+  pairing_init_set_str(server->pairing, pbc_params);
   server->current_round = 0;
   server->num_clients = 1;
   server->srv_id = 1;
@@ -24,7 +23,7 @@ int pkg_server_init(pkg_server *server, int argc, char **argv) {
   element_set_str(server->lt_secret_sig_key_elem_zr, sk[0], 10);
   element_init(server->lt_public_sig_key_elem_g2, pairing->G2);
   element_set_str(server->lt_public_sig_key_elem_g2, pk[0], 10);
-  server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + g2_elem_compressed_BYTES;
+  server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + g1_elem_compressed_BYTES;
 
   // Initialise elements for epheremal IBE key_state generation and create an initial keypair
   element_init(server->eph_secret_key_elem_zr, pairing->Zr);
@@ -105,8 +104,8 @@ void pkg_new_round(pkg_server *server) {
 }
 
 int pkg_auth_client(pkg_server *server, pkg_client *client) {
-
-  int s = crypto_sign_verify_detached(client->auth_msg_from_client, server->eph_broadcast_message,
+  int s = crypto_sign_verify_detached(client->auth_msg_from_client,
+                                      server->eph_broadcast_message,
                                       pkg_broadcast_msg_BYTES,
                                       client->long_term_sig_pub_key);
 
@@ -128,7 +127,7 @@ int pkg_auth_client(pkg_server *server, pkg_client *client) {
   //printhex("client pub key_state", client_dh_ptr, crypto_box_PUBLICKEYBYTES);
   //printhex("server pub key_state", server->broadcast_dh_pkey_ptr, crypto_generichash_BYTES);
   pkg_encrypt_client_response(server, client);
-  //send response
+  //send response*/
   return 0;
 }
 
@@ -174,32 +173,5 @@ void pkg_sign_for_client(pkg_server *server, pkg_client *client) {
   //element_printf("sig elem from srv: %B\n", client->eph_signature_elem_g1);
 
 }
-/*#if 0
-int main(int argc, char **argv) {
-  pkg_server state;
-  uint32_t num_clients = 1;
-  pkg_server_init(&state, argv[1]);
-  pkg_new_round(&state);
-  printhex("response buffer before encryption", (state.clients[0]).eph_client_data, pkg_enc_auth_res_BYTES);
-  pkg_encrypt_client_response(&state, &state.clients[0]);
-  printhex("response buffer after encryption", (state.clients[0]).eph_client_data, pkg_enc_auth_res_BYTES);
-  byte_t buf[pkg_auth_res_BYTES];
-  pkg_client *cli = &state.clients[0];
-  byte_t *nonce_ptr = cli->eph_client_data + pkg_auth_res_BYTES + crypto_aead_chacha20poly1305_IETF_ABYTES;
-  int res = crypto_aead_chacha20poly1305_ietf_decrypt(buf,
-                                                      NULL,
-                                                      NULL,
-                                                      cli->eph_client_data,
-                                                      pkg_auth_res_BYTES + crypto_aead_chacha20poly1305_IETF_ABYTES,
-                                                      nonce_ptr,
-                                                      crypto_aead_chacha20poly1305_IETF_NPUBBYTES,
-                                                      nonce_ptr,
-                                                      cli->eph_symmetric_key);
-  printf("%d\n", res);
-  printhex("buffer after decryption", buf, pkg_auth_res_BYTES);
-  pkg_server_shutdown(&state);
-
-}
-#endif*/
 
 

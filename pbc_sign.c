@@ -1,36 +1,80 @@
 #include <pbc/pbc.h>
-#include <memory.h>
 #include "pbc_sign.h"
 
-struct bls_instance {
-  pairing_ptr pairing;
-  element_t gen_elem;
-  element_t sig_elem;
-  element_t sig_hash_elem;
-  element_t elem_sum;
-  element_t u_tmp;
-  element_t v_tmp;
-};
+bls_instance *bls_alloc(char *params, uint32_t params_len, char *gen_string) {
+  bls_instance *bls = calloc(1, sizeof(*bls));
+  if (!bls) {
+    fprintf(stderr, "calloc failed when creating bls instance\n");
+    return NULL;
+  }
+  pairing_s *pairing = &bls->pairing;
+  int res = pairing_init_set_buf(&bls->pairing, params, params_len);
+  if (res) {
+    fprintf(stderr, "failed to configure pairing during bls setup\n");
+  }
 
-bls_instance *bls_init(pairing_t pairing) {
-  bls_instance *bls_instance = malloc(sizeof(bls_instance));
-  bls_instance->pairing = pairing;
-  element_init_G2(bls_instance->gen_elem, pairing);
-  element_init_G1(bls_instance->sig_elem, pairing);
-  element_init_G1(bls_instance->sig_hash_elem, pairing);
-  element_init_GT(bls_instance->u_tmp, pairing);
-  element_init_GT(bls_instance->v_tmp, pairing);
-  return bls_instance;
+  element_init_G2(&bls->gen_elem, pairing);
+  element_init_G1(&bls->sig_elem, pairing);
+  element_init_G1(&bls->verify_elem, pairing);
+  element_init_G1(&bls->sig_hash_elem, pairing);
+  element_init_G1(&bls->g1_elem_sum, pairing);
+  element_init_G2(&bls->g2_elem_sum, pairing);
+  element_init_G1(&bls->g1_tmp, pairing);
+  element_init_G2(&bls->g2_tmp, pairing);
+  element_init_GT(&bls->u_tmp, pairing);
+  element_init_GT(&bls->v_tmp, pairing);
+  bls->g1_elem_length = element_length_in_bytes_compressed(&bls->g1_elem_sum);
+  bls->g2_elem_length = element_length_in_bytes_compressed(&bls->g2_elem_sum);
+  element_set_str(&bls->gen_elem, gen_string, 10);
+  return bls;
 }
 
-void pbc_sum(element_s *elem_sum, element_s elem_ar[], size_t n, pairing_t pairing) {
-  if (!elem_sum || !elem_ar || !pairing) {
-    return;
-  }
+void bls_sum_bytes_G1_compressed(bls_instance *bls_inst, byte_t *elem_bytes_ar, uint32_t n) {
+  element_s *tmp = &bls_inst->g1_tmp;
+  element_s *sum_elem = &bls_inst->g1_elem_sum;
+  element_set0(&bls_inst->g1_elem_sum);
   for (int i = 0; i < n; i++) {
-    //  element_printf("sum - element %d: %B\n", i, &elem_ar[i]);
-    element_mul(elem_sum, elem_sum, &elem_ar[i]);
+    element_from_bytes_compressed(&bls_inst->u_tmp, elem_bytes_ar + (i * bls_inst->g1_elem_length));
+    element_add(sum_elem, sum_elem, tmp);
   }
+}
+
+void bls_sum_bytes_G2_compressed(bls_instance *bls_inst, byte_t *elem_bytes_ar, uint32_t n) {
+  element_s *tmp = &bls_inst->g2_tmp;
+  element_s *sum_elem = &bls_inst->g2_elem_sum;
+  element_set0(&bls_inst->g2_elem_sum);
+
+  for (int i = 0; i < n; i++) {
+    element_from_bytes_compressed(&bls_inst->u_tmp, elem_bytes_ar + (i * bls_inst->g2_elem_length));
+    element_add(sum_elem, sum_elem, tmp);
+  }
+}
+
+void bls_inst_sign_message(byte_t *out_buf,
+                           bls_instance *bls_inst,
+                           byte_t *msg,
+                           uint32_t msg_len,
+                           element_s *secret_key) {
+  byte_t msg_hash[crypto_ghash_BYTES];
+  crypto_generichash(msg_hash, crypto_ghash_BYTES, msg, msg_len, NULL, 0);
+  element_from_hash(&bls_inst->sig_hash_elem, msg_hash, crypto_ghash_BYTES);
+  element_pow_zn(&bls_inst->sig_elem, &bls_inst->sig_hash_elem, secret_key);
+  element_to_bytes_compressed(out_buf, &bls_inst->sig_elem);
+}
+
+int bls_inst_verify(bls_instance *bls_inst, byte_t *sig_buf, byte_t *msg, uint32_t msg_len, element_s *public_key) {
+  byte_t msg_hash[crypto_ghash_BYTES];
+  crypto_generichash(msg_hash, crypto_ghash_BYTES, msg, msg_len, NULL, 0);
+
+  element_from_hash(&bls_inst->sig_hash_elem, msg_hash, crypto_ghash_BYTES);
+  element_from_bytes_compressed(&bls_inst->verify_elem, sig_buf);
+
+  element_s *u = &bls_inst->u_tmp;
+  element_s *v = &bls_inst->v_tmp;
+  element_pairing(u, &bls_inst->sig_elem, &bls_inst->gen_elem);
+  element_pairing(v, &bls_inst->sig_hash_elem, public_key);
+
+  return element_cmp(u, v);
 }
 
 void pbc_sum_bytes_G1_compressed(element_s *elem_sum, byte_t *elem_bytes_ar, size_t n, pairing_t pairing) {
@@ -58,9 +102,9 @@ void pbc_sum_bytes_G2_compressed(element_s *elem_sum, byte_t *elem_bytes_ar, siz
 void bls_sign_message(byte_t *out_buf, element_s *sig_elem, element_s *hash_elem, byte_t *msg,
                       uint32_t msg_len, element_s *secret_key) {
 
-  byte_t msg_hash[crypto_generichash_BYTES];
-  crypto_generichash(msg_hash, crypto_generichash_BYTES, msg, msg_len, NULL, 0);
-  element_from_hash(hash_elem, msg_hash, crypto_generichash_BYTES);
+  byte_t msg_hash[crypto_ghash_BYTES];
+  crypto_generichash(msg_hash, crypto_ghash_BYTES, msg, msg_len, NULL, 0);
+  element_from_hash(hash_elem, msg_hash, crypto_ghash_BYTES);
 
   element_pow_zn(sig_elem, hash_elem, secret_key);
   element_to_bytes_compressed(out_buf, sig_elem);
@@ -69,9 +113,9 @@ void bls_sign_message(byte_t *out_buf, element_s *sig_elem, element_s *hash_elem
 int bls_verify_signature(element_s *sig, element_s *hash_elem, byte_t *sig_buf, byte_t *msg, uint32_t msg_len,
                          element_s *public_key, element_s *g2, pairing_t pairing) {
 
-  byte_t msg_hash[crypto_generichash_BYTES];
-  crypto_generichash(msg_hash, crypto_generichash_BYTES, msg, msg_len, NULL, 0);
-  element_from_hash(hash_elem, msg_hash, crypto_generichash_BYTES);
+  byte_t msg_hash[crypto_ghash_BYTES];
+  crypto_generichash(msg_hash, crypto_ghash_BYTES, msg, msg_len, NULL, 0);
+  element_from_hash(hash_elem, msg_hash, crypto_ghash_BYTES);
   element_from_bytes_compressed(sig, sig_buf);
   element_t u, v;
   element_init(u, pairing->GT);
@@ -85,63 +129,4 @@ int bls_verify_signature(element_s *sig, element_s *hash_elem, byte_t *sig_buf, 
   return res;
 }
 
-#if 0
-int main(int argc, char **argv) {
-  pairing_t pairing;
-  pbc_demo_pairing_init(pairing, argc, argv);
-  element_s g_elem;
-  size_t num = 4;
-  element_s public_keys[num];
-  element_s secret_keys[num];
-  element_s sigs_array[num];
-  for (int i = 0; i<num; i++) {
-    element_init(&secret_keys[i], pairing->Zr);
-    element_init(&public_keys[i], pairing->G2);
-    element_init(&sigs_array[i], pairing->G1);
-  }
-  uint32_t sig_length = (uint32_t) element_length_in_bytes_x_only(&sigs_array[0]);
-  uint32_t public_key_length = (uint32_t) element_length_in_bytes_compressed(&public_keys[0]);
-  element_init(&g_elem, pairing->G2);
-
-  element_random(&g_elem);
-  byte_t message[] = {'T', 'e', 's', 't'};
-  uint32_t msglen = sizeof message;
-  int sum = 0;
-  for (int j = 0; j < 100; j++) {
-    byte_t sig_buffer[num][sig_length];
-    for (int i = 0; i<num; i++) {
-      element_random(&secret_keys[i]);
-      element_pow_zn(&public_keys[i], &g_elem, &secret_keys[i]);
-    }
-
-    element_s hash_elem;
-    element_init(&hash_elem, pairing->G1);
-    for (int i = 0; i<num; i++) {
-      bls_sign_message(sig_buffer[i], &sigs_array[i], &hash_elem, message, msglen, &secret_keys[i]);
-    }
-    element_t sigsum;
-    element_t pksum;
-    byte_t sig_sum_buffer[sig_length];
-    memset(sig_sum_buffer, 0, sig_length);
-
-    element_init(sigsum, pairing->G1);
-    element_init(pksum, pairing->G2);
-    pbc_sum(pksum, public_keys, num, pairing);
-    pbc_sum(sigsum, sigs_array, num, pairing);
-    element_to_bytes_x_only(sig_sum_buffer, sigsum);
-    int res3 = bls_verify_signature(sigsum, &hash_elem, sig_sum_buffer, message, msglen, pksum, &g_elem, pairing);
-    sum += res3;
-   // printf("%d += %d\n", sum, res3);
-  }
-  printf("Sum : %d\n", sum);
-  //element_printf("sigsum: %B\n", sigsum);
-  //element_printf("pk sum: %B\n", pksum);
-  element_clear(&g_elem);
-  element_clear(&public_keys[0]);
-  element_clear(&secret_keys[0]);
-  element_clear(&sigs_array[0]);
-  pairing_clear(pairing);
-
-}
-#endif
 

@@ -1,9 +1,8 @@
 #include <stdio.h>
 #include <stdint.h>
-#include "alpenhorn.h"
+#include "utils.h"
 #include <math.h>
 #include <string.h>
-#include <sodium.h>
 #include "xxHash-master/xxhash.h"
 #include "prime_gen.h"
 

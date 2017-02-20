@@ -2,6 +2,14 @@
 #define ALPENHORN_CONFIG_H
 #include <sodium.h>
 
+static const char pbc_params[] = "type f\n"
+    "q 16283262548997601220198008118239886027035269286659395419233331082106632227801\n"
+    "r 16283262548997601220198008118239886026907663399064043451383740756301306087801\n"
+    "b 5609134383314096343821706060255766178230076423505829753232013255731730969768\n"
+    "beta 14585451571835279174057707111090228078498559752534690688696725860687037093655\n"
+    "alpha0 7384246685346944302521498672963794600906063696465161604937782621154370513339\n"
+    "alpha1 4048507381538522394091069408895150360561946621565222584287381102665313783955\n";
+
 static const char *sk[] = {"10778343094975392135581974247340460372164289692929233030125470550571339685912",
                            "9688549132935229128161053765094784437559599536117169899827480125341223824030",
                            "14754489302236821884533158176717016782900034847354657195783194213647848389200"
@@ -34,17 +42,19 @@ static const char ibe_gen_g3[] =
 #define af_round_BYTES 4U
 #define dialling_token_BYTES 32U
 #define num_pkg_servers 1U
-#define num_mix_servers 1U
+#define num_mix_servers 2U
 #define user_id_BYTES 60U
 
 #define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + dialling_round_BYTES)
 #define af_ibeenc_request_BYTES (af_request_BYTES + crypto_ghash_BYTES + g1_elem_compressed_BYTES)
 #define onion_layer_BYTES (crypto_aead_chacha20poly1305_ietf_NPUBBYTES + crypto_aead_chacha20poly1305_ietf_KEYBYTES + crypto_aead_chacha20poly1305_IETF_ABYTES)
 #define onionenc_friend_request_BYTES (mailbox_BYTES + af_ibeenc_request_BYTES + (num_mix_servers * onion_layer_BYTES))
-
+#define onionenc_dial_token_BYTES (mailbox_BYTES + dialling_token_BYTES + (num_mix_servers * onion_layer_BYTES))
+#define cli_pkg_single_auth_req_BYTES (crypto_sign_BYTES + crypto_box_PUBLICKEYBYTES)
+#define cli_pkg_combined_auth_req_BYTES (user_id_BYTES + (num_pkg_servers * cli_pkg_single_auth_req_BYTES))
 #define pkg_auth_res_BYTES (g1_elem_compressed_BYTES + g2_elem_compressed_BYTES)
 #define pkg_enc_auth_res_BYTES (pkg_auth_res_BYTES + crypto_MACBYTES + crypto_NBYTES)
-#define pkg_broadcast_msg_BYTES (g2_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES)
+#define pkg_broadcast_msg_BYTES (g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES)
 #define pkg_sig_message_BYTES (user_id_BYTES + crypto_box_PUBLICKEYBYTES + af_round_BYTES)
 
 #define initial_table_size 50U

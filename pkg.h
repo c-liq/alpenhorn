@@ -53,7 +53,7 @@ struct pkg_client {
 
 void pkg_client_init(pkg_client *client, pkg_server *server, byte_t *user_id, byte_t *lt_sig_key);
 void pkg_new_ibe_keypair(pkg_server *server);
-int pkg_server_init(pkg_server *server, int argc, char **argv);
+int pkg_server_init(pkg_server *server);
 void pkg_new_ibe_keypair(pkg_server *server);
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client);
 void pkg_sign_for_client(pkg_server *server, pkg_client *client);

@@ -161,7 +161,7 @@ size_t kw_complete_keywheel(keywheel_table *table,
   return 0;
 }
 
-int main() {
+/*int main() {
   keywheel_table table;
   kw_table_init(&table);
   byte_t sk[crypto_box_PUBLICKEYBYTES];
@@ -180,4 +180,4 @@ int main() {
   kw_generate_session_key(session_key, &table, uname);
   printhex("dial token", dial_token, dialling_token_BYTES);
   printhex("session key", session_key, crypto_ghash_BYTES);
-}
+}*/

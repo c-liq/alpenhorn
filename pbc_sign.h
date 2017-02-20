@@ -6,9 +6,24 @@
 #include "utils.h"
 
 struct bls_instance;
+
+struct bls_instance {
+  pairing_s pairing;
+  element_s gen_elem;
+  element_s sig_elem;
+  element_s verify_elem;
+  element_s sig_hash_elem;
+  element_s g1_elem_sum;
+  element_s g2_elem_sum;
+  element_s u_tmp;
+  element_s v_tmp;
+  int g1_elem_length;
+  int g2_elem_length;
+  element_s g1_tmp;
+  element_s g2_tmp;
+};
 typedef struct bls_instance bls_instance;
 
-void pbc_sum(element_t elem_sum, struct element_s *elem_ar, size_t n, pairing_t pairing);
 void pbc_sum_bytes_G1_compressed(element_s *elem_sum, byte_t *elem_bytes_ar, size_t n, pairing_t pairing);
 void pbc_sum_bytes_G2_compressed(element_s *elem_sum, byte_t *elem_bytes_ar, size_t n, pairing_t pairing);
 void bls_sign_message(byte_t *out_buf, element_s *sig_elem, element_s *hash_elem, byte_t *msg,
