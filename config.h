@@ -16,7 +16,7 @@
 #define dialling_round_BYTES 4U
 #define af_round_BYTES 4U
 #define dialling_token_BYTES 32U
-#define num_pkg_servers 3U
+#define num_pkg_servers 2U
 #define num_mix_servers 2U
 #define user_id_BYTES 60U
 

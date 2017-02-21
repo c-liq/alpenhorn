@@ -36,7 +36,7 @@ struct pkg_client {
   byte_t long_term_sig_pub_key[crypto_sign_PUBLICKEYBYTES];
   // Contains DH key_state and a signature over (server eph ibe public key_state/eph dh key_state) to authenticate user
   byte_t auth_msg_from_client[crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES];
-  // Symmetric key_state buffer, storing server-client key_state generated from ECDH exchange
+  // Symmetric key_state buffer, storing server-client_s key_state generated from ECDH exchange
   byte_t eph_symmetric_key[crypto_generichash_BYTES];
   // Buffer holding message server will sign to authenticate friend requests for recipients
   byte_t round_signature_message[pkg_sig_message_BYTES];
@@ -48,7 +48,7 @@ struct pkg_client {
   element_t hashed_id_elem_g2; // Permanent
   element_t eph_signature_elem_g1;
   element_t eph_sig_hash_elem_g1;// Round-specific sig_lts of (user_id, lts-sig-key_state, round number)
-  element_t eph_secret_key_g2; // Round-specific IBE secret key_state for client
+  element_t eph_secret_key_g2; // Round-specific IBE secret key_state for client_s
 };
 
 void pkg_client_init(pkg_client *client, pkg_server *server, const byte_t *user_id, const byte_t *lt_sig_key);

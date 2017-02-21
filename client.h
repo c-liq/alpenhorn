@@ -10,7 +10,7 @@
 #include "utils.h"
 
 struct client;
-typedef struct client client;
+typedef struct client client_s;
 
 struct client2 {
   // Long term state
@@ -20,7 +20,7 @@ struct client2 {
   byte_t lt_pub_sig_key[crypto_sign_PUBLICKEYBYTES];
   // Combined long term BLS public signature key from PKG servers - private counterparts sign verification messages in friend requests
   element_s pkg_lt_sig_keys_combined;
-  // Keywheel table to maintain shared secrets between client and friends/contacts
+  // Keywheel table to maintain shared secrets between client_s and friends/contacts
   keywheel_table keywheel;
   // Protocol variables that update each add friend/dialing round
   uint32_t dialling_round;
@@ -37,7 +37,7 @@ struct client2 {
   // PKG epheremal public IBE keys, combined key used to encrypt friend requests
   byte_t pkg_eph_pub_fragments_g1[num_pkg_servers][g2_elem_compressed_BYTES];
   element_s pkg_eph_pub_combined_g1;
-  // Buffers for client -> PKG auth requests, filled with DH public keys and signature over PKG's
+  // Buffers for client_s -> PKG auth requests, filled with DH public keys and signature over PKG's
   // broadcast messages for authentication
   byte_t pkg_auth_request[cli_pkg_combined_auth_req_BYTES];
   // Epheremal symmetric keys shared with PKG servers - used to decrypt authentication responses
@@ -76,7 +76,7 @@ struct client {
   element_s pkg_eph_pub_combined_g1; // Combined epheremal master public IBE key_state
   element_s bls_gen_element_g2;
   element_s pkg_friend_elem; // Epheremal IBE key_state for friend request recipient
-  // Buffers for client -> PKG authrequests, filled with DH public key_state and signature over PKG's
+  // Buffers for client_s -> PKG authrequests, filled with DH public key_state and signature over PKG's
   // broadcast messages to prove identity
   byte_t pkg_auth_requests[num_pkg_servers][crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES];
   // Buffers that hold PKG authentication responses if authentication is successful
@@ -93,7 +93,7 @@ struct client {
   byte_t session_key_buf[crypto_ghash_BYTES];
   // Epheremal public DH keys from mix servers - used to onion encrypt friend requests
   byte_t mix_eph_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
-  // Epheremal client DH keys, mix combines with their secret DH key_state to remove layer of encryption
+  // Epheremal client_s DH keys, mix combines with their secret DH key_state to remove layer of encryption
   byte_t cli_mix_dh_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
   // Epheremal secret key_state, used to add a layer of encryption to friend requests, removable only by corresponding
   // mix server
@@ -112,17 +112,17 @@ struct friend_request {
 };
 typedef struct friend_request friend_request;
 
-client *client_init(int argc, char **argv);
-void client_fill(client *client, const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key);
-int af_create_pkg_auth_request(client *client);
-void af_create_request(client *client);
-int af_process_auth_responses(client *client);
-int af_decrypt_auth_responses(client *client);
-int af_decrypt_request(client *client, byte_t *request_buf);
+client_s *client_alloc(const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key);
+void client_fill(client_s *client, const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key);
+int af_create_pkg_auth_request(client_s *client);
+void af_create_request(client_s *c);
+int af_process_auth_responses(client_s *client);
+int af_decrypt_request(client_s *client, byte_t *request_buf);
 void print_friend_request(friend_request *req);
-int af_onion_encrypt_request(client *cli_st);
-int add_onion_layer(client *cli_st, uint32_t srv_id);
-void af_add_friend(client *client, char *user_id);
+int af_onion_encrypt_request(client_s *client);
+int dial_onion_encrypt_request(client_s *client);
+int add_onion_layer(client_s *client, byte_t *msg, uint32_t base_msg_length, uint32_t srv_id);
+void af_add_friend(client_s *client, char *user_id);
 #endif //ALPENHORN_CLIENT_H
 
 #pragma clang diagnostic pop

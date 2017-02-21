@@ -241,7 +241,7 @@ int run() {
             if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
               break;
             }
-            perror("client accept");
+            perror("client_s accept");
             abort();
           }
 
@@ -265,7 +265,7 @@ int run() {
           }
         }
       }
-        // Read from/write to a client socket
+        // Read from/write to a client_s socket
       else if (events[i].events & EPOLLIN) {
         connection *conn = events[i].data.ptr;
         int finished = 0;

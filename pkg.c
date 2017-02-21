@@ -8,7 +8,7 @@
 int pkg_server_init(pkg_server *server, uint32_t server_id) {
   pairing_init_set_str(server->pairing, pbc_params);
   server->current_round = 0;
-  server->num_clients = 10;
+  server->num_clients = 1;
   server->srv_id = server_id;
   pairing_ptr pairing = server->pairing;
   // Initialise gen_elem element + long term ibe public/secret signature keypair
@@ -90,7 +90,7 @@ void pkg_new_round(pkg_server *server) {
   crypto_scalarmult_base(server->broadcast_dh_pkey_ptr, server->eph_secret_dh_key);
   // Increment round counter
   server->current_round++;
-  // Extract secret keys and generate signatures for each client
+  // Extract secret keys and generate signatures for each client_s
   for (int i = 0; i < server->num_clients; i++) {
     pkg_extract_client_sk(server, &server->clients[i]);
     pkg_sign_for_client(server, &server->clients[i]);
@@ -116,9 +116,9 @@ int pkg_auth_client(pkg_server *server, pkg_client *client) {
                        client_dh_ptr,
                        server->broadcast_dh_pkey_ptr,
                        crypto_generichash_BYTES);
-  //printhex("symm key_state", client->eph_symmetric_key, crypto_box_SECRETKEYBYTES);
+  //printhex("symm key_state", client_s->eph_symmetric_key, crypto_box_SECRETKEYBYTES);
   //printhex("scalar mult", scalar_mult, crypto_scalarmult_BYTES);
-  //printhex("client pub key_state", client_dh_ptr, crypto_box_PUBLICKEYBYTES);
+  //printhex("client_s pub key_state", client_dh_ptr, crypto_box_PUBLICKEYBYTES);
   //printhex("server pub key_state", server->broadcast_dh_pkey_ptr, crypto_generichash_BYTES);
   pkg_encrypt_client_response(server, client);
   //send response*/
@@ -126,8 +126,8 @@ int pkg_auth_client(pkg_server *server, pkg_client *client) {
 }
 
 void pkg_encrypt_client_response(pkg_server *server, pkg_client *client) {
-  //printhex("sig 4 client", client->eph_client_data, bls_signature_length);
-  //printhex("sk 4 client,", client->eph_client_data + bls_signature_length, ibe_secret_key_length);
+  //printhex("sig 4 client_s", client_s->eph_client_data, bls_signature_length);
+  //printhex("sk 4 client_s,", client_s->eph_client_data + bls_signature_length, ibe_secret_key_length);
   byte_t *nonce_ptr = client->eph_client_data + g1_elem_compressed_BYTES + g2_elem_compressed_BYTES + crypto_MACBYTES;
   randombytes_buf(nonce_ptr, crypto_aead_chacha20poly1305_IETF_NPUBBYTES);
   crypto_aead_chacha20poly1305_ietf_encrypt(client->eph_client_data,
@@ -147,24 +147,27 @@ void pkg_new_ibe_keypair(pkg_server *server) {
   element_pow_zn(server->eph_pub_key_elem_g1, &server->ibe_gen_element_g1, server->eph_secret_key_elem_zr);
   // element_printf("Server Gen: %B\n", &server->ibe_gen_element_g1);
   //element_printf("Server Priv: %B\n", server->eph_secret_key_elem_zr);
-  // element_printf("Server IBE Public: %B\n", server->eph_pub_key_elem_g1);
+  element_printf("pkg %d IBE Public: %B\n", server->srv_id, server->eph_pub_key_elem_g1);
   element_to_bytes_compressed(server->eph_broadcast_message, server->eph_pub_key_elem_g1);
 }
 
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client) {
-  //element_printf("Extractin SK for %s from hash elem: %B\n", client->user_id, client->hashed_id_elem_g2);
+  //element_printf("Extractin SK for %s from hash elem: %B\n", client_s->user_id, client_s->hashed_id_elem_g2);
   element_pow_zn(client->eph_secret_key_g2, client->hashed_id_elem_g2, server->eph_secret_key_elem_zr);
   element_to_bytes_compressed(client->auth_response_ibe_key_ptr, client->eph_secret_key_g2);
-  // element_printf("Client epheremal secret key_state: %B\n", client->eph_secret_key_g2);
+  element_printf("pkg %d: Client epheremal ibe sk for %s: %B\n",
+                 server->srv_id,
+                 client->user_id,
+                 client->eph_secret_key_g2);
 }
 
 void pkg_sign_for_client(pkg_server *server, pkg_client *client) {
   serialize_uint32(client->round_signature_message, server->current_round);
-  //printhex("srv signing msg", client->round_signature_message, round_sig_message_BYTES);
+  //printhex("srv signing msg", client_s->round_signature_message, round_sig_message_BYTES);
   bls_sign_message(client->eph_client_data, client->eph_signature_elem_g1,
                    client->eph_sig_hash_elem_g1, client->round_signature_message,
                    pkg_sig_message_BYTES, server->lt_secret_sig_key_elem_zr);
-  //element_printf("sig elem from srv: %B\n", client->eph_signature_elem_g1);
+  //element_printf("sig elem from srv: %B\n", client_s->eph_signature_elem_g1);
 
 }
 

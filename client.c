@@ -5,13 +5,12 @@
 #include "xxHash-master/xxhash.h"
 #include "pbc/pbc_test.h"
 
-
-uint32_t af_calc_mailbox_num(client *cli_st) {
+uint32_t af_calc_mailbox_num(client_s *cli_st) {
   uint64_t hash = XXH64(cli_st->friend_request_id, user_id_BYTES, 0);
   return (uint32_t) hash % cli_st->mailbox_count;
 }
 
-int dial_call_friend(client *client, byte_t *user_id, uint32_t intent) {
+int dial_call_friend(client_s *client, byte_t *user_id, uint32_t intent) {
   //verify userid string
   uint64_t mailbox = XXH64(user_id, user_id_BYTES, 0);
   serialize_uint32(client->dial_request_buf, (uint32_t) mailbox);
@@ -24,54 +23,58 @@ int dial_call_friend(client *client, byte_t *user_id, uint32_t intent) {
   res = kw_generate_session_key(client->session_key_buf, &client->keywheel, user_id);
   if (res) {
     fprintf(stderr, "could not generate session key for %s\n", user_id);
+    return -1;
   }
-
+  res = dial_onion_encrypt_request(client);
+  if (res) {
+    fprintf(stderr, "Error while onion encrypting dialling token\n");
+    return -1;
+  }
   return 0;
 }
 
-void af_add_friend(client *client, char *user_id) {
+void af_add_friend(client_s *client, char *user_id) {
   // verify userid string
   memcpy(client->friend_request_id, user_id, user_id_BYTES);
   af_create_request(client);
 }
 
-void af_create_request(client *client) {
+void af_create_request(client_s *c) {
   byte_t *dialling_round_ptr =
-      client->friend_request_buf + mailbox_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES + crypto_NBYTES;
+      c->friend_request_buf + mailbox_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES + crypto_NBYTES;
   byte_t *user_id_ptr = dialling_round_ptr + dialling_round_BYTES;
   byte_t *dh_pub_ptr = user_id_ptr + user_id_BYTES;
   byte_t *lt_sig_key_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
   byte_t *personal_sig_ptr = lt_sig_key_ptr + crypto_sign_PUBLICKEYBYTES;
   byte_t *multisig_ptr = personal_sig_ptr + crypto_sign_BYTES;
-
   // Generate a DH keypair that forms the basis of the shared keywheel state with the friend being added
   byte_t dh_secret_key[crypto_box_SECRETKEYBYTES];
   crypto_box_keypair(dh_pub_ptr, dh_secret_key);
   // Both parties need to agree on the dialling round to synchronise their keywheel
-  uint32_t dialling_round = client->dialling_round + 2;
+  uint32_t dialling_round = c->dialling_round + 2;
   // Serialise userid/dial round/signature key
-  memcpy(user_id_ptr, client->user_id, user_id_BYTES);
+  memcpy(user_id_ptr, c->user_id, user_id_BYTES);
   serialize_uint32(dialling_round_ptr, dialling_round);
-  memcpy(lt_sig_key_ptr, client->lt_pub_sig_key, crypto_sign_PUBLICKEYBYTES);
+  memcpy(lt_sig_key_ptr, c->lt_pub_sig_key, crypto_sign_PUBLICKEYBYTES);
   // Sign our information with our LT signing key as a second/backup verification for recipient
   crypto_sign_detached(personal_sig_ptr, NULL, dialling_round_ptr,
                        dialling_round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES,
-                       client->lt_secret_sig_key);
+                       c->lt_secret_sig_key);
   // Also include the multisignature from PKG servers, primary source of verification
-  element_to_bytes_compressed(multisig_ptr, &client->pkg_multisig_combined_g1);
+  element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
   // Encrypt the request using IBE
-  ibe_encrypt(client->friend_request_buf + mailbox_BYTES, dialling_round_ptr, af_request_BYTES,
-              &client->pkg_eph_pub_combined_g1, &client->ibe_gen_element_g1,
-              client->friend_request_id, user_id_BYTES, &client->pairing);
+  ibe_encrypt(c->friend_request_buf + mailbox_BYTES, dialling_round_ptr, af_request_BYTES,
+              &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
+              c->friend_request_id, user_id_BYTES, &c->pairing);
   // Only information identifying the destination of a request, the mailbox no. of the recipient
-  uint32_t mn = af_calc_mailbox_num(client);
-  serialize_uint32(client->friend_request_buf, mn);
+  uint32_t mn = af_calc_mailbox_num(c);
+  serialize_uint32(c->friend_request_buf, mn);
   // Encrypt the request in layers ready for the mixnet
 
-  af_onion_encrypt_request(client);
+  af_onion_encrypt_request(c);
 }
 
-int af_decrypt_request(client *client, byte_t *request_buf) {
+int af_decrypt_request(client_s *client, byte_t *request_buf) {
   byte_t request_buffer[af_request_BYTES];
   int res;
   res = ibe_decrypt(request_buffer, request_buf, af_request_BYTES + crypto_MACBYTES,
@@ -133,7 +136,7 @@ int af_decrypt_request(client *client, byte_t *request_buf) {
   return 0;
 }
 
-int af_create_pkg_auth_request(client *client) {
+int af_create_pkg_auth_request(client_s *client) {
   byte_t *cli_sig_ptr;
   byte_t *cli_pub_key_ptr;
   byte_t *pkg_pub_key_ptr;
@@ -160,15 +163,24 @@ int af_create_pkg_auth_request(client *client) {
     crypto_shared_secret(symmetric_key_ptr, scalar_mult, cli_pub_key_ptr, pkg_pub_key_ptr, crypto_box_SECRETKEYBYTES);
   }
 
-  pbc_sum_bytes_G1_compressed(&client->pkg_eph_pub_combined_g1, client->pkg_broadcast_msgs[0],
-                              num_pkg_servers, &client->pairing);
+  pbc_sum_bytes_G1_compressed(&client->pkg_eph_pub_combined_g1,
+                              client->pkg_broadcast_msgs[0],
+                              pkg_broadcast_msg_BYTES,
+                              num_pkg_servers,
+                              &client->pairing);
   return 0;
 }
 
-int af_decrypt_auth_responses(client *client) {
+int af_process_auth_responses(client_s *client) {
   byte_t *auth_response;
   byte_t *nonce_ptr;
 
+  element_set1(&client->pkg_ibe_secret_combined_g2);
+  element_set1(&client->pkg_multisig_combined_g1);
+  element_t g1_tmp;
+  element_t g2_tmp;
+  element_init(g1_tmp, client->pairing.G1);
+  element_init(g2_tmp, client->pairing.G2);
   for (int i = 0; i < num_pkg_servers; i++) {
 
     auth_response = client->pkg_auth_responses[i];
@@ -178,38 +190,43 @@ int af_decrypt_auth_responses(client *client) {
                                                         nonce_ptr, crypto_NBYTES,
                                                         nonce_ptr, client->pkg_eph_symmetric_keys[i]);
     if (res) {
-      fprintf(stderr, "%s: Decryption failure\n", client->user_id);
+      fprintf(stderr, "%s: decryption failed on auth response from pkg %d\n", client->user_id, i);
       return -1;
     }
-    memcpy(client->pkg_eph_ibe_sk_fragments_g2[i], auth_response + g1_elem_compressed_BYTES, g2_elem_compressed_BYTES);
+    element_from_bytes_compressed(g1_tmp, auth_response);
+    element_from_bytes_compressed(g2_tmp, auth_response + g1_elem_compressed_BYTES);
+    element_add(&client->pkg_multisig_combined_g1, &client->pkg_multisig_combined_g1, g1_tmp);
+    element_add(&client->pkg_ibe_secret_combined_g2, &client->pkg_ibe_secret_combined_g2, g2_tmp);
   }
   return 0;
 }
 
-int af_process_auth_responses(client *client) {
-  pbc_sum_bytes_G1_compressed(&client->pkg_multisig_combined_g1, client->pkg_auth_responses[0],
-                              num_pkg_servers, &client->pairing);
-  pbc_sum_bytes_G2_compressed(&client->pkg_ibe_secret_combined_g2, client->pkg_eph_ibe_sk_fragments_g2[0],
-                              num_pkg_servers, &client->pairing);
-  return 0;
-}
-
-int af_onion_encrypt_request(client *cli_st) {
+int onion_encrypt_message(client_s *client, byte_t *msg, uint32_t base_msg_length) {
   for (uint32_t i = 0; i < num_mix_servers; i++) {
-    int res = add_onion_layer(cli_st, i);
-    if (res)
+    int res = add_onion_layer(client, msg, base_msg_length, i);
+    if (res) {
+      fprintf(stderr, "Error while onion encrypting message\n");
       return -1;
+    }
   }
   return 0;
 }
 
-int add_onion_layer(client *cli_st, uint32_t srv_id) {
-  // Add another layer of encryption to the request, append public DH key_state for server + nonce in clear (but authenticated)
-  uint32_t message_length = af_ibeenc_request_BYTES + mailbox_BYTES + (onion_layer_BYTES * srv_id);
-  byte_t *message_end_ptr = cli_st->friend_request_buf + message_length;
+int af_onion_encrypt_request(client_s *client) {
+  return onion_encrypt_message(client, client->friend_request_buf, af_ibeenc_request_BYTES);
+}
+
+int dial_onion_encrypt_request(client_s *client) {
+  return onion_encrypt_message(client, client->dial_request_buf, dialling_token_BYTES);
+}
+
+int add_onion_layer(client_s *client, byte_t *msg, uint32_t base_msg_length, uint32_t srv_id) {
+  // Add another layer of encryption to a message for the mixnet, appends the public dh key/nonce after the message
+  uint32_t message_length = base_msg_length + mailbox_BYTES + (onion_layer_BYTES * srv_id);
+  byte_t *message_end_ptr = msg + message_length;
   byte_t *dh_pub_ptr = message_end_ptr + crypto_MACBYTES;
   byte_t *nonce_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
-  byte_t *dh_mix_pub = cli_st->mix_eph_pub_keys[num_mix_servers - 1 - srv_id];
+  byte_t *dh_mix_pub = client->mix_eph_pub_keys[num_mix_servers - 1 - srv_id];
 
   byte_t dh_secret[crypto_box_SECRETKEYBYTES];
   byte_t scalar_mult[crypto_scalarmult_BYTES];
@@ -224,13 +241,13 @@ int add_onion_layer(client *cli_st, uint32_t srv_id) {
   }
   crypto_shared_secret(shared_secret, scalar_mult, dh_pub_ptr, dh_mix_pub, crypto_ghash_BYTES);
   randombytes_buf(nonce_ptr, crypto_NBYTES);
-  crypto_aead_chacha20poly1305_ietf_encrypt(cli_st->friend_request_buf, NULL, cli_st->friend_request_buf,
+  crypto_aead_chacha20poly1305_ietf_encrypt(msg, NULL, msg,
                                             message_length, dh_pub_ptr, crypto_box_PUBLICKEYBYTES + crypto_NBYTES,
                                             NULL, nonce_ptr, shared_secret);
   return 0;
 };
 
-void client_fill(client *client, const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key) {
+void client_fill(client_s *client, const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key) {
   memset(client->friend_request_buf, 0, sizeof client->friend_request_buf);
   client->mailbox_count = 1;
   client->dialling_round = 1;
@@ -253,7 +270,7 @@ void client_fill(client *client, const byte_t *user_id, const byte_t *ltp_key, c
     element_to_bytes_compressed(pkg_sig_key_bytes[i], &pkg_sig_keys[i]);
   }
   pbc_sum_bytes_G2_compressed(&client->pkg_lt_sig_keys_combined,
-                              pkg_sig_key_bytes[0],
+                              pkg_sig_key_bytes[0], g2_elem_compressed_BYTES,
                               num_pkg_servers,
                               &client->pairing);
   client->af_round = 1;
@@ -265,21 +282,17 @@ void client_fill(client *client, const byte_t *user_id, const byte_t *ltp_key, c
                  NULL,
                  NULL);
 
-  sodium_hex2bin(client->lt_secret_sig_key,
-                 crypto_sign_SECRETKEYBYTES,
-                 (char *) lts_key,
-                 128,
-                 NULL,
+  sodium_hex2bin(client->lt_secret_sig_key, crypto_sign_SECRETKEYBYTES, (char *) lts_key, 128, NULL,
                  NULL,
                  NULL);
 
   kw_table_init(&client->keywheel);
 }
 
-client *client_init(int argc, char **argv) {
-  client *cli_state = malloc(sizeof(client));
-  pbc_demo_pairing_init(&cli_state->pairing, argc, argv);
-  return cli_state;
+client_s *client_alloc(const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key) {
+  client_s *client = malloc(sizeof(client_s));
+  client_fill(client, user_id, ltp_key, lts_key);
+  return client;
 };
 
 void print_friend_request(friend_request *req) {

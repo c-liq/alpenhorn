@@ -54,7 +54,7 @@ int ibe_encrypt(byte_t *out, byte_t *msg, uint32_t msg_len, element_s *public_ke
   element_t r;
   element_init(r, pairing->Zr);
   element_random(r);
-
+  element_printf("r: %B\n", r);
   element_pow_zn(Gid, Gid, r);
   element_printf("Gid^r: %B\n", Gid);
   // Serialize H2(Gid^R)
@@ -76,12 +76,12 @@ int ibe_encrypt(byte_t *out, byte_t *msg, uint32_t msg_len, element_s *public_ke
   byte_t *chacha_ciphertext_ptr = chacha_nonce_ptr + crypto_NBYTES;
   // Generate fresh random one-time-use key_state and nonce
   randombytes_buf(ibe_encrypted_symm_key_ptr, crypto_ghash_BYTES);
-  // printhex("Symm key_state (before encrption)", ibe_encrypted_symm_key_ptr, crypto_ghash_BYTES);
+  // //printhex("Symm key_state (before encrption)", ibe_encrypted_symm_key_ptr, crypto_ghash_BYTES);
   randombytes_buf(chacha_nonce_ptr, crypto_NBYTES);
   // Encrypt the plaintext message
   unsigned long long ctextlen;
-  // printhex("ibe secret key enc", ibe_encrypted_symm_key_ptr, crypto_ghash_BYTES);
-  // printhex("nonce enc", chacha_nonce_ptr, crypto_NBYTES);
+  // //printhex("ibe secret key enc", ibe_encrypted_symm_key_ptr, crypto_ghash_BYTES);
+  // //printhex("nonce enc", chacha_nonce_ptr, crypto_NBYTES);
   int res = crypto_aead_chacha20poly1305_ietf_encrypt(chacha_ciphertext_ptr,
                                                       &ctextlen,
                                                       msg,
@@ -92,7 +92,7 @@ int ibe_encrypt(byte_t *out, byte_t *msg, uint32_t msg_len, element_s *public_ke
                                                       chacha_nonce_ptr,
                                                       ibe_encrypted_symm_key_ptr);
   printf("%lld\n", ctextlen);
-  printhex("ctext enc", out, ctextlen + crypto_NBYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES);
+  //printhex("ctext enc", out, ctextlen + crypto_NBYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES);
 
   if (res) {
     fprintf(stderr, "chacha20 encryption failure in ibe encryption request\n");
@@ -119,7 +119,7 @@ int ibe_decrypt(byte_t *out, byte_t *c, uint32_t clen, element_s *private_key, p
     element_clear(u);
     return -1;
   }
-  // element_printf("u dec: %B\n", u);
+  element_printf("u dec: %B\n", u);
   element_init(prg, pairing->GT);
   element_pairing(prg, u, private_key);
   element_printf("prg: %B\n", prg);
@@ -129,15 +129,15 @@ int ibe_decrypt(byte_t *out, byte_t *c, uint32_t clen, element_s *private_key, p
   byte_t *encrypted_symm_key_ptr = c + element_length_in_bytes_compressed(u);
   byte_t *symm_enc_nonce_ptr = encrypted_symm_key_ptr + crypto_ghash_BYTES;
   byte_t *symm_enc_ctext_ptr = symm_enc_nonce_ptr + crypto_NBYTES;
-  //printhex("nonce dec", symm_enc_nonce_ptr, crypto_NBYTES);
-  printhex("ctext dec", c, af_ibeenc_request_BYTES);
+  ////printhex("nonce dec", symm_enc_nonce_ptr, crypto_NBYTES);
+  //printhex("ctext dec", c, af_ibeenc_request_BYTES);
   byte_t secret_key[crypto_ghash_BYTES];
   crypto_generichash(secret_key, crypto_ghash_BYTES, u_priv_pairing, u_priv_pairing_size, NULL, 0);
 
   for (int i = 0; i < crypto_aead_chacha20poly1305_ietf_KEYBYTES; i++) {
     secret_key[i] = secret_key[i] ^ encrypted_symm_key_ptr[i];
   }
-  //printhex("secret ibe key dec", secret_key, crypto_ghash_BYTES);
+  ////printhex("secret ibe key dec", secret_key, crypto_ghash_BYTES);
   //printf("c len: %d\n", clen);
   int res = crypto_aead_chacha20poly1305_ietf_decrypt(out,
                                                       NULL,

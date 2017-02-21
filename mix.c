@@ -1,7 +1,6 @@
 #include <string.h>
 #include "mix.h"
 
-
 void mix_new_af_eph_keypair(mix *mix) {
   randombytes_buf(mix->eph_dh_secret_key, crypto_box_SECRETKEYBYTES);
   crypto_scalarmult_base(mix->eph_dh_public_key, mix->eph_dh_secret_key);
@@ -159,7 +158,7 @@ int mix_remove_encryption_layer(mix *mix, byte_t *out, byte_t *c, uint32_t messa
 void mix_af_decrypt_messages(mix *mix) {
   byte_t *curr_incoming_msg_ptr = mix->af_incoming_msgs;
   // Place actual messages coming from friends after our generated noise
-  // Everything gets shuffled once we've decrypted client messages
+  // Everything gets shuffled once we've decrypted client_s messages
   byte_t *curr_outgoing_msg_ptr = mix->af_outgoing_msgs + (mix->af_num_outgoing_msgs * mix->af_outgoing_msg_length);
   for (int i = 0; i < mix->af_num_inc_msgs; i++) {
     mix_remove_encryption_layer(mix, curr_outgoing_msg_ptr, curr_incoming_msg_ptr, mix->af_incoming_msg_length);
