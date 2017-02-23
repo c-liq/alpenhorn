@@ -3,7 +3,6 @@
 #include "client.h"
 #include "ibe.h"
 #include "xxHash-master/xxhash.h"
-#include "pbc/pbc_test.h"
 
 uint32_t af_calc_mailbox_num(client_s *cli_st) {
   uint64_t hash = XXH64(cli_st->friend_request_id, user_id_BYTES, 0);
@@ -14,6 +13,7 @@ int dial_call_friend(client_s *client, byte_t *user_id, uint32_t intent) {
   //verify userid string
   uint64_t mailbox = XXH64(user_id, user_id_BYTES, 0);
   serialize_uint32(client->dial_request_buf, (uint32_t) mailbox);
+
   int res = kw_generate_dialling_token(client->dial_request_buf + mailbox_BYTES, &client->keywheel, user_id, intent);
   if (res) {
     fprintf(stderr, "could not create dialling token for %s\n", user_id);
@@ -39,10 +39,20 @@ void af_add_friend(client_s *client, char *user_id) {
   af_create_request(client);
 }
 
+void af_process_mailbox(client_s *c, byte_t *mailbox, uint32_t num_messages) {
+  uint32_t mailbox_num = deserialize_uint32(mailbox);
+  printf("Mailbox num: %d\n", mailbox_num);
+  byte_t *msg_ptr = mailbox + mailbox_BYTES;
+  for (uint32_t i = 0; i < num_messages; i++) {
+    af_decrypt_request(c, msg_ptr);
+    msg_ptr += af_ibeenc_request_BYTES;
+  }
+}
+
 void af_create_request(client_s *c) {
   byte_t *dialling_round_ptr =
       c->friend_request_buf + mailbox_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES + crypto_NBYTES;
-  byte_t *user_id_ptr = dialling_round_ptr + dialling_round_BYTES;
+  byte_t *user_id_ptr = dialling_round_ptr + dialr_BYTES;
   byte_t *dh_pub_ptr = user_id_ptr + user_id_BYTES;
   byte_t *lt_sig_key_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
   byte_t *personal_sig_ptr = lt_sig_key_ptr + crypto_sign_PUBLICKEYBYTES;
@@ -56,9 +66,9 @@ void af_create_request(client_s *c) {
   memcpy(user_id_ptr, c->user_id, user_id_BYTES);
   serialize_uint32(dialling_round_ptr, dialling_round);
   memcpy(lt_sig_key_ptr, c->lt_pub_sig_key, crypto_sign_PUBLICKEYBYTES);
-  // Sign our information with our LT signing key as a second/backup verification for recipient
+  // Sign our information with our LT signing key
   crypto_sign_detached(personal_sig_ptr, NULL, dialling_round_ptr,
-                       dialling_round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES,
+                       dialr_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES,
                        c->lt_secret_sig_key);
   // Also include the multisignature from PKG servers, primary source of verification
   element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
@@ -70,7 +80,7 @@ void af_create_request(client_s *c) {
   uint32_t mn = af_calc_mailbox_num(c);
   serialize_uint32(c->friend_request_buf, mn);
   // Encrypt the request in layers ready for the mixnet
-
+  kw_new_keywheel(&c->keywheel, c->friend_request_id, dh_pub_ptr, dh_secret_key, c->dialling_round);
   af_onion_encrypt_request(c);
 }
 
@@ -86,7 +96,7 @@ int af_decrypt_request(client_s *client, byte_t *request_buf) {
   }
 
   byte_t *dialling_round_ptr = request_buffer;
-  byte_t *user_id_ptr = dialling_round_ptr + dialling_round_BYTES;
+  byte_t *user_id_ptr = dialling_round_ptr + dialr_BYTES;
   byte_t *dh_pub_ptr = user_id_ptr + user_id_BYTES;
   byte_t *lt_sig_key_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
   byte_t *personal_sig_ptr = lt_sig_key_ptr + crypto_sign_PUBLICKEYBYTES;
@@ -95,8 +105,8 @@ int af_decrypt_request(client_s *client, byte_t *request_buf) {
   // Reconstruct the message signed by the PKG's so we can verify the signature
   byte_t multisig_message[pkg_sig_message_BYTES];
   serialize_uint32(multisig_message, client->af_round);
-  memcpy(multisig_message + dialling_round_BYTES, user_id_ptr, user_id_BYTES);
-  memcpy(multisig_message + dialling_round_BYTES + user_id_BYTES, lt_sig_key_ptr, crypto_sign_PUBLICKEYBYTES);
+  memcpy(multisig_message + dialr_BYTES, user_id_ptr, user_id_BYTES);
+  memcpy(multisig_message + dialr_BYTES + user_id_BYTES, lt_sig_key_ptr, crypto_sign_PUBLICKEYBYTES);
 
   element_t sig_verify_elem, hash_elem;
   element_init(sig_verify_elem, client->pairing.G1);
@@ -112,7 +122,7 @@ int af_decrypt_request(client_s *client, byte_t *request_buf) {
                              &client->pairing);
 
   if (res) {
-    printf("Multisig verification failed\n");
+    fprintf(stderr, "Multisig verification failed\n");
     return -1;
   }
 
@@ -132,24 +142,23 @@ int af_decrypt_request(client_s *client, byte_t *request_buf) {
   memcpy(new_req->lt_sig_key, lt_sig_key_ptr, crypto_sign_PUBLICKEYBYTES);
   new_req->dialling_round = deserialize_uint32(dialling_round_ptr);
   print_friend_request(new_req);
-
   return 0;
 }
 
-int af_create_pkg_auth_request(client_s *client) {
+int af_create_pkg_auth_request(client_s *c) {
   byte_t *cli_sig_ptr;
   byte_t *cli_pub_key_ptr;
   byte_t *pkg_pub_key_ptr;
   byte_t *symmetric_key_ptr;
 
   for (int i = 0; i < num_pkg_servers; i++) {
-    cli_pub_key_ptr = client->pkg_auth_requests[i] + crypto_sign_BYTES;
-    cli_sig_ptr = client->pkg_auth_requests[i];
-    pkg_pub_key_ptr = client->pkg_broadcast_msgs[i] + g1_elem_compressed_BYTES;
-    symmetric_key_ptr = client->pkg_eph_symmetric_keys[i];
+    cli_pub_key_ptr = c->pkg_auth_requests[i] + crypto_sign_BYTES;
+    cli_sig_ptr = c->pkg_auth_requests[i];
+    pkg_pub_key_ptr = c->pkg_broadcast_msgs[i] + g1_elem_compressed_BYTES;
+    symmetric_key_ptr = c->pkg_eph_symmetric_keys[i];
 
-    crypto_sign_detached(cli_sig_ptr, NULL, client->pkg_broadcast_msgs[i],
-                         pkg_broadcast_msg_BYTES, client->lt_secret_sig_key);
+    crypto_sign_detached(cli_sig_ptr, NULL, c->pkg_broadcast_msgs[i],
+                         pkg_broadcast_msg_BYTES, c->lt_secret_sig_key);
 
     byte_t secret_key[crypto_box_SECRETKEYBYTES];
     byte_t scalar_mult[crypto_scalarmult_BYTES];
@@ -163,40 +172,37 @@ int af_create_pkg_auth_request(client_s *client) {
     crypto_shared_secret(symmetric_key_ptr, scalar_mult, cli_pub_key_ptr, pkg_pub_key_ptr, crypto_box_SECRETKEYBYTES);
   }
 
-  pbc_sum_bytes_G1_compressed(&client->pkg_eph_pub_combined_g1,
-                              client->pkg_broadcast_msgs[0],
-                              pkg_broadcast_msg_BYTES,
-                              num_pkg_servers,
-                              &client->pairing);
+  pbc_sum_bytes_G1_compressed(&c->pkg_eph_pub_combined_g1, c->pkg_broadcast_msgs[0], pkg_broadcast_msg_BYTES,
+                              num_pkg_servers, &c->pairing);
   return 0;
 }
 
-int af_process_auth_responses(client_s *client) {
+int af_process_auth_responses(client_s *c) {
   byte_t *auth_response;
   byte_t *nonce_ptr;
 
-  element_set1(&client->pkg_ibe_secret_combined_g2);
-  element_set1(&client->pkg_multisig_combined_g1);
+  element_set1(&c->pkg_ibe_secret_combined_g2);
+  element_set1(&c->pkg_multisig_combined_g1);
   element_t g1_tmp;
   element_t g2_tmp;
-  element_init(g1_tmp, client->pairing.G1);
-  element_init(g2_tmp, client->pairing.G2);
+  element_init(g1_tmp, c->pairing.G1);
+  element_init(g2_tmp, c->pairing.G2);
   for (int i = 0; i < num_pkg_servers; i++) {
 
-    auth_response = client->pkg_auth_responses[i];
+    auth_response = c->pkg_auth_responses[i];
     nonce_ptr = auth_response + pkg_auth_res_BYTES + crypto_MACBYTES;
     int res = crypto_aead_chacha20poly1305_ietf_decrypt(auth_response, NULL, NULL, auth_response,
                                                         pkg_auth_res_BYTES + crypto_MACBYTES,
                                                         nonce_ptr, crypto_NBYTES,
-                                                        nonce_ptr, client->pkg_eph_symmetric_keys[i]);
+                                                        nonce_ptr, c->pkg_eph_symmetric_keys[i]);
     if (res) {
-      fprintf(stderr, "%s: decryption failed on auth response from pkg %d\n", client->user_id, i);
+      fprintf(stderr, "%s: decryption failed on auth response from pkg %d\n", c->user_id, i);
       return -1;
     }
     element_from_bytes_compressed(g1_tmp, auth_response);
     element_from_bytes_compressed(g2_tmp, auth_response + g1_elem_compressed_BYTES);
-    element_add(&client->pkg_multisig_combined_g1, &client->pkg_multisig_combined_g1, g1_tmp);
-    element_add(&client->pkg_ibe_secret_combined_g2, &client->pkg_ibe_secret_combined_g2, g2_tmp);
+    element_add(&c->pkg_multisig_combined_g1, &c->pkg_multisig_combined_g1, g1_tmp);
+    element_add(&c->pkg_ibe_secret_combined_g2, &c->pkg_ibe_secret_combined_g2, g2_tmp);
   }
   return 0;
 }
@@ -247,51 +253,50 @@ int add_onion_layer(client_s *client, byte_t *msg, uint32_t base_msg_length, uin
   return 0;
 };
 
-void client_fill(client_s *client, const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key) {
-  memset(client->friend_request_buf, 0, sizeof client->friend_request_buf);
-  client->mailbox_count = 1;
-  client->dialling_round = 1;
-  memcpy(client->user_id, user_id, user_id_BYTES);
-  pairing_init_set_str(&client->pairing, pbc_params);
-  element_init(&client->pkg_multisig_combined_g1, client->pairing.G1);
-  element_init(&client->pkg_ibe_secret_combined_g2, client->pairing.G2);
-  element_init(&client->pkg_eph_pub_combined_g1, client->pairing.G1);
-  element_init(&client->pkg_friend_elem, client->pairing.G2);
-  element_init(&client->ibe_gen_element_g1, client->pairing.G1);
-  element_init(&client->bls_gen_element_g2, client->pairing.G2);
-  element_set_str(&client->ibe_gen_element_g1, ibe_generator, 10);
-  element_set_str(&client->bls_gen_element_g2, bls_generator, 10);
-  element_init(&client->pkg_lt_sig_keys_combined, client->pairing.G2);
+void client_init(client_s *c, const byte_t *user_id, const byte_t *lt_pk, const byte_t *lt_sk) {
+  c->mailbox_count = 1;
+  c->dialling_round = 1;
+  memcpy(c->user_id, user_id, user_id_BYTES);
+  pairing_init_set_str(&c->pairing, pbc_params);
+  element_init(&c->pkg_multisig_combined_g1, c->pairing.G1);
+  element_init(&c->pkg_ibe_secret_combined_g2, c->pairing.G2);
+  element_init(&c->pkg_eph_pub_combined_g1, c->pairing.G1);
+  element_init(&c->pkg_friend_elem, c->pairing.G2);
+  element_init(&c->ibe_gen_element_g1, c->pairing.G1);
+  element_init(&c->bls_gen_element_g2, c->pairing.G2);
+  element_set_str(&c->ibe_gen_element_g1, ibe_generator, 10);
+  element_set_str(&c->bls_gen_element_g2, bls_generator, 10);
+  element_init(&c->pkg_lt_sig_keys_combined, c->pairing.G2);
   element_s pkg_sig_keys[num_pkg_servers];
   byte_t pkg_sig_key_bytes[num_pkg_servers][g2_elem_compressed_BYTES];
   for (int i = 0; i < num_pkg_servers; i++) {
-    element_init(&pkg_sig_keys[i], client->pairing.G2);
+    element_init(&pkg_sig_keys[i], c->pairing.G2);
     element_set_str(&pkg_sig_keys[i], pk[i], 10);
     element_to_bytes_compressed(pkg_sig_key_bytes[i], &pkg_sig_keys[i]);
   }
-  pbc_sum_bytes_G2_compressed(&client->pkg_lt_sig_keys_combined,
+  pbc_sum_bytes_G2_compressed(&c->pkg_lt_sig_keys_combined,
                               pkg_sig_key_bytes[0], g2_elem_compressed_BYTES,
                               num_pkg_servers,
-                              &client->pairing);
-  client->af_round = 1;
-  sodium_hex2bin(client->lt_pub_sig_key,
+                              &c->pairing);
+  c->af_round = 1;
+  sodium_hex2bin(c->lt_pub_sig_key,
                  crypto_sign_PUBLICKEYBYTES,
-                 (char *) ltp_key,
+                 (char *) lt_pk,
                  64,
                  NULL,
                  NULL,
                  NULL);
 
-  sodium_hex2bin(client->lt_secret_sig_key, crypto_sign_SECRETKEYBYTES, (char *) lts_key, 128, NULL,
+  sodium_hex2bin(c->lt_secret_sig_key, crypto_sign_SECRETKEYBYTES, (char *) lt_sk, 128, NULL,
                  NULL,
                  NULL);
 
-  kw_table_init(&client->keywheel);
+  kw_table_init(&c->keywheel);
 }
 
 client_s *client_alloc(const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key) {
   client_s *client = malloc(sizeof(client_s));
-  client_fill(client, user_id, ltp_key, lts_key);
+  client_init(client, user_id, ltp_key, lts_key);
   return client;
 };
 

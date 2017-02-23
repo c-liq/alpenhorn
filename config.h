@@ -13,14 +13,14 @@
 
 #define intent_BYTES 4U
 #define mailbox_BYTES 4U
-#define dialling_round_BYTES 4U
+#define dialr_BYTES 4U
 #define af_round_BYTES 4U
 #define dialling_token_BYTES 32U
 #define num_pkg_servers 2U
 #define num_mix_servers 2U
 #define user_id_BYTES 60U
 
-#define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + dialling_round_BYTES)
+#define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + dialr_BYTES)
 #define af_ibeenc_request_BYTES (af_request_BYTES + crypto_ghash_BYTES + g1_elem_compressed_BYTES + crypto_MACBYTES + crypto_NBYTES)
 #define onion_layer_BYTES (crypto_NBYTES + crypto_box_PUBLICKEYBYTES + crypto_MACBYTES)
 #define onionenc_friend_request_BYTES (mailbox_BYTES + af_ibeenc_request_BYTES + (num_mix_servers * onion_layer_BYTES))
@@ -34,6 +34,7 @@
 #define pkg_sig_message_BYTES (user_id_BYTES + crypto_box_PUBLICKEYBYTES + af_round_BYTES)
 
 #define initial_table_size 50U
+#define net_batch_prefix 5U
 
 static const char pbc_params[] = "type f\n"
     "q 16283262548997601220198008118239886027035269286659395419233331082106632227801\n"

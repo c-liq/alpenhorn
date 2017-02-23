@@ -15,8 +15,8 @@ struct pkg_server {
   pairing_t pairing;
   pkg_client *clients;
   // Long term BLS signatures, used to sign messages aiding verifying friend requests by recipients
-  element_t lt_public_sig_key_elem_g2;
-  element_t lt_secret_sig_key_elem_zr;
+  element_t lt_sig_pk_elem;
+  element_t lt_sig_sk_elem;
   //byte_t lt_public_sig_keybytes[bls_public_key_length]; // Public signing key_state serialized
   // Epheremal IBE keypair - public key_state is broadcast to clients, secret key_state used to extract clients' secret keys
   element_t eph_pub_key_elem_g1;
@@ -26,8 +26,8 @@ struct pkg_server {
   byte_t eph_broadcast_message[pkg_broadcast_msg_BYTES];
   byte_t *broadcast_dh_pkey_ptr;  // Pointer into message buffer where public dh key_state will be stored
   // Generator element for pairings, used to derive public keys from secret keys
-  element_s bls_gen_element_g2;
-  element_s ibe_gen_element_g1;
+  element_s bls_gen_elem_g2;
+  element_s ibe_gen_elem_g1;
 };
 
 struct pkg_client {
@@ -39,7 +39,7 @@ struct pkg_client {
   // Symmetric key_state buffer, storing server-client_s key_state generated from ECDH exchange
   byte_t eph_symmetric_key[crypto_generichash_BYTES];
   // Buffer holding message server will sign to authenticate friend requests for recipients
-  byte_t round_signature_message[pkg_sig_message_BYTES];
+  byte_t rnd_sig_msg[pkg_sig_message_BYTES];
   // Post-auth response: contains IBE signature fragment + IBE secret key_state for user, encrypted
   // symmetrically using key_state derived from fresh ECDH exchange
   byte_t eph_client_data[pkg_enc_auth_res_BYTES];

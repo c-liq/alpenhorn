@@ -8,15 +8,6 @@ typedef unsigned char byte_t;
 typedef struct element_s element_s;
 typedef struct pairing_s pairing_s;
 #define buf_size 1024
-struct connection {
-  int sock_fd;
-  byte_t read_buf[buf_size];
-  uint32_t curr_msg_len;
-  uint32_t read_buf_pos;
-  byte_t write_buf[buf_size];
-  uint32_t write_buf_pos;
-};
-typedef struct connection connection;
 
 void crypto_shared_secret(byte_t *shared_secret,
                           byte_t *scalar_mult,

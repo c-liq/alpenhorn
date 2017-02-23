@@ -21,13 +21,13 @@ struct client2 {
   // Combined long term BLS public signature key from PKG servers - private counterparts sign verification messages in friend requests
   element_s pkg_lt_sig_keys_combined;
   // Keywheel table to maintain shared secrets between client_s and friends/contacts
-  keywheel_table keywheel;
+  keywheel_table_s keywheel;
   // Protocol variables that update each add friend/dialing round
   uint32_t dialling_round;
   uint32_t af_round;
   uint32_t af_mailbox_count;
   uint32_t dial_mailbox_count;
-  // Epheremal public DH keys from the mix servers - one set for both AF and dial friend protocols
+  // Epheremal public DH keys from the mix_s servers - one set for both AF and dial friend protocols
   byte_t mix_eph_af_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
   byte_t mix_eph_dial_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
   // PKG state
@@ -56,7 +56,7 @@ struct client2 {
   element_s pkg_friend_elem;
   // Buffer for the fully encrypted add friend request
   // Contains the plaintext request, encrypted through IBE, with a mailbox identifier prepended
-  // Then onion-encrypted in layers for the mix servers
+  // Then onion-encrypted in layers for the mix_s servers
   byte_t friend_request_buf[onionenc_friend_request_BYTES];
 };
 
@@ -67,7 +67,7 @@ struct client {
   uint32_t mailbox_count;
   pairing_s pairing;
   uint32_t dialling_round;
-  struct keywheel_table keywheel;
+  keywheel_table_s keywheel;
   byte_t friend_request_id[user_id_BYTES];
   uint32_t af_round;
   // Long term BLS pub keys, private counterpart signs auth messages in friend requests
@@ -87,16 +87,16 @@ struct client {
   element_s pkg_ibe_secret_combined_g2;
   // Buffer for the fully encrypted add friend request
   // Contains the plaintext request, encrypted through IBE, with a mailbox identifier prepended
-  // Then onion-encrypted in layers for the mix servers
+  // Then onion-encrypted in layers for the mix_s servers
   byte_t friend_request_buf[onionenc_friend_request_BYTES];
   byte_t dial_request_buf[onionenc_dial_token_BYTES];
   byte_t session_key_buf[crypto_ghash_BYTES];
-  // Epheremal public DH keys from mix servers - used to onion encrypt friend requests
+  // Epheremal public DH keys from mix_s servers - used to onion encrypt friend requests
   byte_t mix_eph_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
-  // Epheremal client_s DH keys, mix combines with their secret DH key_state to remove layer of encryption
+  // Epheremal client_s DH keys, mix_s combines with their secret DH key_state to remove layer of encryption
   byte_t cli_mix_dh_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
   // Epheremal secret key_state, used to add a layer of encryption to friend requests, removable only by corresponding
-  // mix server
+  // mix_s server
   byte_t cli_mix_dh_secret_keys[num_mix_servers][crypto_box_SECRETKEYBYTES];
   byte_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
   byte_t pkg_eph_ibe_sk_fragments_g2[num_pkg_servers][g2_elem_compressed_BYTES];
@@ -113,16 +113,17 @@ struct friend_request {
 typedef struct friend_request friend_request;
 
 client_s *client_alloc(const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key);
-void client_fill(client_s *client, const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key);
-int af_create_pkg_auth_request(client_s *client);
+void client_init(client_s *c, const byte_t *user_id, const byte_t *lt_pk, const byte_t *lt_sk);
+int af_create_pkg_auth_request(client_s *c);
 void af_create_request(client_s *c);
-int af_process_auth_responses(client_s *client);
+int af_process_auth_responses(client_s *c);
 int af_decrypt_request(client_s *client, byte_t *request_buf);
 void print_friend_request(friend_request *req);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
 int add_onion_layer(client_s *client, byte_t *msg, uint32_t base_msg_length, uint32_t srv_id);
 void af_add_friend(client_s *client, char *user_id);
+void af_process_mailbox(client_s *c, byte_t *mailbox, uint32_t num_messages);
 #endif //ALPENHORN_CLIENT_H
 
 #pragma clang diagnostic pop

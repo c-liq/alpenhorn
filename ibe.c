@@ -54,9 +54,9 @@ int ibe_encrypt(byte_t *out, byte_t *msg, uint32_t msg_len, element_s *public_ke
   element_t r;
   element_init(r, pairing->Zr);
   element_random(r);
-  element_printf("r: %B\n", r);
+  // element_printf("r: %B\n", r);
   element_pow_zn(Gid, Gid, r);
-  element_printf("Gid^r: %B\n", Gid);
+  // element_printf("Gid^r: %B\n", Gid);
   // Serialize H2(Gid^R)
   size_t elem_length = (size_t) element_length_in_bytes(Gid);
   byte_t Gid_bytes[elem_length];
@@ -91,7 +91,7 @@ int ibe_encrypt(byte_t *out, byte_t *msg, uint32_t msg_len, element_s *public_ke
                                                       NULL,
                                                       chacha_nonce_ptr,
                                                       ibe_encrypted_symm_key_ptr);
-  printf("%lld\n", ctextlen);
+
   //printhex("ctext enc", out, ctextlen + crypto_NBYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES);
 
   if (res) {
@@ -119,10 +119,10 @@ int ibe_decrypt(byte_t *out, byte_t *c, uint32_t clen, element_s *private_key, p
     element_clear(u);
     return -1;
   }
-  element_printf("u dec: %B\n", u);
+  //element_printf("u dec: %B\n", u);
   element_init(prg, pairing->GT);
   element_pairing(prg, u, private_key);
-  element_printf("prg: %B\n", prg);
+  //element_printf("prg: %B\n", prg);
   size_t u_priv_pairing_size = (size_t) element_length_in_bytes(prg);
   byte_t u_priv_pairing[u_priv_pairing_size];
   element_to_bytes(u_priv_pairing, prg);

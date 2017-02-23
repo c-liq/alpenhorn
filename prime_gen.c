@@ -5,10 +5,12 @@
 #include <stdint.h>
 #include <math.h>
 #include <string.h>
+#include <stdio.h>
 #include "prime_gen.h"
 
 uint32_t generate_primes(uint32_t **primes_out, double max_prime) {
   uint64_t approx_count = (uint64_t) (max_prime / log(max_prime) * (1 + (1.2762 / log(max_prime))));
+
   uint32_t a[(uint32_t) max_prime];
   memset(a, 1, sizeof a);
   uint32_t max_prime_root = (uint32_t) sqrt(max_prime);
@@ -27,6 +29,7 @@ uint32_t generate_primes(uint32_t **primes_out, double max_prime) {
       prime_tbl[table_index++] = i;
     }
   }
+
   *primes_out = prime_tbl;
   return table_index;
 }

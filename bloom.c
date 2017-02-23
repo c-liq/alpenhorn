@@ -5,16 +5,10 @@
 #include <string.h>
 #include "xxHash-master/xxhash.h"
 #include "prime_gen.h"
+#include "bloom.h"
 
-struct bloomfilter {
-  byte_t *f_base_ptr;
-  uint32_t *partition_lengths_bits;
-  uint32_t num_partitions;
-  uint64_t hash_key;
-  uint32_t *partition_offsets;
-};
-
-void bloom_calc_parts(const int m_target, uint32_t *m_actual_bytes,
+void bloom_calc_parts(const int m_target,
+                      uint32_t *m_actual_bytes,
                       const uint32_t num_partitions,
                       uint32_t *partition_lengths_bytes,
                       uint32_t *partition_lengths_bits,
@@ -68,8 +62,7 @@ void bloom_calc_parts(const int m_target, uint32_t *m_actual_bytes,
   }
 }
 
-
-void bloom_add_elem(struct bloomfilter *bf, byte_t *data, uint32_t data_len) {
+void bloom_add_elem(bloomfilter_s *bf, byte_t *data, uint32_t data_len) {
   byte_t *f_base_ptr = bf->f_base_ptr;
   uint32_t *partition_lengths = bf->partition_lengths_bits;
   uint32_t num_partitions = bf->num_partitions;
@@ -82,7 +75,7 @@ void bloom_add_elem(struct bloomfilter *bf, byte_t *data, uint32_t data_len) {
   }
 }
 
-int bloom_lookup(struct bloomfilter *bf, byte_t *data, uint32_t data_len) {
+int bloom_lookup(bloomfilter_s *bf, byte_t *data, uint32_t data_len) {
   byte_t *f_base_ptr = bf->f_base_ptr;
   uint32_t *partition_lengths = bf->partition_lengths_bits;
   uint32_t *partition_offsets = bf->partition_offsets;
@@ -99,37 +92,71 @@ int bloom_lookup(struct bloomfilter *bf, byte_t *data, uint32_t data_len) {
   return 1;
 }
 
-int bloom_init(struct bloomfilter *bf, uint32_t target_size_bits,
-               uint32_t num_parts, uint32_t *ptable,
-               uint32_t ptable_sz, uint32_t hash_key) {
-  uint32_t actual_size = 0;
-  uint64_t part_array_bytes = num_parts * sizeof(uint64_t);
-  uint32_t *part_lengh_bits = malloc(part_array_bytes);
-  uint32_t *part_length_bytes = malloc(part_array_bytes);
-  uint32_t *part_offsets = malloc(part_array_bytes);
-  memset(part_lengh_bits, 0, part_array_bytes);
-  memset(part_length_bytes, 0, part_array_bytes);
-  memset(part_offsets, 0, part_array_bytes);
+bloomfilter_s *bloom_alloc(double p, uint32_t n, uint64_t hash_key) {
+  bloomfilter_s *bf = calloc(1, sizeof *bf);
+  if (!bf) {
+    return NULL;
+  }
+  int res = bloom_init(bf, p, n, hash_key);
+  if (res) {
+    return NULL;
+  }
+  return bf;
+}
 
-  bloom_calc_parts(target_size_bits, &actual_size, num_parts, part_length_bytes, part_lengh_bits, ptable, ptable_sz);
-  bf->f_base_ptr = malloc(actual_size);
-  memset(bf->f_base_ptr, 0, actual_size);
-  bf->num_partitions = num_parts;
+int bloom_init(bloomfilter_s *bf, double p, uint32_t n, uint64_t hash_key) {
+  // calculate number of partitions and target filter size based on target false probability rate
+  // and number of elements to be placed in the filter
+  double m_target = ceil((n * log(p)) / log(1.0 / (pow(2.0, log(2.0)))));
+  uint32_t k = (uint32_t) round(log(2.0) * m_target / n);
+
+  uint32_t *primes_table;
+  uint32_t prime_table_size = generate_primes(&primes_table, (m_target / k * 2));
+  uint32_t actual_size = 0;
+
+  uint32_t *part_lengh_bits = calloc(k, sizeof *part_lengh_bits);
+  uint32_t *part_length_bytes = calloc(k, sizeof *part_length_bytes);
+  uint32_t *part_offsets = calloc(k, sizeof *part_offsets);
+
+  bloom_calc_parts((uint32_t) m_target,
+                   &actual_size,
+                   k,
+                   part_length_bytes,
+                   part_lengh_bits,
+                   primes_table,
+                   prime_table_size);
+
+  uint32_t offset_sum = 0;
+  for (int i = 1; i < k; i++) {
+    offset_sum += part_length_bytes[i - 1];
+    part_offsets[i] = offset_sum;
+  }
+  free(part_length_bytes);
+
+  bf->f_base_ptr = calloc(actual_size, sizeof(byte_t));
+  bf->num_partitions = k;
   bf->partition_lengths_bits = part_lengh_bits;
   bf->hash_key = hash_key;
   bf->partition_offsets = part_offsets;
-
-  uint32_t offsetsum = 0;
-  for (int i = 1; i < num_parts; i++) {
-    offsetsum += part_length_bytes[i - 1];
-    part_offsets[i] = offsetsum;
-  }
-  free(part_length_bytes);
+  bf->target_falsepos_rate = p;
+  bf->size_bytes = actual_size;
 
   return 0;
 }
 
-void bloom_clear(struct bloomfilter *bf) {
+void bloom_print_stats(bloomfilter_s *bf) {
+  printf("Bloomfilter stats\n--------\n");
+  printf("Size: %d bytes (% d bits)\n", bf->size_bytes, bf->size_bytes * 8);
+  printf("Number of partitions: %d\n", bf->num_partitions);
+  printf("Target false positive rate: %f\n", bf->target_falsepos_rate);
+  printf("Partition sizes: ");
+  for (int i = 0; i < bf->num_partitions - 1; i++) {
+    printf("%d, ", bf->partition_lengths_bits[i]);
+  }
+  printf("%d\n", bf->partition_lengths_bits[bf->num_partitions - 1]);
+}
+
+void bloom_clear(bloomfilter_s *bf) {
   if (bf->partition_offsets)
     free(bf->partition_offsets);
   if (bf->partition_lengths_bits)
@@ -138,25 +165,22 @@ void bloom_clear(struct bloomfilter *bf) {
     free(bf->f_base_ptr);
 };
 
-void bloom_free(struct bloomfilter *bf) {
+void bloom_free(bloomfilter_s *bf) {
   bloom_clear(bf);
   free(bf);
 }
 
+/*
 int main() {
   int res = sodium_init();
   if (res)
     exit(EXIT_FAILURE);
 
-  uint32_t m_target = 6000000;
-  uint32_t num_partitions = 33;
-  uint32_t *primes_table;
-  uint32_t prime_table_size = generate_primes(&primes_table, m_target / num_partitions);
+  double p = pow(10.0, -10.0);
+  bloomfilter_s *bloom = bloom_alloc(p, 125000, 123456789);
+  bloom_print_stats(bloom);
 
-  struct bloomfilter bloom;
-  bloom_init(&bloom, m_target, num_partitions, primes_table, prime_table_size, 3423424242);
-
-  int test_size = 150000;
+  int test_size = 125000;
   byte_t *positive_tests = malloc((test_size + 1) * crypto_box_SECRETKEYBYTES);
   memset(positive_tests, 0, (test_size + 1) * crypto_box_SECRETKEYBYTES);
   byte_t *false_tests = malloc((test_size + 1) * crypto_box_SECRETKEYBYTES);
@@ -164,18 +188,17 @@ int main() {
   for (int i = 0; i < test_size; i++) {
     randombytes_buf(positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
     randombytes_buf(false_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-    bloom_add_elem(&bloom, positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
+    bloom_add_elem(bloom, positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
   }
   int pos_hits = 0, false_hits = 0;
   for (int i = 0; i < test_size; i++) {
-    pos_hits += bloom_lookup(&bloom, positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-    false_hits += bloom_lookup(&bloom, false_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
+    pos_hits += bloom_lookup(bloom, positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
+    false_hits += bloom_lookup(bloom, false_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
   }
   printf("pos: %d\n", pos_hits);
   printf("false hits: %d\n", false_hits);
-  bloom_clear(&bloom);
-  free(primes_table);
+  bloom_free(bloom);
   free(positive_tests);
   free(false_tests);
 
-};
+};*/

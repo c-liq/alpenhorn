@@ -80,5 +80,5 @@ int crypto_chacha_decrypt(unsigned char *m,
                           unsigned long long adlen,
                           const unsigned char *npub,
                           const unsigned char *k) {
-  return crypto_aead_chacha20poly1305_decrypt(m, mlen_p, nsec, c, clen, ad, adlen, npub, k);
+  return crypto_aead_chacha20poly1305_ietf_decrypt(m, mlen_p, nsec, c, clen, ad, adlen, npub, k);
 };
