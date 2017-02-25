@@ -55,7 +55,7 @@ void mix_dial_distribute(mix_s *mix) {
   }
 
   uint32_t tmp_mailbox = 0;
-  byte_t *tmp_msg_ptr = mix->dial_outgoing_msgs;
+  byte_t *tmp_msg_ptr = mix->dial_out_msgs;
 
   for (int i = 0; i < mix->dial_num_out_msgs; i++) {
     tmp_mailbox = deserialize_uint32(tmp_msg_ptr);
@@ -103,17 +103,17 @@ void mix_init(mix_s *mix, uint32_t server_id, uint32_t initial_buffer_size) {
   mix->af_incoming_msg_length = af_ibeenc_request_BYTES + mailbox_BYTES + (num_inc_onion_layers * onion_layer_BYTES);
   mix->af_outgoing_msg_length = mix->af_incoming_msg_length - onion_layer_BYTES;
   mix->dial_incoming_msg_length = dialling_token_BYTES + mailbox_BYTES + (num_inc_onion_layers * onion_layer_BYTES);
-  mix->dial_outgoing_msg_length = mix->dial_incoming_msg_length - onion_layer_BYTES;
+  mix->dial_out_msg_len = mix->dial_incoming_msg_length - onion_layer_BYTES;
   mix_new_af_eph_keypair(mix);
   memset(mix->dial_mailbox_msg_counts, 0, sizeof mix->dial_mailbox_msg_counts);
   memset(mix->af_mailbox_msg_counts, 0, sizeof mix->af_mailbox_msg_counts);
   mix->af_incoming_msgs = calloc(initial_buffer_size, mix->af_incoming_msg_length);
   mix->af_out_msgs = calloc(1, (initial_buffer_size * mix->af_outgoing_msg_length) + net_batch_prefix);
-  mix->af_out_msgs[0] = 'F';
+  mix->af_out_msgs[0] = 'A';
   mix->af_inc_buf_capacity = initial_buffer_size * mix->af_incoming_msg_length;
   mix->af_out_buf_capacity = initial_buffer_size * mix->af_outgoing_msg_length;
   mix->dial_incoming_msgs = calloc(initial_buffer_size, mix->dial_incoming_msg_length);
-  mix->dial_outgoing_msgs = calloc(initial_buffer_size, mix->dial_outgoing_msg_length);
+  mix->dial_out_msgs = calloc(initial_buffer_size, mix->dial_out_msg_len);
   mix->af_num_out_msgs = 0;
   mix->af_num_inc_msgs = 0;
   mix->dial_num_out_msgs = 0;
@@ -123,6 +123,10 @@ void mix_init(mix_s *mix, uint32_t server_id, uint32_t initial_buffer_size) {
   mix->af_noisemu = 10;
   mix->dial_noisemu = 10000;
   mix->bloom_p_val = pow(10.0, -10.0);
+  mix->af_round_duration = 60;
+  mix->dial_round_duration = 10;
+  mix->dial_round = UINT32_MAX;
+  mix->af_round = 0;
   // When generating noise for friend requests, we need to generate valid G1 values to make them look genuine
   pairing_init_set_str(&mix->pairing, pbc_params);
   element_init_Zr(&mix->af_noise_Zr_elem, &mix->pairing);
@@ -141,6 +145,7 @@ void mix_af_newround(mix_s *mix) {
 void mix_dial_newround(mix_s *mix) {
   mix->dial_num_inc_msgs = 0;
   mix->dial_num_out_msgs = 0;
+  mix->dial_round++;
 }
 
 void mix_shuffle_messages(byte_t *messages, uint32_t msg_count, uint32_t msg_length) {
@@ -158,7 +163,7 @@ void mix_af_shuffle(mix_s *mix) {
 }
 
 void mix_dial_shuffle(mix_s *mix) {
-  mix_shuffle_messages(mix->dial_outgoing_msgs, mix->dial_num_out_msgs, mix->dial_outgoing_msg_length);
+  mix_shuffle_messages(mix->dial_out_msgs, mix->dial_num_out_msgs, mix->dial_out_msg_len);
 }
 
 int mix_add_onion_layer(byte_t *msg, uint32_t msg_len, uint32_t index, byte_t *matching_pub_dh) {
@@ -199,26 +204,27 @@ int mix_onion_encrypt_msg(mix_s *mix, byte_t *msg, uint32_t msg_len) {
 }
 
 void mix_dial_add_noise(mix_s *mix) {
-  byte_t *curr_msg_ptr = mix->dial_outgoing_msgs;
+  byte_t *curr_msg_ptr = mix->dial_out_msgs + 5;
   for (uint32_t i = 0; i < mix->af_num_mailboxes; i++) {
     for (int j = 0; j < mix->dial_noisemu; j++) {
       serialize_uint32(curr_msg_ptr, i);
       randombytes_buf(curr_msg_ptr + sizeof i, dialling_token_BYTES);
       mix_onion_encrypt_msg(mix, curr_msg_ptr, dialling_token_BYTES + mailbox_BYTES);
-      curr_msg_ptr += mix->dial_outgoing_msg_length;
+      curr_msg_ptr += mix->dial_out_msg_len;
       mix->dial_num_out_msgs++;
     }
   }
 }
 
 void mix_af_add_noise(mix_s *mix) {
-  byte_t *curr_msg_ptr = mix->af_out_msgs;
+  byte_t *curr_msg_ptr = mix->af_out_msgs + 5;
   for (uint32_t i = 0; i < mix->af_num_mailboxes; i++) {
     for (int j = 0; j < mix->af_noisemu; j++) {
       serialize_uint32(curr_msg_ptr, i);
       element_random(&mix->af_noise_Zr_elem);
       element_pow_zn(&mix->af_noise_G1_elem, &mix->ibe_gen_elem, &mix->af_noise_Zr_elem);
       element_to_bytes_compressed(curr_msg_ptr + mailbox_BYTES, &mix->af_noise_G1_elem);
+      // After the group element, fill out the rest of the request with random data
       randombytes_buf(curr_msg_ptr + mailbox_BYTES + g1_elem_compressed_BYTES,
                       af_ibeenc_request_BYTES - g1_elem_compressed_BYTES);
       mix_onion_encrypt_msg(mix, curr_msg_ptr, af_ibeenc_request_BYTES + mailbox_BYTES);
@@ -299,14 +305,20 @@ void mix_af_decrypt_messages(mix_s *mix) {
       }
     }
   }
-  serialize_uint32(mix->af_out_msgs + 1, mix->af_num_out_msgs);
+
+  uint32_t tmp = mix->af_num_out_msgs * mix->af_outgoing_msg_length;
+  memcpy(mix->af_out_msgs + 1, &tmp, sizeof tmp);
+  mix->af_out_msgs[0] = 'A';
+  printf("Message payload size unserialised: %u\n", tmp);
+  //serialize_uint32(mix->af_out_msgs, mix->af_num_out_msgs * mix->af_outgoing_msg_length);
+  printf("Message payload size after decryption: %u\n", *(uint32_t *) (mix->af_out_msgs + 1));
 }
 
 void mix_dial_decrypt_messages(mix_s *mix) {
   byte_t *inc_msg_ptr = mix->dial_incoming_msgs;
   // Place actual messages coming from friends after our generated noise
   // Everything gets shuffled once we've decrypted client messages
-  byte_t *out_msg_ptr = mix->dial_outgoing_msgs + (mix->dial_num_out_msgs * mix->dial_outgoing_msg_length);
+  byte_t *out_msg_ptr = mix->dial_out_msgs + (mix->dial_num_out_msgs * mix->dial_out_msg_len);
   for (int i = 0; i < mix->dial_num_inc_msgs; i++) {
     int res = mix_remove_encryption_layer(mix, out_msg_ptr, inc_msg_ptr, mix->dial_incoming_msg_length);
     inc_msg_ptr += mix->dial_incoming_msg_length;
@@ -319,9 +331,10 @@ void mix_dial_decrypt_messages(mix_s *mix) {
       }
       if (!res) {
         //printhex("Dial token decrypted", out_msg_ptr, mix->dial_outgoing_msg_length);
-        out_msg_ptr += mix->dial_outgoing_msg_length;
+        out_msg_ptr += mix->dial_out_msg_len;
         mix->dial_num_out_msgs++;
       }
     }
   }
+  serialize_uint32(mix->dial_out_msgs + 1, mix->dial_num_out_msgs + mix->dial_out_msg_len);
 }

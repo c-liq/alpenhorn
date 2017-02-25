@@ -4,28 +4,28 @@
 #include "ibe.h"
 #include "xxHash-master/xxhash.h"
 
-uint32_t af_calc_mailbox_num(client_s *cli_st) {
-  uint64_t hash = XXH64(cli_st->friend_request_id, user_id_BYTES, 0);
-  return (uint32_t) hash % cli_st->mailbox_count;
+uint32_t calc_mailbox_num(client_s *c, byte_t *user_id) {
+  uint64_t hash = XXH64(user_id, user_id_BYTES, 0);
+  return (uint32_t) hash % c->mailbox_count;
 }
 
-int dial_call_friend(client_s *client, byte_t *user_id, uint32_t intent) {
+int dial_call_friend(client_s *c, byte_t *user_id, uint32_t intent) {
   //verify userid string
-  uint64_t mailbox = XXH64(user_id, user_id_BYTES, 0);
-  serialize_uint32(client->dial_request_buf, (uint32_t) mailbox);
+  uint64_t mailbox = calc_mailbox_num(c, user_id);
+  serialize_uint32(c->dial_request_buf, (uint32_t) mailbox);
 
-  int res = kw_generate_dialling_token(client->dial_request_buf + mailbox_BYTES, &client->keywheel, user_id, intent);
+  int res = kw_generate_dialling_token(c->dial_request_buf + mailbox_BYTES, &c->keywheel, user_id, intent);
   if (res) {
     fprintf(stderr, "could not create dialling token for %s\n", user_id);
     return -1;
   }
 
-  res = kw_generate_session_key(client->session_key_buf, &client->keywheel, user_id);
+  res = kw_generate_session_key(c->session_key_buf, &c->keywheel, user_id);
   if (res) {
     fprintf(stderr, "could not generate session key for %s\n", user_id);
     return -1;
   }
-  res = dial_onion_encrypt_request(client);
+  res = dial_onion_encrypt_request(c);
   if (res) {
     fprintf(stderr, "Error while onion encrypting dialling token\n");
     return -1;
@@ -77,7 +77,7 @@ void af_create_request(client_s *c) {
               &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
               c->friend_request_id, user_id_BYTES, &c->pairing);
   // Only information identifying the destination of a request, the mailbox no. of the recipient
-  uint32_t mn = af_calc_mailbox_num(c);
+  uint32_t mn = calc_mailbox_num(c, c->friend_request_id);
   serialize_uint32(c->friend_request_buf, mn);
   // Encrypt the request in layers ready for the mixnet
   kw_new_keywheel(&c->keywheel, c->friend_request_id, dh_pub_ptr, dh_secret_key, c->dialling_round);

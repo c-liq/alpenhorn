@@ -11,6 +11,7 @@ bls_instance *bls_alloc(char *params, uint32_t params_len, char *gen_string) {
   int res = pairing_init_set_buf(&bls->pairing, params, params_len);
   if (res) {
     fprintf(stderr, "failed to configure pairing during bls setup\n");
+    return NULL;
   }
 
   element_init_G2(&bls->gen_elem, pairing);

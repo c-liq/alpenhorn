@@ -82,9 +82,9 @@ struct mix_s {
   afmb_container_s *af_mb_containers;
 
   byte_t *dial_incoming_msgs;
-  byte_t *dial_outgoing_msgs;
+  byte_t *dial_out_msgs;
   uint32_t dial_incoming_msg_length;
-  uint32_t dial_outgoing_msg_length;
+  uint32_t dial_out_msg_len;
   uint32_t dial_num_inc_msgs;
   uint32_t dial_num_out_msgs;
   uint32_t dial_inc_buf_capacity;
@@ -96,6 +96,8 @@ struct mix_s {
   element_s ibe_gen_elem;
   element_s af_noise_Zr_elem;
   element_s af_noise_G1_elem;
+  int dial_round_duration;
+  int af_round_duration;
 };
 
 void mix_init(mix_s *mix, uint32_t server_id, uint32_t initial_buffer_size);
@@ -109,4 +111,6 @@ void mix_dial_distribute(mix_s *mix);
 void mix_af_distribute(mix_s *mix);
 void mix_af_add_inc_msg(mix_s *mix, byte_t *buf);
 void mix_dial_add_inc_msg(mix_s *mix, byte_t *buf);
+void mix_af_newround(mix_s *mix);
+void mix_dial_newround(mix_s *mix);
 #endif //ALPENHORN_MIX_H

@@ -7,7 +7,7 @@
 typedef unsigned char byte_t;
 typedef struct element_s element_s;
 typedef struct pairing_s pairing_s;
-#define buf_size 1024
+#define buf_size 16384
 
 void crypto_shared_secret(byte_t *shared_secret,
                           byte_t *scalar_mult,
