@@ -2,6 +2,9 @@
 #define ALPENHORN_CONFIG_H
 #include <sodium.h>
 #include "utils.h"
+#include <sys/types.h>
+
+#define CLI_AUTH_REQ 50
 
 #define crypto_ghash_BYTES crypto_generichash_BYTES
 #define crypto_maxhash_BYTES crypto_generichash_BYTES_MAX
@@ -12,20 +15,22 @@
 #define g2_elem_compressed_BYTES 65U
 
 #define intent_BYTES 4U
-#define mailbox_BYTES 4U
+#define mb_BYTES 4U
 #define dialr_BYTES 4U
 #define af_round_BYTES 4U
 #define dialling_token_BYTES 32U
-#define num_pkg_servers 2U
+#define num_pkg_servers 1U
 #define num_mix_servers 2U
 #define user_id_BYTES 60U
+
+#define net_batch_prefix 8U
 
 #define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + dialr_BYTES)
 #define af_ibeenc_request_BYTES (af_request_BYTES + crypto_ghash_BYTES + g1_elem_compressed_BYTES + crypto_MACBYTES + crypto_NBYTES)
 #define onion_layer_BYTES (crypto_NBYTES + crypto_box_PUBLICKEYBYTES + crypto_MACBYTES)
-#define onionenc_friend_request_BYTES (mailbox_BYTES + af_ibeenc_request_BYTES + (num_mix_servers * onion_layer_BYTES))
-#define onionenc_dial_token_BYTES (mailbox_BYTES + dialling_token_BYTES + (num_mix_servers * onion_layer_BYTES))
-#define cli_pkg_single_auth_req_BYTES (crypto_sign_BYTES + crypto_box_PUBLICKEYBYTES)
+#define onionenc_friend_request_BYTES (mb_BYTES + af_ibeenc_request_BYTES + (num_mix_servers * onion_layer_BYTES))
+#define onionenc_dial_token_BYTES (mb_BYTES + dialling_token_BYTES + (num_mix_servers * onion_layer_BYTES))
+#define cli_pkg_single_auth_req_BYTES (user_id_BYTES + crypto_sign_BYTES + crypto_box_PUBLICKEYBYTES)
 #define cli_pkg_combined_auth_req_BYTES (user_id_BYTES + (num_pkg_servers * cli_pkg_single_auth_req_BYTES))
 
 #define pkg_auth_res_BYTES (g1_elem_compressed_BYTES + g2_elem_compressed_BYTES)
@@ -34,7 +39,15 @@
 #define pkg_sig_message_BYTES (user_id_BYTES + crypto_box_PUBLICKEYBYTES + af_round_BYTES)
 
 #define initial_table_size 50U
-#define net_batch_prefix 5U
+
+#define mix_num_buffer_elems 200U
+
+#define AF_BATCH 1U
+#define DIAL_BATCH 2U
+#define NEW_DIAL_ROUND 3U
+#define NEW_KEY 4U
+typedef uint32_t u32;
+
 
 static const char pbc_params[] = "type f\n"
     "q 16283262548997601220198008118239886027035269286659395419233331082106632227801\n"

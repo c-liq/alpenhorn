@@ -7,7 +7,17 @@
 typedef unsigned char byte_t;
 typedef struct element_s element_s;
 typedef struct pairing_s pairing_s;
-#define buf_size 16384
+#define buf_size 2048
+
+struct mix_buffer_s {
+  byte_t *buf_base_ptr;
+  byte_t *buf_pos_ptr;
+  uint32_t capacity_bytes;
+  uint32_t capacity_msgs;
+  uint32_t num_msgs;
+  uint32_t msg_len_bytes;
+};
+typedef struct mix_buffer_s mix_buffer_s;
 
 void crypto_shared_secret(byte_t *shared_secret,
                           byte_t *scalar_mult,

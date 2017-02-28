@@ -103,7 +103,12 @@ size_t kw_new_keywheel_from_request(keywheel_table_s *table,
   byte_t our_sk[crypto_box_SECRETKEYBYTES];
   byte_t scalar_mult[crypto_scalarmult_BYTES];
   crypto_box_keypair(our_pk, our_sk);
-  crypto_scalarmult(scalar_mult, pk, sk);
+  int res = crypto_scalarmult (scalar_mult, pk, sk);
+  if (res)
+    {
+      fprintf (stderr, "scalarmult error in keywheel generation\n");
+      return 0;
+    }
   keywheel_s *kw = calloc(1, sizeof *kw);
   memcpy(kw->user_id, user_id, user_id_BYTES);
   kw->dialling_round = round_sync;

@@ -3,6 +3,7 @@
 
 #include "config.h"
 #include "utils.h"
+#include <pbc/pbc.h>
 struct pkg_server;
 struct pkg_client;
 typedef struct pkg_server pkg_server;
@@ -23,7 +24,7 @@ struct pkg_server {
   element_t eph_secret_key_elem_zr;
   byte_t eph_secret_dh_key[crypto_box_SECRETKEYBYTES];
   // Broadcast message buffer - contains fresh IBE public key_state + fresh DH key_state + signature
-  byte_t eph_broadcast_message[pkg_broadcast_msg_BYTES];
+  byte_t eph_broadcast_message[net_batch_prefix + pkg_broadcast_msg_BYTES];
   byte_t *broadcast_dh_pkey_ptr;  // Pointer into message buffer where public dh key_state will be stored
   // Generator element for pairings, used to derive public keys from secret keys
   element_s bls_gen_elem_g2;
@@ -53,13 +54,14 @@ struct pkg_client {
 
 void pkg_client_init(pkg_client *client, pkg_server *server, const byte_t *user_id, const byte_t *lt_sig_key);
 void pkg_new_ibe_keypair(pkg_server *server);
-int pkg_server_init(pkg_server *server, uint32_t id);
+int pkg_server_init (pkg_server *server, uint32_t id);
 void pkg_new_ibe_keypair(pkg_server *server);
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client);
 void pkg_sign_for_client(pkg_server *server, pkg_client *client);
 void pkg_encrypt_client_response(pkg_server *server, pkg_client *client);
 void pkg_client_clear(pkg_client *client);
 void pkg_new_round(pkg_server *server);
-int pkg_auth_client(pkg_server *server, pkg_client *client);
+int pkg_auth_client (pkg_server *server, pkg_client *client);
 void pkg_encrypt_client_response(pkg_server *server, pkg_client *client);
+int pkg_client_lookup (pkg_server *server, byte_t *user_id);
 #endif //ALPENHORN_PKG_H

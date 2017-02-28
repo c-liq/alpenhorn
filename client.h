@@ -12,64 +12,16 @@
 struct client;
 typedef struct client client_s;
 
-struct client2 {
-  // Long term state
-  byte_t user_id[user_id_BYTES];
-  // Client LT signing key pair
-  byte_t lt_secret_sig_key[crypto_sign_SECRETKEYBYTES];
-  byte_t lt_pub_sig_key[crypto_sign_PUBLICKEYBYTES];
-  // Combined long term BLS public signature key from PKG servers - private counterparts sign verification messages in friend requests
-  element_s pkg_lt_sig_keys_combined;
-  // Keywheel table to maintain shared secrets between client_s and friends/contacts
-  keywheel_table_s keywheel;
-  // Protocol variables that update each add friend/dialing round
-  uint32_t dialling_round;
-  uint32_t af_round;
-  uint32_t af_mailbox_count;
-  uint32_t dial_mailbox_count;
-  // Epheremal public DH keys from the mix_s servers - one set for both AF and dial friend protocols
-  byte_t mix_eph_af_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
-  byte_t mix_eph_dial_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
-  // PKG state
-  pairing_s ibe_pairing;
-  // Broadcast at the start of an add friend round, contains public IBE & DH keys
-  byte_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
-  // PKG epheremal public IBE keys, combined key used to encrypt friend requests
-  byte_t pkg_eph_pub_fragments_g1[num_pkg_servers][g2_elem_compressed_BYTES];
-  element_s pkg_eph_pub_combined_g1;
-  // Buffers for client_s -> PKG auth requests, filled with DH public keys and signature over PKG's
-  // broadcast messages for authentication
-  byte_t pkg_auth_request[cli_pkg_combined_auth_req_BYTES];
-  // Epheremal symmetric keys shared with PKG servers - used to decrypt authentication responses
-  byte_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES];
-  // Buffers that hold encrypted PKG responses if authentication is successful
-  // Contains epheremal BLS signatures (for friend request verification) and IBE secret keys
-  byte_t pkg_auth_responses[num_pkg_servers][pkg_enc_auth_res_BYTES];
-  byte_t pkg_eph_ibe_sk_fragments_g2[num_pkg_servers][g2_elem_compressed_BYTES];
-  // Epheremal IBE secret key_state - decrypts friend requests
-  element_s pkg_eph_ibe_sk_combined_g2;
-  // Signature state for BLS signatures
-  // Calculates and verifies signatures
-  bls_instance bls_inst;
-  // Stores the id of a user to make a friend request to in a particular round
-  byte_t friend_request_id[user_id_BYTES];
-  element_s pkg_friend_elem;
-  // Buffer for the fully encrypted add friend request
-  // Contains the plaintext request, encrypted through IBE, with a mailbox identifier prepended
-  // Then onion-encrypted in layers for the mix_s servers
-  byte_t friend_request_buf[onionenc_friend_request_BYTES];
-};
-
 struct client {
   byte_t user_id[user_id_BYTES];
   byte_t lt_secret_sig_key[crypto_sign_SECRETKEYBYTES];
   byte_t lt_pub_sig_key[crypto_sign_PUBLICKEYBYTES];
-  uint32_t mailbox_count;
+  u32 mailbox_count;
   pairing_s pairing;
-  uint32_t dialling_round;
+  u32 dialling_round;
   keywheel_table_s keywheel;
   byte_t friend_request_id[user_id_BYTES];
-  uint32_t af_round;
+  u32 af_round;
   // Long term BLS pub keys, private counterpart signs auth messages in friend requests
   element_s pkg_lt_sig_keys_combined;
   byte_t pkg_eph_pub_fragments_g1[num_pkg_servers][g2_elem_compressed_BYTES]; // Epheremal public IBE keys from PKG's
@@ -78,10 +30,10 @@ struct client {
   element_s pkg_friend_elem; // Epheremal IBE key_state for friend request recipient
   // Buffers for client_s -> PKG authrequests, filled with DH public key_state and signature over PKG's
   // broadcast messages to prove identity
-  byte_t pkg_auth_requests[num_pkg_servers][crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES];
+  byte_t pkg_auth_requests[num_pkg_servers][net_batch_prefix + cli_pkg_single_auth_req_BYTES];
   // Buffers that hold PKG authentication responses if authentication is successful
   // Contains BLS signature fragment (verifies friend request for recipient), and IBE secret key_state fragment
-  byte_t pkg_auth_responses[num_pkg_servers][pkg_enc_auth_res_BYTES];
+  byte_t pkg_auth_responses[num_pkg_servers][net_batch_prefix + pkg_enc_auth_res_BYTES];
   element_s pkg_multisig_combined_g1;
   // Epheremal IBE secret key_state - decrypts friend requests
   element_s pkg_ibe_secret_combined_g2;
@@ -95,8 +47,7 @@ struct client {
   byte_t mix_eph_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
   // Epheremal client_s DH keys, mix_s combines with their secret DH key_state to remove layer of encryption
   byte_t cli_mix_dh_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
-  // Epheremal secret key_state, used to add a layer of encryption to friend requests, removable only by corresponding
-  // mix_s server
+  // Epheremal secret keys used with mix servers, used to add a layer of encryption to friend requests
   byte_t cli_mix_dh_secret_keys[num_mix_servers][crypto_box_SECRETKEYBYTES];
   byte_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
   byte_t pkg_eph_ibe_sk_fragments_g2[num_pkg_servers][g2_elem_compressed_BYTES];
@@ -106,11 +57,11 @@ struct client {
 
 struct friend_request {
   byte_t user_id[user_id_BYTES];
-  byte_t dh_public_key[crypto_box_PUBLICKEYBYTES];
-  uint32_t dialling_round;
+  byte_t dh_pk[crypto_box_PUBLICKEYBYTES];
+  u32 dialling_round;
   byte_t lt_sig_key[crypto_sign_PUBLICKEYBYTES];
 };
-typedef struct friend_request friend_request;
+typedef struct friend_request friend_request_s;
 
 client_s *client_alloc(const byte_t *user_id, const byte_t *ltp_key, const byte_t *lts_key);
 void client_init(client_s *c, const byte_t *user_id, const byte_t *lt_pk, const byte_t *lt_sk);
@@ -118,12 +69,12 @@ int af_create_pkg_auth_request(client_s *c);
 void af_create_request(client_s *c);
 int af_process_auth_responses(client_s *c);
 int af_decrypt_request(client_s *client, byte_t *request_buf);
-void print_friend_request(friend_request *req);
+void print_friend_request (friend_request_s *req);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
-int add_onion_layer(client_s *client, byte_t *msg, uint32_t base_msg_length, uint32_t srv_id);
+int add_onion_layer (client_s *client, byte_t *msg, u32 base_msg_length, u32 srv_id);
 void af_add_friend(client_s *client, char *user_id);
-void af_process_mailbox(client_s *c, byte_t *mailbox, uint32_t num_messages);
+void af_process_mailbox (client_s *c, byte_t *mailbox, u32 num_messages);
 #endif //ALPENHORN_CLIENT_H
 
 #pragma clang diagnostic pop
