@@ -34,7 +34,7 @@ struct pkg_server {
 struct pkg_client {
   // Invariant - user email address & public signing key_state
   byte_t user_id[user_id_BYTES];
-  byte_t long_term_sig_pub_key[crypto_sign_PUBLICKEYBYTES];
+	byte_t lt_sig_pk[crypto_sign_PUBLICKEYBYTES];
   // Contains DH key_state and a signature over (server eph ibe public key_state/eph dh key_state) to authenticate user
   byte_t auth_msg_from_client[crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES];
   // Symmetric key_state buffer, storing server-client_s key_state generated from ECDH exchange
@@ -47,9 +47,9 @@ struct pkg_client {
   byte_t *auth_response_ibe_key_ptr; // Pointer into response buffer where secret key_state will be placed
   // IBE elements
   element_t hashed_id_elem_g2; // Permanent
-  element_t eph_signature_elem_g1;
+	element_t eph_sig_elem_G1;
   element_t eph_sig_hash_elem_g1;// Round-specific sig_lts of (user_id, lts-sig-key_state, round number)
-  element_t eph_secret_key_g2; // Round-specific IBE secret key_state for client_s
+	element_t eph_sk_G2; // Round-specific IBE secret key_state for client_s
 };
 
 void pkg_client_init(pkg_client *client, pkg_server *server, const byte_t *user_id, const byte_t *lt_sig_key);
@@ -59,7 +59,7 @@ void pkg_new_ibe_keypair(pkg_server *server);
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client);
 void pkg_sign_for_client(pkg_server *server, pkg_client *client);
 void pkg_encrypt_client_response(pkg_server *server, pkg_client *client);
-void pkg_client_clear(pkg_client *client);
+void pkg_client_free(pkg_client *client);
 void pkg_new_round(pkg_server *server);
 int pkg_auth_client (pkg_server *server, pkg_client *client);
 void pkg_encrypt_client_response(pkg_server *server, pkg_client *client);

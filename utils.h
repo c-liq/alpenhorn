@@ -1,34 +1,39 @@
 #ifndef ALPENHORN_UTILS_H
 #define ALPENHORN_UTILS_H
-
 #include <stdint.h>
 #include <stdio.h>
 #include <sodium.h>
+#include "config.h"
+
 typedef unsigned char byte_t;
 typedef struct element_s element_s;
 typedef struct pairing_s pairing_s;
 #define buf_size 2048
 
-struct mix_buffer_s {
-  byte_t *buf_base_ptr;
-  byte_t *buf_pos_ptr;
-  uint32_t capacity_bytes;
-  uint32_t capacity_msgs;
-  uint32_t num_msgs;
-  uint32_t msg_len_bytes;
+struct byte_buffer
+{
+
+	byte_t *buf_base_ptr;
+	byte_t *buf_pos_ptr;
+	u32 capacity_bytes;
+	u32 capacity_msgs;
+	u32 num_msgs;
+	u32 msg_len_bytes;
+
 };
-typedef struct mix_buffer_s mix_buffer_s;
+
+typedef struct byte_buffer byte_buffer_s;
 
 void crypto_shared_secret(byte_t *shared_secret,
                           byte_t *scalar_mult,
                           byte_t *client_pub,
                           byte_t *server_pub,
-                          uint32_t output_size);
+                          u32 output_size);
 
-void printhex(char *msg, byte_t *data, uint32_t len);
+void printhex(char *msg, byte_t *data, u32 len);
 
-uint32_t deserialize_uint32(byte_t *in);
-void serialize_uint32(byte_t *out, uint32_t in);
+u32 deserialize_uint32(byte_t *in);
+void serialize_uint32(byte_t *out, u32 in);
 void print_b64(char *msg, byte_t *data,
                size_t input_length);
 
