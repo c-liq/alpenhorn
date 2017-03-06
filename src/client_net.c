@@ -152,7 +152,7 @@ void net_client_mix_read(void *cl_ptr, connection *conn, ssize_t count)
 			c->client->dialling_round++;
 			ssize_t res = send(conn->sock_fd, conn->internal_write_buf, (size_t) conn->write_remaining, 0);
 			printf("Client received ner AF msg from mix, sending AF request (%ld bytes)\n", res);
-			af_fake_request(c->client);
+			af_add_friend(c->client, (char *) user_ids[2]);
 		}
 
 	}

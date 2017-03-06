@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include "utils.h"
 #include <math.h>
-#include "xxHash-master/xxhash.h"
+#include "../lib/xxhash/xxhash.h"
 #include "prime_gen.h"
 #include "bloom.h"
 
