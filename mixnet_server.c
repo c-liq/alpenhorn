@@ -8,9 +8,6 @@
 #include "mixnet_server.h"
 
 
-#define FRIEND_MSG 'F'
-#define DIAL_MSG 'D'
-
 struct mixnet_server
 {
 	mix_s *mix;
@@ -18,57 +15,62 @@ struct mixnet_server
 	int listen_socket;
 	struct epoll_event *events;
 	int running;
-	byte_t *broadcast_buf;
-	size_t dh_key_buf_size;
 	connection prev_mix;
 	connection next_mix;
 	time_t next_af_round;
 	time_t next_dial_round;
 	connection pkg_conns[num_pkg_servers];
 	byte_buffer_s bc_buf;
+	connection *clients;
 };
 
 void net_mix_new_dr(net_server_s *s)
 {
 	if (!s->mix->is_last) {
 		if (s->next_mix.write_buf) {
-			byte_t *write_buf_end = s->next_mix.write_buf->buf_pos_ptr + s->next_mix.write_remaining;
+			uint8_t *write_buf_end = s->next_mix.write_buf->pos + s->next_mix.write_remaining;
 			serialize_uint32(write_buf_end, NEW_DIAL_ROUND);
-			s->next_mix.write_buf->buf_pos_ptr += sizeof(u32);
-			s->next_mix.write_remaining += sizeof(u32);
+			s->next_mix.write_buf->pos += sizeof(uint32_t);
+			s->next_mix.write_remaining += sizeof(uint32_t);
 			epoll_send(s, &s->next_mix);
 		}
 		else {
 			serialize_uint32(s->next_mix.internal_write_buf, NEW_DIAL_ROUND);
-			s->next_mix.write_remaining = sizeof(u32);
+			s->next_mix.write_remaining = sizeof(uint32_t);
 			epoll_send(s, &s->next_mix);
 		}
 	}
 	mix_dial_newround(s->mix);
 }
 
-void net_mix_mix_read(net_server_s *srv, connection *conn, ssize_t count)
+void compact_buf()
 {
+
+}
+
+void net_mix_mix_read(void *s, connection *conn, ssize_t count)
+{
+	net_server_s *srv = (net_server_s *) s;
 	ssize_t c_read = count;
 	if (conn->curr_msg_len == 0) {
-		if ((count < net_batch_prefix)) {
+		if ((count < net_header_BYTES)) {
 			return;
 		}
-		byte_t *buf_ptr = conn->internal_read_buf;
-		u32 msg_type = deserialize_uint32(buf_ptr);
+		uint8_t *buf_ptr = conn->internal_read_buf;
+		uint32_t msg_type = deserialize_uint32(buf_ptr);
 		buf_ptr += 4;
-		u32 num_msgs = deserialize_uint32(buf_ptr);
+		uint32_t num_msgs = deserialize_uint32(buf_ptr);
 		if (msg_type == AF_BATCH) {
 			conn->msg_type = AF_BATCH;
 			conn->read_buf = &srv->mix->af_data.in_buf;
-			u32 message_len = num_msgs * conn->read_buf->msg_len_bytes;
+			uint32_t message_len = num_msgs * conn->read_buf->msg_len_bytes;
 			conn->curr_msg_len = message_len;
 			conn->read_remaining = message_len;
 		}
 		else if (msg_type == DIAL_BATCH) {
 			conn->msg_type = DIAL_BATCH;
 			conn->read_buf = &srv->mix->dial_data.in_buf;
-			u32 message_len = num_msgs * conn->read_buf->msg_len_bytes;
+			uint32_t message_len = num_msgs * conn->read_buf->msg_len_bytes;
 			conn->curr_msg_len = message_len;
 			conn->read_remaining = message_len;
 		}
@@ -81,38 +83,31 @@ void net_mix_mix_read(net_server_s *srv, connection *conn, ssize_t count)
 			return;
 		}
 
-		c_read -= net_batch_prefix;
-		memcpy(conn->read_buf->buf_base_ptr, conn->internal_read_buf + net_batch_prefix, (size_t) c_read);
-		conn->read_buf->buf_pos_ptr += c_read;
+		c_read -= net_header_BYTES;
+		memcpy(conn->read_buf->base, conn->internal_read_buf + net_header_BYTES, (size_t) c_read);
+		conn->read_buf->pos += c_read;
 	}
 
 	conn->read_remaining -= c_read;
 	conn->bytes_read += count;
-	printf("Just read %lu of %u | %d remaining | Message type: %d\n",
-	       c_read,
-	       conn->curr_msg_len,
-	       conn->read_remaining,
-	       conn->msg_type);
+
 	if (conn->read_remaining <= 0) {
-		printf("Finished reading message\n");
-		printhex("payload at forwarding server", conn->read_buf->buf_base_ptr, 256);
 		if (conn->msg_type == AF_BATCH) {
-			conn->read_buf->num_msgs = conn->curr_msg_len / conn->read_buf->msg_len_bytes;
+			conn->read_buf->num_msgs = (uint32_t) conn->curr_msg_len / conn->read_buf->msg_len_bytes;
 			mix_af_decrypt_messages(srv->mix);
-			printf("Decrypted %d messages for round %d",
+			printf("Decrypted %d messages for AF round %d\n",
 			       srv->mix->af_data.out_buf.num_msgs,
-			       srv->mix->af_data.round_duration);
+			       srv->mix->af_data.round);
 			mix_af_newround(srv->mix);
-			printf("Advanced to round %d\n", srv->mix->af_data.round);
 		}
 		else if (conn->msg_type == DIAL_BATCH) {
-			conn->read_buf->num_msgs = conn->curr_msg_len / conn->read_buf->msg_len_bytes;
+			conn->read_buf->num_msgs = (uint32_t) conn->curr_msg_len / conn->read_buf->msg_len_bytes;
 			mix_dial_decrypt_messages(srv->mix);
-			printf("Decrypted %d messages for round %d",
+			printf("Decrypted %d tokens for dial round %d\n",
 			       srv->mix->dial_data.out_buf.num_msgs,
-			       srv->mix->dial_data.round_duration);
+			       srv->mix->dial_data.round);
 			mix_dial_newround(srv->mix);
-			printf("Advanced to round %d\n", srv->mix->dial_data.round);
+
 		}
 		conn->read_buf = NULL;
 		conn->msg_type = 0;
@@ -121,7 +116,79 @@ void net_mix_mix_read(net_server_s *srv, connection *conn, ssize_t count)
 	}
 }
 
-int net_mix_sync_prev(int srv_id)
+/*void net_mix_mix_read(void *owner, connection *conn, ssize_t count)
+{
+	net_server_s *srv = (net_server_s *) owner;
+	conn->bytes_read += count;
+
+	if (conn->curr_msg_len == 0) {
+		if (conn->bytes_read < net_header_BYTES) {
+			return;
+		}
+
+		uint8_t *buf_ptr = conn->internal_read_buf;
+		uint32_t msg_type = deserialize_uint32(buf_ptr);
+		buf_ptr += 4;
+		uint32_t num_msgs = deserialize_uint32(buf_ptr);
+		if (msg_type == AF_BATCH) {
+			conn->msg_type = AF_BATCH;
+			conn->read_buf = &srv->mix->af_data.in_buf;
+			uint32_t message_len = num_msgs * conn->read_buf->msg_len_bytes;
+			conn->curr_msg_len = message_len;
+
+		}
+		else if (msg_type == DIAL_BATCH) {
+			conn->msg_type = DIAL_BATCH;
+			conn->read_buf = &srv->mix->dial_data.in_buf;
+			uint32_t message_len = num_msgs * conn->read_buf->msg_len_bytes;
+			conn->curr_msg_len = message_len;
+		}
+		else if (msg_type == NEW_DIAL_ROUND) {
+			net_mix_new_dr(srv);
+		}
+		else {
+			fprintf(stderr, "Invalid message %c\n", conn->internal_read_buf[0]);
+			//close(conn->sock_fd);
+			return;
+		}
+
+		memcpy(conn->read_buf->base, conn->internal_read_buf + net_header_BYTES, (size_t) count - net_header_BYTES);
+		conn->read_buf->pos += count;
+	}
+
+	if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
+		return;
+	}
+
+	if (conn->msg_type == AF_BATCH) {
+		conn->read_buf->num_msgs = (uint32_t) conn->curr_msg_len / conn->read_buf->msg_len_bytes;
+		mix_af_decrypt_messages(srv->mix);
+		printf("Decrypted %d messages for AF round %d\n",
+		       srv->mix->af_data.out_buf.num_msgs,
+		       srv->mix->af_data.round);
+		mix_af_newround(srv->mix);
+	}
+	else if (conn->msg_type == DIAL_BATCH) {
+		conn->read_buf->num_msgs = (uint32_t) conn->curr_msg_len / conn->read_buf->msg_len_bytes;
+		mix_dial_decrypt_messages(srv->mix);
+		printf("Decrypted %d tokens for dial round %d\n",
+		       srv->mix->dial_data.out_buf.num_msgs,
+		       srv->mix->dial_data.round);
+		mix_dial_newround(srv->mix);
+
+	}
+	*//*conn->read_buf = NULL;
+	conn->msg_type = 0;
+	conn->curr_msg_len = 0;
+	conn->bytes_read = 0;*//*
+	ssize_t remaining_bytes = conn->bytes_read - (conn->curr_msg_len + net_header_BYTES);
+	if (remaining_bytes > 0) {
+
+	}
+
+}*/
+
+int net_mix_connect_prev(int srv_id)
 {
 	if (srv_id <= 0) {
 		fprintf(stderr, "invalid server id %d\n", srv_id);
@@ -138,7 +205,7 @@ int net_mix_sync_prev(int srv_id)
 
 int net_mix_sync(net_server_s *es)
 {
-	u32 srv_id = es->mix->server_id;
+	uint32_t srv_id = es->mix->server_id;
 	int res;
 	// Unless we're the last server in the mixnet chain, setup a temp listening socket to allow the next server
 	// to establish a connection
@@ -153,13 +220,20 @@ int net_mix_sync(net_server_s *es)
 		}
 
 		es->next_mix.sock_fd = next_mix_sfd;
-		size_t inc_dh_keys_bytes = es->dh_key_buf_size - crypto_box_PUBLICKEYBYTES;
-		byte_t *dh_ptr = es->mix->mix_dh_public_keys[srv_id + 1];
-		res = net_read_nb(es->next_mix.sock_fd, dh_ptr, inc_dh_keys_bytes);
+		res = net_read_nb(es->next_mix.sock_fd,
+		                  es->bc_buf.data + crypto_box_PUBLICKEYBYTES,
+		                  es->bc_buf.capacity_bytes - crypto_box_PUBLICKEYBYTES);
 		close(listen_socket);
+
 		if (res) {
 			fprintf(stderr, "fatal socket error during mix startup\n");
 			return -1;
+		}
+
+		uint8_t *ptr = es->bc_buf.data + es->bc_buf.prefix_size + crypto_box_PUBLICKEYBYTES;
+		for (int i = 1; i <= es->mix->num_out_onion_layers; i++) {
+			memcpy(es->mix->mix_dh_pks[i], ptr, crypto_box_PUBLICKEYBYTES);
+			ptr += es->bc_buf.prefix_size + crypto_box_PUBLICKEYBYTES;
 		}
 
 		es->next_mix.event.events = EPOLLIN | EPOLLET;
@@ -176,8 +250,9 @@ int net_mix_sync(net_server_s *es)
 	}
 
 	if (es->mix->server_id > 0) {
-		es->prev_mix.sock_fd = net_mix_sync_prev(es->mix->server_id);
-		res = net_send_nb(es->prev_mix.sock_fd, es->mix->mix_dh_public_keys[srv_id], es->dh_key_buf_size);
+		es->prev_mix.sock_fd = net_mix_connect_prev(es->mix->server_id);
+		es->prev_mix.on_read = net_mix_mix_read;
+		res = net_send_nb(es->prev_mix.sock_fd, es->bc_buf.base, es->bc_buf.prefix_size + es->bc_buf.capacity_bytes);
 		if (res) {
 			fprintf(stderr, "socker error writing to previous server in mixnet chain\n");
 			return -1;
@@ -200,7 +275,53 @@ int net_mix_sync(net_server_s *es)
 
 void net_client_sync(net_server_s *s, connection *conn)
 {
-	send(conn->sock_fd, s->bc_buf.buf_base_ptr, s->bc_buf.capacity_bytes, 0);
+	//conn->write_buf = &s->bc_buf;
+	//conn->bytes_written = 0;
+	//conn->write_remaining = s->bc_buf.capacity_bytes;
+	printf("Client connected, sockfd = %d, sending initial sync message\n", conn->sock_fd);
+	send(conn->sock_fd, s->bc_buf.base, s->bc_buf.prefix_size + s->bc_buf.capacity_bytes, 0);
+}
+
+void remove_client(net_server_s *s, connection *conn)
+{
+	if (conn == s->clients) {
+		s->clients = conn->next;
+	}
+	if (conn->next) {
+		conn->next->prev = conn->prev;
+	}
+	if (conn->prev) {
+		conn->prev->next = conn->next;
+	}
+	free(conn);
+}
+
+void net_broadcast_new_dr(net_server_s *s)
+{
+	connection *conn = s->clients;
+	uint8_t bc_buf[net_header_BYTES];
+	serialize_uint32(bc_buf, NEW_DIAL_ROUND);
+	serialize_uint32(bc_buf + 4, s->mix->dial_data.round);
+	while (conn) {
+		ssize_t count = send(conn->sock_fd, bc_buf, sizeof bc_buf, 0);
+		printf("Broadcast %ld bytes to client\n", count);
+		conn = conn->next;
+	}
+
+}
+
+void net_broadcast_new_afr(net_server_s *s)
+{
+	connection *conn = s->clients;
+	uint8_t bc_buf[net_header_BYTES];
+	serialize_uint32(bc_buf, NEW_AF_ROUND);
+	serialize_uint32(bc_buf + 4, s->mix->af_data.round);
+	while (conn) {
+		ssize_t count = send(conn->sock_fd, bc_buf, sizeof bc_buf, 0);
+		printf("Broadcast new af round to clientt\n");
+		conn = conn->next;
+	}
+
 }
 
 int net_entry_sync(net_server_s *es)
@@ -216,96 +337,101 @@ int net_entry_sync(net_server_s *es)
 		event.data.ptr = &es->pkg_conns[i];
 		epoll_ctl(es->epoll_inst, EPOLL_CTL_ADD, fd, &event);
 	}
-	close(listen_fd);
+	//close(listen_fd);
 	// Wait for the rest of the mixnet servers to start and connect to us
 	res = net_mix_sync(es);
 	if (res) {
 		fprintf(stderr, "fatal error during mixnet startup\n");
 		return -1;
 	}
-	memcpy(es->broadcast_buf, es->mix->mix_dh_public_keys[1], es->dh_key_buf_size - 12);
+
 	// Start main listening socket for client connections
 	es->listen_socket = net_start_listen_socket("7000", 1);
 	if (es->listen_socket == -1) {
 		fprintf(stderr, "entry mix error when starting listensocket\n");
 		return -1;
 	}
+	connection *listen_conn = calloc(1, sizeof *listen_conn);
+	listen_conn->sock_fd = es->listen_socket;
+	event.data.ptr = listen_conn;
+	event.events = EPOLLIN | EPOLLET;
+	epoll_ctl(es->epoll_inst, EPOLL_CTL_ADD, es->listen_socket, &event);
 
 	return 0;
 }
 
-void net_mix_entry_clientread(net_server_s *s, connection *conn, ssize_t count)
+void net_mix_entry_clientread(void *server, connection *conn, ssize_t count)
 {
+	net_server_s *s = (net_server_s *) server;
 	conn->bytes_read += count;
-	printf("Client read stared - msg len: %d read: %d \n", conn->curr_msg_len, conn->bytes_read);
-	if (conn->curr_msg_len == 0) {
-		switch (conn->internal_read_buf[0]) {
-		case FRIEND_MSG:conn->curr_msg_len = onionenc_friend_request_BYTES;
-			break;
-		case DIAL_MSG:conn->curr_msg_len = onionenc_dial_token_BYTES;
-			break;
-		default:fprintf(stderr, "Invalid message format\n");
-			conn->bytes_read = 0;
-			conn->curr_msg_len = 0;
+
+	while (conn->bytes_read > 0) {
+		if (conn->curr_msg_len == 0) {
+			if (conn->bytes_read < net_header_BYTES) {
+				return;
+			}
+
+			uint32_t msg_type = deserialize_uint32(conn->internal_read_buf);
+			if (msg_type == CLIENT_DIAL_MSG) {
+				conn->msg_type = CLIENT_DIAL_MSG;
+				conn->curr_msg_len = onionenc_dial_token_BYTES;
+			}
+			else if (msg_type == CLIENT_AF_MSG) {
+				conn->msg_type = CLIENT_AF_MSG;
+				conn->curr_msg_len = onionenc_friend_request_BYTES;
+			}
+
+		}
+		printf("Client msg bytes read: %ld | remaining: %ld\n", conn->bytes_read, conn->read_remaining);
+		if (conn->bytes_read < net_header_BYTES + conn->curr_msg_len) {
 			return;
 		}
+
+		if (conn->msg_type == CLIENT_DIAL_MSG) {
+			printf("Adding dial msg from client...\n");
+			mix_dial_add_inc_msg(s->mix, conn->internal_read_buf + net_header_BYTES);
+		}
+		else if (conn->msg_type == CLIENT_AF_MSG) {
+			printf("Adding AF msg from client\n");
+			mix_af_add_inc_msg(s->mix, conn->internal_read_buf + net_header_BYTES);
+		}
+
+		ssize_t remaining = conn->bytes_read - (conn->curr_msg_len + net_header_BYTES);
+		if (remaining > 0) {
+			memcpy(conn->internal_read_buf,
+			       conn->internal_read_buf + conn->curr_msg_len + net_header_BYTES,
+			       (size_t) remaining);
+		}
+
+		conn->bytes_read = remaining;
+		conn->msg_type = 0;
+		conn->curr_msg_len = 0;
+
 	}
 
-	if (conn->bytes_read < conn->curr_msg_len) {
-		return;
-	}
-
-	switch (conn->curr_msg_len) {
-	case onionenc_friend_request_BYTES:mix_af_add_inc_msg(s->mix, conn->internal_read_buf);
-		break;
-	case onionenc_dial_token_BYTES:mix_dial_add_inc_msg(s->mix, conn->internal_read_buf);
-		break;
-	default:fprintf(stderr, "Invalid message format %d %d\n", conn->bytes_read, conn->curr_msg_len);
-		close(conn->sock_fd);
-	}
-	conn->bytes_read = 0;
-	conn->curr_msg_len = 0;
-}
-
-void connection_init(connection *conn)
-{
-	conn->read_buf = NULL;
-	memset(conn->internal_read_buf, 0, sizeof conn->internal_read_buf);
-	conn->read_remaining = 0;
-	conn->bytes_read = 0;
-	conn->msg_type = 0;
-	conn->write_buf = NULL;
-	conn->bytes_written = 0;
-	conn->write_remaining = 0;
-	conn->sock_fd = -1;
-	conn->event.data.ptr = conn;
-	conn->curr_msg_len = 0;
 }
 
 int es_init(net_server_s *server, mix_s *mix)
 {
 	server->mix = mix;
 	server->epoll_inst = epoll_create1(0);
-	server->broadcast_buf = NULL;
+
 	if (server->epoll_inst == -1) {
 		fprintf(stderr, "Entry Server: failure when creating epoll instance\n");
 		return -1;
 	}
-	u32 buffer_size = sizeof(u32) + crypto_box_PUBLICKEYBYTES * (num_mix_servers - server->mix->server_id);
-	if (mix->server_id == 0) {
-		buffer_size += 8;
-		mix_buffer_init(&server->bc_buf, 1, buffer_size);
-		serialize_uint32(server->bc_buf.buf_base_ptr, MIX_SYNC);
-		serialize_uint32(server->bc_buf.buf_base_ptr + 4, mix->af_data.round);
-		serialize_uint32(server->bc_buf.buf_base_ptr + 8, mix->dial_data.round);
-	}
-	server->broadcast_buf = calloc(1, buffer_size);
-	server->dh_key_buf_size = buffer_size;
-	memcpy(server->broadcast_buf + 12, server->mix->eph_pk, crypto_box_PUBLICKEYBYTES);
+
+	uint32_t buffer_size = (12 + crypto_box_PUBLICKEYBYTES) * (num_mix_servers - server->mix->server_id);
+	byte_buffer_init(&server->bc_buf, 1, buffer_size, 12);
+	serialize_uint32(server->bc_buf.base, MIX_SYNC);
+	serialize_uint32(server->bc_buf.base + 4, mix->af_data.round);
+	serialize_uint32(server->bc_buf.base + 8, mix->dial_data.round);
+	memcpy(server->bc_buf.data, server->mix->mix_dh_pks[0], crypto_box_PUBLICKEYBYTES);
 
 	server->events = calloc(2000, sizeof *server->events);
 	connection_init(&server->prev_mix);
 	connection_init(&server->next_mix);
+	server->clients = NULL;
 	return 0;
 }
 
@@ -342,7 +468,14 @@ int epoll_accept(net_server_s *es, void (*on_accept)(net_server_s *, connection 
 			perror("epoll_ctl");
 			return -1;
 		}
-
+		if (es->clients) {
+			es->clients->prev = new_conn;
+		}
+		new_conn->next = es->clients;
+		new_conn->prev = NULL;
+		es->clients = new_conn;
+		new_conn->on_read = net_mix_entry_clientread;
+		printf("Connection accepted on %d, new sockfd: %d\n", es->listen_socket, new_conn->sock_fd);
 		if (on_accept) {
 			on_accept(es, new_conn);
 		}
@@ -356,81 +489,88 @@ void net_mix_batch_forward(net_server_s *s, byte_buffer_s *buf)
 	connection *conn = &s->next_mix;
 	conn->write_buf = buf;
 	conn->bytes_written = 0;
-	conn->write_remaining = net_batch_prefix + (buf->num_msgs * buf->msg_len_bytes);
-	buf->buf_pos_ptr = buf->buf_base_ptr;
+	conn->write_remaining = net_header_BYTES + (buf->num_msgs * buf->msg_len_bytes);
+	buf->pos = buf->base;
 	epoll_send(s, conn);
 }
 
 void net_mix_af_forward(net_server_s *s)
 {
 	mix_af_decrypt_messages(s->mix);
+	net_broadcast_new_afr(s);
 	byte_buffer_s *buf = &s->mix->af_data.out_buf;
 	net_mix_batch_forward(s, buf);
+	mix_af_newround(s->mix);
+	mix_af_add_noise(s->mix);
 }
 
 void net_mix_dial_forward(net_server_s *s)
 {
 	mix_dial_decrypt_messages(s->mix);
-	mix_af_decrypt_messages(s->mix);
-	byte_buffer_s *buf = &s->mix->dial_data.out_buf;
-	printhex("buf at srv", buf->buf_base_ptr, 256);
-	printf("Num msgs: %u | Msg_size: %u | Payload size: %u\n\n",
-	       buf->num_msgs,
-	       buf->msg_len_bytes,
-	       buf->num_msgs * buf->msg_len_bytes);
-	net_mix_batch_forward(s, buf);
+	net_broadcast_new_dr(s);
+	net_mix_batch_forward(s, &s->mix->dial_data.out_buf);
+	mix_dial_newround(s->mix);
+	mix_dial_add_noise(s->mix);
 }
 
 void epoll_send(net_server_s *s, connection *conn)
 {
 	int close_connection = 0;
-	for (;;) {
-		ssize_t count = send(conn->sock_fd, conn->write_buf->buf_pos_ptr, conn->write_remaining, 0);
+	while (conn->write_remaining > 0) {
+		ssize_t count = send(conn->sock_fd, conn->write_buf->pos, (size_t) conn->write_remaining, 0);
 		if (count == -1) {
 			if (errno != EAGAIN) {
-				perror("send");
+				fprintf(stderr, "socket send error %d on %d\n", errno, conn->sock_fd);
 				close_connection = 1;
 			}
 			break;
 		}
 		else if (count == 0) {
+			fprintf(stderr, "Socket send 0 bytes on %d\n", conn->sock_fd);
 			close_connection = 1;
 			break;
 		}
 		else {
 			conn->bytes_written += count;
-			conn->write_buf->buf_pos_ptr += count;
+			conn->write_buf->pos += count;
 			conn->write_remaining -= count;
+			printf("Sent %ld, %ld remaining on sock %d\n", count, conn->write_remaining, conn->sock_fd);
+			if (conn->on_write) {
+				conn->on_write(s, conn, count);
+			}
+
 		}
 	}
 	if (close_connection) {
+		fprintf(stderr, "Closing socket %d in epoll send\n", conn->sock_fd);
 		//close(conn->sock_fd);
+		return;
 		//free(conn);
 	}
 
 	// If we haven't finished writing, make sure EPOLLOUT is set
 	if (conn->write_remaining != 0 && !(conn->event.events & EPOLLOUT)) {
-		conn->event.events = EPOLLOUT;
+		conn->event.events = EPOLLOUT | EPOLLET;
 		epoll_ctl(s->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
 	}
 		// If we have finished writing, make sure to unset EPOLLOUT
 	else if (conn->write_remaining == 0 && conn->event.events & EPOLLOUT) {
-		conn->event.events = EPOLLIN;
+		conn->event.events = EPOLLIN | EPOLLET;
 		epoll_ctl(s->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
 	}
 }
 
-int epoll_read(net_server_s *es, connection *conn, void (*process)(net_server_s *, connection *, ssize_t))
+int epoll_read(net_server_s *es, connection *conn)
 {
 	int close_connection = 0;
 	for (;;) {
 		ssize_t count;
 		if (conn->read_buf != NULL) {
 			byte_buffer_s *read_buf = conn->read_buf;
-			count = read(conn->sock_fd, read_buf->buf_pos_ptr, conn->read_remaining);
+			count = read(conn->sock_fd, read_buf->pos, (size_t) read_buf->capacity_bytes - conn->bytes_read);
 		}
 		else {
-			count = read(conn->sock_fd, conn->internal_read_buf, sizeof conn->internal_read_buf);
+			count = read(conn->sock_fd, conn->internal_read_buf, sizeof conn->internal_read_buf - conn->bytes_read);
 		}
 		if (count == -1) {
 			if (errno != EAGAIN) {
@@ -440,14 +580,18 @@ int epoll_read(net_server_s *es, connection *conn, void (*process)(net_server_s 
 			break;
 		}
 		else if (count == 0) {
+			printf("Sock read 0 in epoll read, sock %d\n", conn->sock_fd);
 			close_connection = 1;
 			break;
 		}
-		process(es, conn, count);
+		if (conn->on_read) {
+			conn->on_read(es, conn, count);
+		}
 	}
 
 	if (close_connection) {
-		close(conn->sock_fd);
+		fprintf(stderr, "Epoll read: closing connection on sock %d..\n", conn->sock_fd);
+		//close(conn->sock_fd);
 	}
 	return 0;
 }
@@ -465,6 +609,7 @@ void check_time(net_server_s *s)
 	if (rem <= 0) {
 		net_mix_af_forward(s);
 		s->next_af_round = time(0) + s->mix->af_data.round_duration;
+		printf("New add friend round started: %u\n", s->mix->af_data.round);
 	}
 }
 
@@ -479,7 +624,8 @@ void net_mix_loop(net_server_s *es)
 		// Error of some sort on the socket
 		for (int i = 0; i < n; i++) {
 			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
-				conn = (connection *) events[i].data.ptr;
+				conn = events[i].data.ptr;
+				fprintf(stderr, "Mix loop: Closing connection on sock %d\n", conn->sock_fd);
 				close(conn->sock_fd);
 				free(events[i].data.ptr);
 				continue;
@@ -487,10 +633,10 @@ void net_mix_loop(net_server_s *es)
 				// Read from a socket
 			else if (events[i].events & EPOLLIN) {
 				conn = events[i].data.ptr;
-				epoll_read(es, conn, net_mix_mix_read);
+				epoll_read(es, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
-				conn = (connection *) events[i].data.ptr;
+				conn = events[i].data.ptr;
 				epoll_send(es, conn);
 			}
 		}
@@ -498,7 +644,7 @@ void net_mix_loop(net_server_s *es)
 
 }
 
-void net_srv_loop(net_server_s *es, void(*on_read)(net_server_s *, connection *, ssize_t))
+void net_srv_loop(net_server_s *es, void on_accept(net_server_s *, connection *))
 {
 
 	struct epoll_event *events = es->events;
@@ -513,12 +659,13 @@ void net_srv_loop(net_server_s *es, void(*on_read)(net_server_s *, connection *,
 		for (int i = 0; i < n; i++) {
 			connection *conn = events[i].data.ptr;
 			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
+				fprintf(stderr, "Error on socket %d\n", conn->sock_fd);
 				close(conn->sock_fd);
-				free(events[i].data.ptr);
+				remove_client(es, conn);
 				continue;
 			}
-			else if (es->listen_socket == events[i].data.fd) {
-				int res = epoll_accept(es, NULL);
+			else if (es->listen_socket == conn->sock_fd) {
+				int res = epoll_accept(es, on_accept);
 				if (res) {
 					fprintf(stderr, "fatal server error\n");
 					es->running = 0;
@@ -528,7 +675,7 @@ void net_srv_loop(net_server_s *es, void(*on_read)(net_server_s *, connection *,
 				// Read from a socket
 			else if (events[i].events & EPOLLIN) {
 				conn = events[i].data.ptr;
-				epoll_read(es, conn, on_read);
+				epoll_read(es, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
 				epoll_send(es, conn);
@@ -537,23 +684,25 @@ void net_srv_loop(net_server_s *es, void(*on_read)(net_server_s *, connection *,
 	}
 }
 
-/*int main(int argc, char **argv) {
-  if (*argv[1] == '0') {
-    net_server_s es;
-    mix_s mix;
-    mix_init(&mix, 0);
-    es_init(&es, &mix);
-    net_entry_sync(&es);
-    mix_dial_add_noise(&mix);
-    mix_af_add_noise(&mix);
-    net_srv_loop(&es, net_mix_entry_clientread);
-  } else {
-    mix_s mix;
-    mix_init(&mix, 1);
-    net_server_s es;
-    es_init(&es, &mix);
-    net_mix_sync(&es);
-    net_mix_loop(&es);
-  }
-}*/
+int main(int argc, char **argv)
+{
+	if (*argv[1] == '0') {
+		net_server_s es;
+		mix_s mix;
+		mix_init(&mix, 0);
+		es_init(&es, &mix);
+		net_entry_sync(&es);
+		mix_dial_add_noise(&mix);
+		mix_af_add_noise(&mix);
+		net_srv_loop(&es, net_client_sync);
+	}
+	else {
+		mix_s mix;
+		mix_init(&mix, 1);
+		net_server_s es;
+		es_init(&es, &mix);
+		net_mix_sync(&es);
+		net_mix_loop(&es);
+	}
+}
 

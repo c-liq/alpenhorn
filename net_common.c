@@ -31,7 +31,24 @@ int net_accept(int listen_sfd, int set_nb)
 	return new_sfd;
 }
 
-int net_send_nb(int sock_fd, byte_t *buf, size_t n)
+void connection_init(connection *conn)
+{
+	conn->read_buf = NULL;
+	memset(conn->internal_read_buf, 0, sizeof conn->internal_read_buf);
+	conn->read_remaining = 0;
+	conn->bytes_read = 0;
+	conn->msg_type = 0;
+	conn->write_buf = NULL;
+	conn->bytes_written = 0;
+	conn->write_remaining = 0;
+	conn->sock_fd = -1;
+	conn->event.data.ptr = conn;
+	conn->curr_msg_len = 0;
+	conn->on_write = NULL;
+	conn->on_read = NULL;
+}
+
+int net_send_nb(int sock_fd, uint8_t *buf, size_t n)
 {
 	ssize_t bytes_sent = 0;
 	while (bytes_sent < n) {
@@ -41,11 +58,14 @@ int net_send_nb(int sock_fd, byte_t *buf, size_t n)
 			return -1;
 		}
 		bytes_sent += tmp_sent;
+		//printf("Sent %ld (%ld total) of %ld, %ld remaining\n", tmp_sent, bytes_sent, n, n - bytes_sent);
+
 	}
+	//printhex("Wrote msg", buf, n);
 	return 0;
 }
 
-int net_read_nb(int sock_fd, byte_t *buf, size_t n)
+int net_read_nb(int sock_fd, uint8_t *buf, size_t n)
 {
 	int bytes_read = 0;
 	while (bytes_read < n) {
@@ -55,7 +75,11 @@ int net_read_nb(int sock_fd, byte_t *buf, size_t n)
 			return -1;
 		}
 		bytes_read += tmp_read;
+		//printf("Read %ld (%d total) of %ld, %ld remaining\n", tmp_read, bytes_read, n, n - bytes_read);
+
 	}
+	//printf("%ld bytes -> ", n);
+	//printhex("Read msg", buf, n);
 	return 0;
 }
 

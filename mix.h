@@ -7,7 +7,6 @@
 #include "bloom.h"
 
 struct mix_s;
-
 typedef struct mix_s mix_s;
 
 struct dial_mailbox
@@ -31,8 +30,8 @@ typedef struct dial_mailbox_container dmb_container_s;
 struct af_mailbox
 {
 	uint32_t id;
-	byte_t *data;
-	byte_t *next_msg_ptr;
+	uint8_t *data;
+	uint8_t *next_msg_ptr;
 	uint32_t num_messages;
 	uint32_t size_bytes;
 };
@@ -82,11 +81,11 @@ struct mix_s
 	uint32_t num_inc_onion_layers;
 	uint32_t num_out_onion_layers;
 	bool is_last;
-	byte_t eph_pk[crypto_box_PUBLICKEYBYTES];
-	byte_t eph_sk[crypto_box_SECRETKEYBYTES];
-	byte_t mix_dh_public_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
+	uint8_t eph_sk[crypto_box_SECRETKEYBYTES];
+	uint8_t *mix_dh_pks[crypto_box_PUBLICKEYBYTES];
 	afmb_container_s af_mb_container;
-	dmb_container_s dial_mb_container;
+	dmb_container_s dial_mb_container[mix_num_dial_mbs_stored];
+	uint32_t dial_cont_stack_head;
 	mix_af_s af_data;
 	mix_dial_s dial_data;
 	pairing_s pairing;
@@ -104,9 +103,9 @@ void mix_af_add_noise(mix_s *mix);
 void mix_dial_decrypt_messages(mix_s *mix);
 void mix_dial_distribute(mix_s *mix);
 void mix_af_distribute(mix_s *mix);
-void mix_af_add_inc_msg(mix_s *mix, byte_t *buf);
-void mix_dial_add_inc_msg(mix_s *mix, byte_t *msg);
+void mix_af_add_inc_msg(mix_s *mix, uint8_t *buf);
+void mix_dial_add_inc_msg(mix_s *mix, uint8_t *msg);
 void mix_af_newround(mix_s *mix);
 void mix_dial_newround(mix_s *mix);
-int mix_buffer_init(byte_buffer_s *buf, u32 num_elems, u32 msg_size);
+int byte_buffer_init(byte_buffer_s *buf, uint32_t num_elems, uint32_t msg_size, uint32_t prefix_size);
 #endif //ALPENHORN_MIX_H

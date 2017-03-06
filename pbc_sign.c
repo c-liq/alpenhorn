@@ -30,7 +30,8 @@ bls_instance *bls_alloc(char *params, uint32_t params_len, char *gen_string) {
   return bls;
 }
 
-void bls_sum_bytes_G1_compressed(bls_instance *bls_inst, byte_t *elem_bytes_ar, uint32_t n) {
+void bls_sum_bytes_G1_compressed(bls_instance *bls_inst, uint8_t *elem_bytes_ar, uint32_t n)
+{
   element_s *tmp = &bls_inst->g1_tmp;
   element_s *sum_elem = &bls_inst->g1_elem_sum;
   element_set0(&bls_inst->g1_elem_sum);
@@ -40,7 +41,8 @@ void bls_sum_bytes_G1_compressed(bls_instance *bls_inst, byte_t *elem_bytes_ar, 
   }
 }
 
-void bls_sum_bytes_G2_compressed(bls_instance *bls_inst, byte_t *elem_bytes_ar, uint32_t n) {
+void bls_sum_bytes_G2_compressed(bls_instance *bls_inst, uint8_t *elem_bytes_ar, uint32_t n)
+{
   element_s *tmp = &bls_inst->g2_tmp;
   element_s *sum_elem = &bls_inst->g2_elem_sum;
   element_set0(&bls_inst->g2_elem_sum);
@@ -51,20 +53,21 @@ void bls_sum_bytes_G2_compressed(bls_instance *bls_inst, byte_t *elem_bytes_ar, 
   }
 }
 
-void bls_inst_sign_message(byte_t *out_buf,
+void bls_inst_sign_message(uint8_t *out_buf,
                            bls_instance *bls_inst,
-                           byte_t *msg,
+                           uint8_t *msg,
                            uint32_t msg_len,
                            element_s *secret_key) {
-  byte_t msg_hash[crypto_ghash_BYTES];
+	uint8_t msg_hash[crypto_ghash_BYTES];
   crypto_generichash(msg_hash, crypto_ghash_BYTES, msg, msg_len, NULL, 0);
   element_from_hash(&bls_inst->sig_hash_elem, msg_hash, crypto_ghash_BYTES);
   element_pow_zn(&bls_inst->sig_elem, &bls_inst->sig_hash_elem, secret_key);
   element_to_bytes_compressed(out_buf, &bls_inst->sig_elem);
 }
 
-int bls_inst_verify(bls_instance *bls_inst, byte_t *sig_buf, byte_t *msg, uint32_t msg_len, element_s *public_key) {
-  byte_t msg_hash[crypto_ghash_BYTES];
+int bls_inst_verify(bls_instance *bls_inst, uint8_t *sig_buf, uint8_t *msg, uint32_t msg_len, element_s *public_key)
+{
+	uint8_t msg_hash[crypto_ghash_BYTES];
   crypto_generichash(msg_hash, crypto_ghash_BYTES, msg, msg_len, NULL, 0);
 
   element_from_hash(&bls_inst->sig_hash_elem, msg_hash, crypto_ghash_BYTES);
@@ -79,7 +82,7 @@ int bls_inst_verify(bls_instance *bls_inst, byte_t *sig_buf, byte_t *msg, uint32
 }
 
 void pbc_sum_bytes_G1_compressed(element_s *elem_sum,
-                                 byte_t *elem_bytes_ar,
+                                 uint8_t *elem_bytes_ar,
                                  size_t elem_size,
                                  size_t n,
                                  pairing_t pairing) {
@@ -96,7 +99,7 @@ void pbc_sum_bytes_G1_compressed(element_s *elem_sum,
 }
 
 void pbc_sum_bytes_G2_compressed(element_s *elem_sum,
-                                 byte_t *elem_bytes_ar,
+                                 uint8_t *elem_bytes_ar,
                                  size_t elem_size,
                                  size_t n,
                                  pairing_t pairing) {
@@ -110,10 +113,10 @@ void pbc_sum_bytes_G2_compressed(element_s *elem_sum,
   element_clear(tmp);
 }
 
-void bls_sign_message(byte_t *out_buf, element_s *sig_elem, element_s *hash_elem, byte_t *msg,
+void bls_sign_message(uint8_t *out_buf, element_s *sig_elem, element_s *hash_elem, uint8_t *msg,
                       uint32_t msg_len, element_s *secret_key) {
 
-  byte_t msg_hash[crypto_ghash_BYTES];
+	uint8_t msg_hash[crypto_ghash_BYTES];
   crypto_generichash(msg_hash, crypto_ghash_BYTES, msg, msg_len, NULL, 0);
   element_from_hash(hash_elem, msg_hash, crypto_ghash_BYTES);
 
@@ -121,10 +124,10 @@ void bls_sign_message(byte_t *out_buf, element_s *sig_elem, element_s *hash_elem
   element_to_bytes_compressed(out_buf, sig_elem);
 }
 
-int bls_verify_signature(element_s *sig, element_s *hash_elem, byte_t *sig_buf, byte_t *msg, uint32_t msg_len,
+int bls_verify_signature(element_s *sig, element_s *hash_elem, uint8_t *sig_buf, uint8_t *msg, uint32_t msg_len,
                          element_s *public_key, element_s *g2, pairing_t pairing) {
 
-  byte_t msg_hash[crypto_ghash_BYTES];
+	uint8_t msg_hash[crypto_ghash_BYTES];
   crypto_generichash(msg_hash, crypto_ghash_BYTES, msg, msg_len, NULL, 0);
   element_from_hash(hash_elem, msg_hash, crypto_ghash_BYTES);
   element_from_bytes_compressed(sig, sig_buf);

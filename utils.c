@@ -2,7 +2,7 @@
 #include <memory.h>
 #include "utils.h"
 
-void printhex(char *msg, byte_t *data, uint32_t len)
+void printhex(char *msg, uint8_t *data, uint32_t len)
 {
   uint32_t hex_len = len * 2 + 1;
   char hex_str[hex_len];
@@ -21,7 +21,7 @@ static char encoding_table[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
 static char *decoding_table = NULL;
 static int mod_table[] = {0, 2, 1};
 
-void print_b64(char *msg, byte_t *data,
+void print_b64(char *msg, uint8_t *data,
                size_t input_length)
 {
 
@@ -52,10 +52,10 @@ void print_b64(char *msg, byte_t *data,
     }
 	printf("\n");
 }
-void crypto_shared_secret(byte_t *shared_secret,
-                          byte_t *scalar_mult,
-                          byte_t *client_pub,
-                          byte_t *server_pub,
+void crypto_shared_secret(uint8_t *shared_secret,
+                          uint8_t *scalar_mult,
+                          uint8_t *client_pub,
+                          uint8_t *server_pub,
                           uint32_t output_size)
 {
   crypto_generichash_state hash_state;
@@ -66,27 +66,44 @@ void crypto_shared_secret(byte_t *shared_secret,
 	crypto_generichash_final(&hash_state, shared_secret, output_size);
 };
 
-void serialize_uint32(byte_t *out, uint32_t in)
+void serialize_uint32(uint8_t *out, uint32_t in)
 {
   uint32_t network_in = htonl(in);
   memcpy (out, &network_in, sizeof network_in);
 };
 
-uint32_t deserialize_uint32 (byte_t *in)
+uint32_t deserialize_uint32(uint8_t *in)
 {
   uint32_t *ptr = (uint32_t *) in;
   return ntohl(*ptr);
 }
 
-int crypto_chacha_decrypt(byte_t *m,
+int crypto_chacha_decrypt(uint8_t *m,
                           unsigned long long *mlen_p,
-                          byte_t *nsec,
-                          const byte_t *c,
+                          uint8_t *nsec,
+                          const uint8_t *c,
                           unsigned long long clen,
-                          const byte_t *ad,
+                          const uint8_t *ad,
                           unsigned long long adlen,
-                          const byte_t *npub,
-                          const byte_t *k)
+                          const uint8_t *npub,
+                          const uint8_t *k)
 {
 	return crypto_aead_chacha20poly1305_ietf_decrypt(m, mlen_p, nsec, c, clen, ad, adlen, npub, k);
 };
+
+int byte_buffer_init(byte_buffer_s *buf, uint32_t num_elems, uint32_t msg_size, uint32_t prefix_size)
+{
+	buf->num_msgs = 0;
+	buf->prefix_size = prefix_size;
+	buf->msg_len_bytes = msg_size;
+	buf->capacity_msgs = num_elems;
+	buf->capacity_bytes = num_elems * msg_size;
+	buf->base = calloc(1, prefix_size + buf->capacity_bytes);
+	if (!buf->base) {
+		fprintf(stderr, "calloc error in mix_buf_init\n");
+		return -1;
+	}
+	buf->pos = buf->base;
+	buf->data = buf->base + prefix_size;
+	return 0;
+}

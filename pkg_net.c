@@ -11,18 +11,18 @@
 struct pkg_conn
 {
 	int sock_fd;
-	u32 type;
-	u32 id;
-	byte_t read_buf[buf_size];
-	u32 read_remaining;
-	u32 curr_msg_len;
-	u32 bytes_read;
-	u32 msg_type;
-	byte_t write_buf[buf_size];
-	u32 bytes_written;
-	u32 write_remaining;
+	uint32_t type;
+	uint32_t id;
+	uint8_t read_buf[buf_size];
+	uint32_t read_remaining;
+	uint32_t curr_msg_len;
+	uint32_t bytes_read;
+	uint32_t msg_type;
+	uint8_t write_buf[buf_size];
+	uint32_t bytes_written;
+	uint32_t write_remaining;
 	struct epoll_event event;
-	u32 broadcast_remaining;
+	uint32_t broadcast_remaining;
 };
 
 typedef struct pkg_conn pkg_conn_s;
@@ -46,15 +46,15 @@ void net_pkg_auth_client(pkg_net_s *s, pkg_conn_s *conn, pkg_client *client)
 {
 	int res = pkg_auth_client(s->pkg, client);
 	if (!res) {
-		memcpy(conn->write_buf, client->eph_client_data, net_batch_prefix + pkg_enc_auth_res_BYTES);
-		conn->write_remaining = net_batch_prefix + pkg_enc_auth_res_BYTES;
+		memcpy(conn->write_buf, client->eph_client_data, net_header_BYTES + pkg_enc_auth_res_BYTES);
+		conn->write_remaining = net_header_BYTES + pkg_enc_auth_res_BYTES;
 		epoll_pkg_send(s, conn);
 	}
 }
 
 void epoll_broadcast_msg(pkg_net_s *s, pkg_conn_s *conn)
 {
-	ssize_t count = send(conn->sock_fd, s->pkg->eph_broadcast_message, net_batch_prefix + pkg_broadcast_msg_BYTES, 0);
+	ssize_t count = send(conn->sock_fd, s->pkg->eph_broadcast_message, net_header_BYTES + pkg_broadcast_msg_BYTES, 0);
 	printf("Sent %ld bytes of broadcast msg to  client\n", count);
 }
 
@@ -100,10 +100,10 @@ void pkg_client_read(pkg_net_s *s, pkg_conn_s *conn, ssize_t count)
 {
 	ssize_t c_read = count;
 	if (conn->curr_msg_len == 0) {
-		if ((count < net_batch_prefix)) {
+		if ((count < net_header_BYTES)) {
 			return;
 		}
-		u32 msg_type = deserialize_uint32(conn->read_buf);
+		uint32_t msg_type = deserialize_uint32(conn->read_buf);
 		if (msg_type == CLI_AUTH_REQ) {
 			conn->msg_type = CLI_AUTH_REQ;
 			conn->curr_msg_len = cli_pkg_single_auth_req_BYTES;
@@ -114,7 +114,7 @@ void pkg_client_read(pkg_net_s *s, pkg_conn_s *conn, ssize_t count)
 			close(conn->sock_fd);
 			return;
 		}
-		c_read -= net_batch_prefix;
+		c_read -= net_header_BYTES;
 	}
 
 	conn->read_remaining -= c_read;
@@ -126,13 +126,13 @@ void pkg_client_read(pkg_net_s *s, pkg_conn_s *conn, ssize_t count)
 	       conn->msg_type);
 	if (conn->read_remaining <= 0) {
 		if (conn->msg_type == CLI_AUTH_REQ) {
-			int index = pkg_client_lookup(s->pkg, conn->read_buf + net_batch_prefix);
+			int index = pkg_client_lookup(s->pkg, conn->read_buf + net_header_BYTES);
 			if (index != -1) {
 				pkg_client *cl = &s->pkg->clients[index];
 				printf("Received auth request from %s for round %d\n",
-				       conn->read_buf + net_batch_prefix, deserialize_uint32(conn->read_buf + 4));
+				       conn->read_buf + net_header_BYTES, deserialize_uint32(conn->read_buf + 4));
 				memcpy(cl->auth_msg_from_client,
-				       conn->read_buf + net_batch_prefix + user_id_BYTES,
+				       conn->read_buf + net_header_BYTES + user_id_BYTES,
 				       cli_pkg_single_auth_req_BYTES - user_id_BYTES);
 				int res = pkg_auth_client(s->pkg, cl);
 				if (!res) {
@@ -140,7 +140,7 @@ void pkg_client_read(pkg_net_s *s, pkg_conn_s *conn, ssize_t count)
 				}
 			}
 			else {
-				fprintf(stderr, "User lookup failed for %s\n", conn->read_buf + net_batch_prefix);
+				fprintf(stderr, "User lookup failed for %s\n", conn->read_buf + net_header_BYTES);
 			}
 		}
 

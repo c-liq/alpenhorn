@@ -1,10 +1,12 @@
 #ifndef ALPENHORN_CONFIG_H
 #define ALPENHORN_CONFIG_H
 #include <sodium.h>
-#include "utils.h"
+
 #include <sys/types.h>
 
 #define CLI_AUTH_REQ 50
+#define CLIENT_DIAL_MSG 150
+#define CLIENT_AF_MSG 151
 
 #define crypto_ghash_BYTES crypto_generichash_BYTES
 #define crypto_maxhash_BYTES crypto_generichash_BYTES_MAX
@@ -22,7 +24,8 @@
 #define num_mix_servers 2U
 #define user_id_BYTES 60U
 
-#define net_batch_prefix 8U
+#define net_header_BYTES 8U
+#define net_client_connect_BYTES num_mix_servers * (12U + crypto_box_PUBLICKEYBYTES)
 
 
 #define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + round_BYTES)
@@ -37,7 +40,7 @@
 #define pkg_enc_auth_res_BYTES (pkg_auth_res_BYTES + crypto_MACBYTES + crypto_NBYTES)
 #define pkg_broadcast_msg_BYTES (g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES)
 #define pkg_sig_message_BYTES (user_id_BYTES + crypto_box_PUBLICKEYBYTES + round_BYTES)
-
+#define mix_num_dial_mbs_stored 5
 #define initial_table_size 50U
 
 #define mix_num_buffer_elems 100000U
@@ -45,10 +48,11 @@
 #define AF_BATCH 1U
 #define DIAL_BATCH 2U
 #define NEW_DIAL_ROUND 3U
+#define NEW_AF_ROUND 4U
 #define NEW_KEY 4U
 #define DIAL_MB 40
 #define MIX_SYNC 1337
-typedef uint32_t u32;
+
 
 
 static const char pbc_params[] = "type f\n"
@@ -79,9 +83,10 @@ static const char bls_generator[] = "[[15724257330924097062160683695880250933232
 static const char ibe_generator[] =
     "[13445309910996477276498115007761070335613715482521447244233072900478772718670, 1756633159976726073430018948123414634726480138612936748031091597585345575016]";
 
-static const byte_t
-    user_ids[10][user_id_BYTES] = {"chris", "alice", "bob", "eve", "charlie", "jim", "megan", "john", "jill", "steve"};
-static const byte_t user_lt_pub_sig_keys[10][64] = {"dce2ce56f88900d2fc09128fd308954ece30fbda56b1202fd21ece8cb8e231bf",
+static const uint8_t
+	user_ids[10][user_id_BYTES] = {"chris", "alice", "bob", "eve", "charlie", "jim", "megan", "john", "jill", "steve"};
+
+static const uint8_t user_lt_pub_sig_keys[10][64] = {"dce2ce56f88900d2fc09128fd308954ece30fbda56b1202fd21ece8cb8e231bf",
                                                     "a11a8d3b6325efa5b6b5372f1a54783bf5b9b0816e7aad6c848bd4936b19a493",
                                                     "deb27d637dbb5e82234439dc6410dcff2720412affe09d69adaafeb775ca6eb1",
                                                     "cbf9aa2432aa0b7ed86fd4cee2e54f998b4019e0e1d2194d207553082bd3dd5e",
@@ -92,7 +97,7 @@ static const byte_t user_lt_pub_sig_keys[10][64] = {"dce2ce56f88900d2fc09128fd30
                                                     "031ca754e5896d5e84eb21866439e1b631225193619734f364de90f228485f94",
                                                     "b1fcd02a40da1e342f2c8404c7438e24d673666fe8160e5d23c7278244abc085"};
 
-static const byte_t user_lt_secret_sig_keys[10][128] =
+static const uint8_t user_lt_secret_sig_keys[10][128] =
     {"6581ce40d6971c2fd1d2ca07fe5280be823a327bca5bb8d3d110ec906247493cdce2ce56f88900d2fc09128fd308954ece30fbda56b1202fd21ece8cb8e231bf",
      "112425a435b38a6867722004400e228157a3b7722925c90db891ed31fd018ab9a11a8d3b6325efa5b6b5372f1a54783bf5b9b0816e7aad6c848bd4936b19a493",
      "458d01cfc4f208aebe02a07f84214be38d0a6a858c80af5a8d04b76241907d06deb27d637dbb5e82234439dc6410dcff2720412affe09d69adaafeb775ca6eb1",
