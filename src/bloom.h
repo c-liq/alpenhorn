@@ -16,6 +16,8 @@ struct bloomfilter_s
 	uint64_t hash_key;
 	uint32_t *partition_offsets;
 	double target_falsepos_rate;
+	uint32_t total_size_bytes;
+	uint32_t prefix_len;
 };
 
 void bloom_calc_partitions(const int m_target, uint32_t *m_actual_bytes,

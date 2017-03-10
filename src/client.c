@@ -36,6 +36,7 @@ int dial_call_friend(client_s *c, const uint8_t *user_id, const uint32_t intent)
 		fprintf(stderr, "could not generate session key for %s\n", user_id);
 		return -1;
 	}
+
 	result = dial_onion_encrypt_request(c);
 	if (result) {
 		fprintf(stderr, "Error while onion encrypting dialling token\n");
@@ -46,17 +47,16 @@ int dial_call_friend(client_s *c, const uint8_t *user_id, const uint32_t intent)
 
 void af_add_friend(client_s *client, const char *user_id)
 {
-	// verify userid string
+	printf("Adding friend id %s\n", user_id);
 	memcpy(client->friend_request_id, user_id, user_id_BYTES);
+	//memcpy(client->friend_request_id, client->user_id, user_id_BYTES);
 	af_create_request(client);
 }
 
 void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages)
 {
-	uint32_t mailbox_num = deserialize_uint32(mailbox);
-	//printf("Mailbox num: %d\n", mailbox_num);
-	uint8_t *msg_ptr = mailbox + mb_BYTES;
-	for (uint32_t i = 0; i < num_messages; i++) {
+	uint8_t *msg_ptr = mailbox;
+	for (int i = 0; i < num_messages; i++) {
 		af_decrypt_request(c, msg_ptr);
 		msg_ptr += af_ibeenc_request_BYTES;
 	}
@@ -88,21 +88,15 @@ void print_call(incoming_call_s *call)
 
 int dial_process_mb(client_s *c, uint8_t *mb_data)
 {
-	uint32_t msg_type = deserialize_uint32(mb_data);
-	uint32_t round_num = deserialize_uint32(mb_data + round_BYTES);
-	uint32_t num_tokens = deserialize_uint32(mb_data + (round_BYTES * 2));
-	if (msg_type != DIAL_MB) {
-		fprintf(stderr, "invalid mailbox format\n");
-		return -1;
-	}
-
+	uint32_t round_num = deserialize_uint32(mb_data);
+	uint32_t num_tokens = deserialize_uint32(mb_data + 4);
 	printf("Num Tokens: %d\n", num_tokens);
 
 	bloomfilter_s bloom;
 	int found = 0, num_calls = 0;
 	uint8_t dial_token_buf[dialling_token_BYTES];
 	keywheel_s *kw;
-	bloom_init(&bloom, c->bloom_p_val, num_tokens, 0, mb_data, 12);
+	bloom_init(&bloom, c->bloom_p_val, num_tokens, 0, mb_data, 8);
 
 	for (uint32_t i = 0; i < c->keywheel.num_keywheels; i++) {
 		kw = &c->keywheel.keywheels[i];
@@ -177,6 +171,8 @@ void af_accept_request(client_s *c, friend_request_s *req)
 	// Only information identifying the destination of a request, the mailbox no. of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
 	serialize_uint32(c->friend_request_buf, mb);
+
+	printhex("af", c->friend_request_buf + mb_BYTES, onionenc_friend_request_BYTES);
 	// Encrypt the request in layers ready for the mixnet
 	//af_onion_encrypt_request(c);
 }
@@ -209,6 +205,10 @@ void af_create_request(client_s *c)
 	// Also include the multisignature from PKG servers, primary source of verification
 	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
+	printhex("uid", c->user_id, user_id_BYTES);
+	printhex("b4 ibe",
+	         dr_ptr,
+	         round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES);
 	ibe_encrypt(c->friend_request_buf + mb_BYTES, dr_ptr, af_request_BYTES,
 	            &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
 	            c->friend_request_id, user_id_BYTES, &c->pairing);
@@ -216,18 +216,20 @@ void af_create_request(client_s *c)
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
 	serialize_uint32(c->friend_request_buf, mb);
 	// Encrypt the request in layers ready for the mixnet
+	printhex("enc", c->friend_request_buf + mb_BYTES, af_ibeenc_request_BYTES);
 	af_onion_encrypt_request(c);
 }
 
 int af_decrypt_request(client_s *c, uint8_t *request_buf)
 {
 	uint8_t request_buffer[af_request_BYTES];
+	printhex("dec", request_buf, af_ibeenc_request_BYTES);
 	int result;
 	result = ibe_decrypt(request_buffer, request_buf, af_request_BYTES + crypto_MACBYTES,
 	                     &c->pkg_ibe_secret_combined_g2, &c->pairing);
 
 	if (result) {
-		//fprintf(stderr, "%s: ibe decryption failure\n", client->user_id);
+		fprintf(stderr, "%s: ibe decryption failure\n", c->user_id);
 		return -1;
 	}
 
@@ -285,45 +287,53 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf)
 	return 0;
 }
 
-int af_create_pkg_auth_request(client_s *c)
+int af_create_pkg_auth_request(client_s *client)
 {
-	uint8_t *cli_sig_ptr;
-	uint8_t *cli_pub_key_ptr;
+	uint8_t *client_sig;
+	uint8_t *client_pk;
 	uint8_t *pkg_pub_key_ptr;
 	uint8_t *symmetric_key_ptr;
-
 	uint8_t *auth_request;
 
 	for (int i = 0; i < num_pkg_servers; i++) {
-		auth_request = c->pkg_auth_requests[i];
+		auth_request = client->pkg_auth_requests[i];
 		serialize_uint32(auth_request, CLI_AUTH_REQ);
-		serialize_uint32(auth_request + sizeof(uint32_t), c->af_round);
-		cli_pub_key_ptr = auth_request + net_header_BYTES + user_id_BYTES + crypto_sign_BYTES;
-		cli_sig_ptr = auth_request + net_header_BYTES + user_id_BYTES;
+		serialize_uint32(auth_request + sizeof(uint32_t), client->af_round);
+		client_pk = auth_request + net_header_BYTES + user_id_BYTES + crypto_sign_BYTES;
+		client_sig = auth_request + net_header_BYTES + user_id_BYTES;
 
-		pkg_pub_key_ptr = c->pkg_broadcast_msgs[i] + g1_elem_compressed_BYTES;
-		symmetric_key_ptr = c->pkg_eph_symmetric_keys[i];
+		pkg_pub_key_ptr = client->pkg_broadcast_msgs[i] + g1_elem_compressed_BYTES;
+		symmetric_key_ptr = client->pkg_eph_symmetric_keys[i];
 
-		crypto_sign_detached(cli_sig_ptr, NULL, c->pkg_broadcast_msgs[i],
-		                     pkg_broadcast_msg_BYTES, c->lt_sig_sk);
+		crypto_sign_detached(client_sig,
+		                     NULL,
+		                     client->pkg_broadcast_msgs[i],
+		                     pkg_broadcast_msg_BYTES,
+		                     client->lt_sig_sk);
+
 		uint8_t secret_key[crypto_box_SECRETKEYBYTES];
 		uint8_t scalar_mult[crypto_scalarmult_BYTES];
 		randombytes_buf(secret_key, crypto_box_SECRETKEYBYTES);
+		crypto_box_keypair(client_pk, secret_key);
 
-		crypto_box_keypair(cli_pub_key_ptr, secret_key);
 		if (crypto_scalarmult(scalar_mult, secret_key, pkg_pub_key_ptr)) {
-			fprintf(stderr, "Scalar mult error while authing with PKG's\n");
+			fprintf(stderr, "Scalar mult error while creating PKG auth request\n");
 			return -1;
 		}
+
 		crypto_shared_secret(symmetric_key_ptr,
 		                     scalar_mult,
-		                     cli_pub_key_ptr,
+		                     client_pk,
 		                     pkg_pub_key_ptr,
 		                     crypto_box_SECRETKEYBYTES);
 	}
 
-	pbc_sum_bytes_G1_compressed(&c->pkg_eph_pub_combined_g1, c->pkg_broadcast_msgs[0], pkg_broadcast_msg_BYTES,
-	                            num_pkg_servers, &c->pairing);
+	pbc_sum_bytes_G1_compressed(&client->pkg_eph_pub_combined_g1,
+	                            client->pkg_broadcast_msgs[0],
+	                            pkg_broadcast_msg_BYTES,
+	                            num_pkg_servers,
+	                            &client->pairing);
+	element_printf("ibe pk client: %B\n", &client->pkg_eph_pub_combined_g1);
 	return 0;
 }
 
@@ -339,8 +349,8 @@ int af_process_auth_responses(client_s *c)
 	element_init(g1_tmp, c->pairing.G1);
 	element_init(g2_tmp, c->pairing.G2);
 	for (int i = 0; i < num_pkg_servers; i++) {
-
 		auth_response = c->pkg_auth_responses[i];
+		printhex("BEEEP BEEEP\n------\n", auth_response, pkg_enc_auth_res_BYTES);
 		nonce_ptr = auth_response + pkg_auth_res_BYTES + crypto_MACBYTES;
 		int res = crypto_chacha_decrypt(auth_response, NULL, NULL, auth_response,
 		                                pkg_auth_res_BYTES + crypto_MACBYTES,
@@ -354,6 +364,7 @@ int af_process_auth_responses(client_s *c)
 		element_from_bytes_compressed(g2_tmp, auth_response + g1_elem_compressed_BYTES);
 		element_add(&c->pkg_multisig_combined_g1, &c->pkg_multisig_combined_g1, g1_tmp);
 		element_add(&c->pkg_ibe_secret_combined_g2, &c->pkg_ibe_secret_combined_g2, g2_tmp);
+		element_printf("client sk: %B\n", &c->pkg_ibe_secret_combined_g2);
 	}
 	return 0;
 }
@@ -361,7 +372,7 @@ int af_process_auth_responses(client_s *c)
 int onion_encrypt_message(client_s *client, uint8_t *msg, uint32_t base_msg_length)
 {
 	for (uint32_t i = 0; i < num_mix_servers; i++) {
-		int res = add_onion_layer(client, msg, base_msg_length, i);
+		int res = add_onion_encryption_layer(client, msg, base_msg_length, i);
 		if (res) {
 			fprintf(stderr, "Client: Error while onion encrypting message\n");
 			return -1;
@@ -380,35 +391,34 @@ int dial_onion_encrypt_request(client_s *client)
 	return onion_encrypt_message(client, client->dial_request_buf, dialling_token_BYTES);
 }
 
-int add_onion_layer(client_s *client, uint8_t *msg, uint32_t base_msg_length, uint32_t srv_id)
+int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id)
 {
-	// Add another layer of encryption to a message for the mixnet, appends the public dh key/nonce after the message
-	uint32_t message_length = base_msg_length + mb_BYTES + (onion_layer_BYTES * srv_id);
-	uint8_t *message_end_ptr = msg + message_length;
-	uint8_t *dh_pub_ptr = message_end_ptr + crypto_MACBYTES;
-	uint8_t *nonce_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
-	uint8_t *dh_mix_pub = client->mix_eph_pub_keys[num_mix_servers - 1 - srv_id];
+	uint32_t msg_len = base_msg_len + mb_BYTES + (onion_layer_BYTES * srv_id);
+	uint8_t *message_end = msg + msg_len;
+	uint8_t *dh_pk = message_end + crypto_MACBYTES;
+	uint8_t *nonce = dh_pk + crypto_box_PUBLICKEYBYTES;
+	uint8_t *dh_mix_pk = client->mix_eph_pub_keys[num_mix_servers - 1 - srv_id];
 
 	uint8_t dh_secret[crypto_box_SECRETKEYBYTES];
 	uint8_t scalar_mult[crypto_scalarmult_BYTES];
 	uint8_t shared_secret[crypto_ghash_BYTES];
 	randombytes_buf(dh_secret, crypto_box_SECRETKEYBYTES);
-	crypto_scalarmult_base(dh_pub_ptr, dh_secret);
+	crypto_scalarmult_base(dh_pk, dh_secret);
 
-	int res = crypto_scalarmult(scalar_mult, dh_secret, dh_mix_pub);
+	int res = crypto_scalarmult(scalar_mult, dh_secret, dh_mix_pk);
 	if (res) {
 		fprintf(stderr, "Scalarmult error while oniong encrypting friend request\n");
 		return -1;
 	}
-	crypto_shared_secret(shared_secret, scalar_mult, dh_pub_ptr, dh_mix_pub, crypto_ghash_BYTES);
-	randombytes_buf(nonce_ptr, crypto_NBYTES);
+	crypto_shared_secret(shared_secret, scalar_mult, dh_pk, dh_mix_pk, crypto_ghash_BYTES);
+	randombytes_buf(nonce, crypto_NBYTES);
 	crypto_aead_chacha20poly1305_ietf_encrypt(msg, NULL, msg,
-	                                          message_length, dh_pub_ptr, crypto_box_PUBLICKEYBYTES + crypto_NBYTES,
-	                                          NULL, nonce_ptr, shared_secret);
+	                                          msg_len, dh_pk, crypto_box_PUBLICKEYBYTES + crypto_NBYTES,
+	                                          NULL, nonce, shared_secret);
 	return 0;
 };
 
-void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk, const uint8_t *lt_sk)
+void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, const uint8_t *lt_sk_hex)
 {
 	c->af_num_mailboxes = 1;
 	c->dial_num_mailboxes = 1;
@@ -417,7 +427,7 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk, cons
 	c->friend_requests = NULL;
 
 	memcpy(c->user_id, user_id, user_id_BYTES);
-	for (int i = 0; i < num_mix_servers; i++) {
+	for (int i = 0; i < num_pkg_servers; i++) {
 		memcpy(c->pkg_auth_requests[i] + net_header_BYTES, user_id, user_id_BYTES);
 	}
 
@@ -447,13 +457,13 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk, cons
 	c->af_round = 1;
 	sodium_hex2bin(c->lg_sig_pk,
 	               crypto_sign_PUBLICKEYBYTES,
-	               (char *) lt_pk,
+	               (char *) lt_pk_hex,
 	               64,
 	               NULL,
 	               NULL,
 	               NULL);
 
-	sodium_hex2bin(c->lt_sig_sk, crypto_sign_SECRETKEYBYTES, (char *) lt_sk, 128, NULL,
+	sodium_hex2bin(c->lt_sig_sk, crypto_sign_SECRETKEYBYTES, (char *) lt_sk_hex, 128, NULL,
 	               NULL,
 	               NULL);
 
@@ -465,6 +475,10 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk, cons
 client_s *client_alloc(const uint8_t *user_id, const uint8_t *ltp_key, const uint8_t *lts_key)
 {
 	client_s *client = calloc(1, sizeof(client_s));
+	if (!client) {
+		fprintf(stderr, "Malloc failure in client allocation\n");
+		return NULL;
+	}
 	client_init(client, user_id, ltp_key, lts_key);
 	return client;
 };

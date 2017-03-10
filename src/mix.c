@@ -1,5 +1,6 @@
 #include <string.h>
 #include "mix.h"
+#include "../lib/xxhash/xxhash.h"
 #include <math.h>
 
 
@@ -16,13 +17,13 @@ int mix_buffers_init(mix_s *mix)
 	result = byte_buffer_init(&mix->af_data.in_buf, mix_num_buffer_elems, af_inc_msg_size, 0);
 	if (result)
 		return -1;
-	result = byte_buffer_init(&mix->af_data.out_buf, mix_num_buffer_elems, af_out_msg_size, 0);
+	result = byte_buffer_init(&mix->af_data.out_buf, mix_num_buffer_elems, af_out_msg_size, net_header_BYTES);
 	if (result)
 		return -1;
 	result = byte_buffer_init(&mix->dial_data.in_buf, mix_num_buffer_elems, dial_inc_msg_size, 0);
 	if (result)
 		return -1;
-	result = byte_buffer_init(&mix->dial_data.out_buf, mix_num_buffer_elems, dial_out_msg_size, 0);
+	result = byte_buffer_init(&mix->dial_data.out_buf, mix_num_buffer_elems, dial_out_msg_size, net_header_BYTES);
 	if (result)
 		return -1;
 
@@ -40,12 +41,13 @@ void mix_af_distribute(mix_s *mix)
 		af_mailbox_s *mb = &c->mailboxes[i];
 		mb->id = i;
 		mb->num_messages = mix->af_data.mb_counts[i];
-		uint32_t mailbox_sz = mb_BYTES + (af_ibeenc_request_BYTES * mb->num_messages);
+		uint32_t mailbox_sz = net_header_BYTES + (af_ibeenc_request_BYTES * mb->num_messages);
 		printf("Mailbox num msgs: %d - Mailbox size bytes: %d\n", mb->num_messages, mailbox_sz);
 		mb->size_bytes = mailbox_sz;
 		mb->data = calloc(1, mailbox_sz);
-		serialize_uint32(mb->data, mb->num_messages);
-		mb->next_msg_ptr = mb->data + mb_BYTES;
+		serialize_uint32(mb->data, AF_MB);
+		serialize_uint32(mb->data + 4, mb->num_messages);
+		mb->next_msg_ptr = mb->data + net_header_BYTES;
 	}
 
 	uint32_t curr_mailbox = 0;
@@ -69,8 +71,8 @@ void mix_dial_update_stack_index(mix_s *mix)
 
 void mix_dial_distribute(mix_s *mix)
 {
-	mix_dial_update_stack_index(mix);
-	dmb_container_s *c = &mix->dial_mb_container[mix->dial_cont_stack_head];
+	//mix_dial_update_stack_index(mix);
+	dmb_container_s *c = &mix->dial_mb_containers[0];
 	for (int i = 0; i < c->num_mailboxes; i++) {
 		bloom_clear(&c->mailboxes[i].bloom);
 	}
@@ -81,23 +83,35 @@ void mix_dial_distribute(mix_s *mix)
 	for (uint32_t i = 0; i < c->num_mailboxes; i++) {
 		dial_mailbox_s *mb = &c->mailboxes[i];
 		mb->id = i;
-		//mb->num_messages = mix->dial_data.mailbox_counts[i];
-		mb->num_messages = 10000;
-		bloom_init(&mb->bloom, mix->dial_data.bloom_p_val, mb->num_messages, 0, NULL, 12);
+		mb->num_messages = mix->dial_data.mailbox_counts[i];
+		mb->num_messages = 1000;
+		bloom_init(&mb->bloom, mix->dial_data.bloom_p_val, mb->num_messages, 0, NULL, 16);
 		// Fill in network prefix data
 		serialize_uint32(mb->bloom.base_ptr, DIAL_MB);
-		serialize_uint32(mb->bloom.base_ptr + sizeof(uint32_t), c->round);
-		serialize_uint32(mb->bloom.base_ptr + sizeof(uint32_t) * 2, mb->num_messages);
+		serialize_uint32(mb->bloom.base_ptr + 4, mb->bloom.total_size_bytes - net_header_BYTES);
+		serialize_uint32(mb->bloom.base_ptr + 8, c->round);
+		serialize_uint32(mb->bloom.base_ptr + 12, mb->num_messages);
 	}
 
-	uint32_t tmp_mailbox = 0;
-	uint8_t *curr_msg_ptr = mix->dial_data.out_buf.base + net_header_BYTES;
-
+	uint8_t *curr_msg_ptr = mix->dial_data.out_buf.data;
 	for (int i = 0; i < mix->dial_data.out_buf.num_msgs; i++) {
-		tmp_mailbox = deserialize_uint32(curr_msg_ptr);
-		bloom_add_elem(&c->mailboxes[tmp_mailbox].bloom, curr_msg_ptr + mb_BYTES, dialling_token_BYTES);
+		uint32_t mailbox = deserialize_uint32(curr_msg_ptr);
+		bloom_add_elem(&c->mailboxes[mailbox].bloom, curr_msg_ptr + mb_BYTES, dialling_token_BYTES);
 		curr_msg_ptr += (mb_BYTES + dialling_token_BYTES);
 	}
+}
+
+dial_mailbox_s *mix_dial_get_mailbox_buffer(mix_s *mix, uint32_t round, uint8_t *user_id)
+{
+/*
+	if (round < mix->dial_data.round - mix_num_dial_mbs_stored) {
+		return NULL;
+	}
+*/
+	dmb_container_s *container = &mix->dial_mb_containers[0];
+
+	uint32_t mb_num = (uint32_t) (XXH64(user_id, user_id_BYTES, 0) % container->num_mailboxes);
+	return &mix->dial_mb_containers[0].mailboxes[mb_num];
 }
 
 void mix_af_add_inc_msg(mix_s *mix, uint8_t *buf)
@@ -145,15 +159,15 @@ int mix_init(mix_s *mix, uint32_t server_id)
 
 	mix->dial_cont_stack_head = 0;
 	for (int i = 0; i < mix_num_dial_mbs_stored; i++) {
-		memset(&mix->dial_mb_container[i], 0, sizeof *mix->dial_mb_container);
+		memset(&mix->dial_mb_containers[i], 0, sizeof *mix->dial_mb_containers);
 	}
 
 	mix->af_data.round = 0;
-	mix->af_data.round_duration = 30;
+	mix->af_data.round_duration = 20;
 	mix->dial_data.round = 0;
-	mix->dial_data.round_duration = 20;
+	mix->dial_data.round_duration = 120;
 	mix->af_data.noisemu = 1;
-	mix->dial_data.noisemu = 10;
+	mix->dial_data.noisemu = 1;
 	mix->af_data.num_mailboxes = 1;
 	mix->dial_data.num_mailboxes = 1;
 	memset(&mix->af_mb_container, 0, sizeof mix->af_mb_container);
@@ -173,25 +187,29 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	return 0;
 }
 
-void mix_reset_buffer(byte_buffer_s *buf)
-{
-	buf->pos = buf->base;
-	buf->num_msgs = 0;
-}
 
 void mix_af_newround(mix_s *mix)
 {
-	mix_reset_buffer(&mix->af_data.in_buf);
-	mix_reset_buffer(&mix->af_data.out_buf);
+	buffer_clear(&mix->af_data.in_buf);
+	buffer_clear(&mix->af_data.out_buf);
 	mix->af_data.round++;
-	//crypto_box_keypair(mix->eph_pk, mix->eph_sk);
+	if (mix->is_last) {
+		for (int i = 0; i < 5; i++) {
+			mix->af_data.mb_counts[i] = 0;
+		}
+	}
 }
 
 void mix_dial_newround(mix_s *mix)
 {
-	mix_reset_buffer(&mix->dial_data.in_buf);
-	mix_reset_buffer(&mix->dial_data.out_buf);
+	buffer_clear(&mix->dial_data.in_buf);
+	buffer_clear(&mix->dial_data.out_buf);
 	mix->dial_data.round++;
+	if (mix->is_last) {
+		for (int i = 0; i < 5; i++) {
+			mix->dial_data.mailbox_counts[i] = 0;
+		}
+	}
 }
 
 void mix_shuffle_messages(uint8_t *messages, uint32_t msg_count, uint32_t msg_length)
@@ -213,14 +231,14 @@ void mix_af_shuffle(mix_s *mix)
 {
 	byte_buffer_s *buf = &mix->af_data.out_buf;
 	printf("%p %p %u %u\n", (void *) buf->base, (void *) buf->pos, buf->num_msgs, buf->msg_len_bytes);
-	mix_shuffle_messages(mix->af_data.out_buf.base + net_header_BYTES,
+	mix_shuffle_messages(mix->af_data.out_buf.data,
 	                     mix->af_data.out_buf.num_msgs,
 	                     mix->af_data.out_buf.msg_len_bytes);
 }
 
 void mix_dial_shuffle(mix_s *mix)
 {
-	mix_shuffle_messages(mix->dial_data.out_buf.base + net_header_BYTES,
+	mix_shuffle_messages(mix->dial_data.out_buf.data,
 	                     mix->dial_data.out_buf.num_msgs,
 	                     mix->dial_data.out_buf.msg_len_bytes);
 }
@@ -265,8 +283,6 @@ int mix_onion_encrypt_msg(mix_s *mix, uint8_t *msg, uint32_t msg_len)
 
 void mix_dial_add_noise(mix_s *mix)
 {
-	mix->dial_data.out_buf.pos = mix->dial_data.out_buf.base;
-	mix->dial_data.out_buf.pos += net_header_BYTES;
 	for (uint32_t i = 0; i < mix->dial_data.num_mailboxes; i++) {
 		for (int j = 0; j < mix->dial_data.noisemu; j++) {
 			uint8_t *curr_ptr = mix->dial_data.out_buf.pos;
@@ -285,9 +301,6 @@ void mix_dial_add_noise(mix_s *mix)
 
 void mix_af_add_noise(mix_s *mix)
 {
-	mix->af_data.out_buf.pos = mix->af_data.out_buf.base;
-	mix->af_data.out_buf.pos += net_header_BYTES;
-
 	for (uint32_t i = 0; i < mix->af_data.num_mailboxes; i++) {
 		for (int j = 0; j < mix->af_data.noisemu; j++) {
 			uint8_t *curr_ptr = mix->af_data.out_buf.pos;
@@ -319,7 +332,7 @@ int mix_remove_encryption_layer(mix_s *mix, uint8_t *out, uint8_t *c, uint32_t o
 	//printhex("entry dh", client_pub_dh_ptr, crypto_box_PUBLICKEYBYTES);
 	int result = crypto_scalarmult(scalar_mult, mix->eph_sk, client_pub_dh_ptr);
 	if (result) {
-		fprintf(stderr, "Scalarmult error\n");
+		fprintf(stderr, "Scalarmult error removing encryption layer\n");
 		return -1;
 	}
 
@@ -339,6 +352,7 @@ int mix_remove_encryption_layer(mix_s *mix, uint8_t *out, uint8_t *c, uint32_t o
 		fprintf(stderr, "Mix: Decryption error\n");
 		return -1;
 	}
+	//printhex("decrypted token", out, mb_BYTES + crypto_ghash_BYTES);
 	return 0;
 }
 
@@ -389,7 +403,7 @@ int mix_decrypt_messages(mix_s *mix,
 
 void mix_dial_decrypt_messages(mix_s *mix)
 {
-	uint8_t *in_ptr = mix->dial_data.in_buf.base;
+	uint8_t *in_ptr = mix->dial_data.in_buf.data;
 	uint8_t *out_ptr = mix->dial_data.out_buf.pos;
 	//printf("Num messages to decrypt: %d\n", mix->dial_data.in_buf.num_msgs);
 	int n = mix_decrypt_messages(mix,
@@ -410,7 +424,7 @@ void mix_dial_decrypt_messages(mix_s *mix)
 
 void mix_af_decrypt_messages(mix_s *mix)
 {
-	uint8_t *in_ptr = mix->af_data.in_buf.base;
+	uint8_t *in_ptr = mix->af_data.in_buf.data;
 	uint8_t *out_ptr = mix->af_data.out_buf.pos;
 
 	int n = mix_decrypt_messages(mix,

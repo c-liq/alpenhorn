@@ -84,7 +84,7 @@ struct mix_s
 	uint8_t eph_sk[crypto_box_SECRETKEYBYTES];
 	uint8_t *mix_dh_pks[crypto_box_PUBLICKEYBYTES];
 	afmb_container_s af_mb_container;
-	dmb_container_s dial_mb_container[mix_num_dial_mbs_stored];
+	dmb_container_s dial_mb_containers[mix_num_dial_mbs_stored];
 	uint32_t dial_cont_stack_head;
 	mix_af_s af_data;
 	mix_dial_s dial_data;
@@ -108,4 +108,5 @@ void mix_dial_add_inc_msg(mix_s *mix, uint8_t *msg);
 void mix_af_newround(mix_s *mix);
 void mix_dial_newround(mix_s *mix);
 int byte_buffer_init(byte_buffer_s *buf, uint32_t num_elems, uint32_t msg_size, uint32_t prefix_size);
+dial_mailbox_s *mix_dial_get_mailbox_buffer(mix_s *mix, uint32_t round, uint8_t *user_id);
 #endif //ALPENHORN_MIX_H

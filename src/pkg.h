@@ -43,7 +43,7 @@ struct pkg_client {
   uint8_t rnd_sig_msg[pkg_sig_message_BYTES];
   // Post-auth response: contains IBE signature fragment + IBE secret key_state for user, encrypted
   // symmetrically using key_state derived from fresh ECDH exchange
-  uint8_t eph_client_data[pkg_enc_auth_res_BYTES];
+  uint8_t eph_client_data[net_header_BYTES + pkg_enc_auth_res_BYTES];
 	uint8_t *auth_response_ibe_key_ptr; // Pointer into response buffer where secret key_state will be placed
   // IBE elements
   element_t hashed_id_elem_g2; // Permanent

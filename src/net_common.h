@@ -24,6 +24,15 @@ enum conn_type
 
 typedef enum conn_type conn_type;
 
+struct mailbox_request
+{
+	uint8_t *buffer;
+	uint32_t mailbox_size;
+	uint32_t bytes_read;
+};
+
+typedef struct mailbox_request mailbox_request;
+
 struct connection
 {
 	conn_type type;
@@ -45,6 +54,7 @@ struct connection
 	connection *next;
 	connection *prev;
 	uint32_t bc_bytes_remaining;
+	mailbox_request mb_request;
 };
 
 int net_accept(int listen_fd, int set_nb);

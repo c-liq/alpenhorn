@@ -77,15 +77,15 @@ struct incoming_call
 };
 
 client_s *client_alloc(const uint8_t *user_id, const uint8_t *ltp_key, const uint8_t *lts_key);
-void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk, const uint8_t *lt_sk);
-int af_create_pkg_auth_request(client_s *c);
+void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, const uint8_t *lt_sk_hex);
+int af_create_pkg_auth_request(client_s *client);
 void af_create_request(client_s *c);
 int af_process_auth_responses(client_s *c);
 int af_decrypt_request(client_s *c, uint8_t *request_buf);
 void print_friend_request(friend_request_s *req);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
-int add_onion_layer(client_s *client, uint8_t *msg, uint32_t base_msg_length, uint32_t srv_id);
+int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id);
 void af_add_friend(client_s *client, const char *user_id);
 void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages);
 void af_accept_request(client_s *c, friend_request_s *req);

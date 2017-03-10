@@ -48,6 +48,7 @@ void net_pkg_auth_client(pkg_net_s *s, pkg_conn_s *conn, pkg_client *client)
 	if (!res) {
 		memcpy(conn->write_buf, client->eph_client_data, net_header_BYTES + pkg_enc_auth_res_BYTES);
 		conn->write_remaining = net_header_BYTES + pkg_enc_auth_res_BYTES;
+		printhex("pkg auth response", client->eph_client_data + net_header_BYTES, pkg_enc_auth_res_BYTES);
 		epoll_pkg_send(s, conn);
 	}
 }

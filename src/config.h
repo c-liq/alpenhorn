@@ -7,6 +7,8 @@
 #define CLI_AUTH_REQ 50
 #define CLIENT_DIAL_MSG 150
 #define CLIENT_AF_MSG 151
+#define CLIENT_DIAL_MB_REQUEST 152
+#define CLIENT_AF_MB_REQUEST 153
 
 #define crypto_ghash_BYTES crypto_generichash_BYTES
 #define crypto_maxhash_BYTES crypto_generichash_BYTES_MAX
@@ -23,9 +25,11 @@
 #define num_pkg_servers 1U
 #define num_mix_servers 2U
 #define user_id_BYTES 60U
+#define net_msg_type_BYTES 4U
 
 #define net_header_BYTES 8U
 #define net_client_connect_BYTES num_mix_servers * (12U + crypto_box_PUBLICKEYBYTES)
+#define net_client_dial_mb_request (net_header_BYTES + user_id_BYTES)
 
 
 #define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + round_BYTES)
@@ -46,12 +50,15 @@
 #define mix_num_buffer_elems 100000U
 
 #define AF_BATCH 1U
-#define DIAL_BATCH 2U
+#define DIAL_BATCH 9U
 #define NEW_DIAL_ROUND 3U
 #define NEW_AF_ROUND 4U
 #define NEW_KEY 4U
 #define DIAL_MB 40
+#define AF_MB 41
 #define MIX_SYNC 1337
+#define NEW_DMB_AVAIL 188
+#define NEW_AFMB_AVAIL 189
 
 
 

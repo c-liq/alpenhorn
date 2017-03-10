@@ -8,7 +8,8 @@
 
 typedef struct element_s element_s;
 typedef struct pairing_s pairing_s;
-#define buf_size 2048
+
+#define buf_size 16348
 
 struct byte_buffer
 {
@@ -48,4 +49,6 @@ int crypto_chacha_decrypt(unsigned char *m,
                           const unsigned char *k);
 
 int byte_buffer_init(byte_buffer_s *buf, uint32_t num_elems, uint32_t msg_size, uint32_t prefix_size);
+void buffer_clear(byte_buffer_s *buf);
+
 #endif //ALPENHORN_UTILS_H

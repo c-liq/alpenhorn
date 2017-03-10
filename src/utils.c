@@ -10,48 +10,6 @@ void printhex(char *msg, uint8_t *data, uint32_t len)
 	printf("%s: %s\n", msg, hex_str);
 }
 
-static char encoding_table[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-                                'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-                                'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-                                'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
-                                'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-                                'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-                                'w', 'x', 'y', 'z', '0', '1', '2', '3',
-                                '4', '5', '6', '7', '8', '9', '+', '/'};
-static char *decoding_table = NULL;
-static int mod_table[] = {0, 2, 1};
-
-void print_b64(char *msg, uint8_t *data,
-               size_t input_length)
-{
-
-  size_t output_length = 4 * ((input_length + 2) / 3);
-
-  char encoded_data[output_length];
-
-	for (int i = 0, j = 0; i < input_length;) {
-
-      uint32_t octet_a = i < input_length ? data[i++] : 0;
-      uint32_t octet_b = i < input_length ? data[i++] : 0;
-      uint32_t octet_c = i < input_length ? data[i++] : 0;
-
-      uint32_t triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
-
-      encoded_data[j++] = encoding_table[(triple >> 3 * 6) & 0x3F];
-      encoded_data[j++] = encoding_table[(triple >> 2 * 6) & 0x3F];
-      encoded_data[j++] = encoding_table[(triple >> 1 * 6) & 0x3F];
-      encoded_data[j++] = encoding_table[(triple >> 0 * 6) & 0x3F];
-    }
-
-  for (int i = 0; i < mod_table[input_length % 3]; i++)
-    encoded_data[output_length - 1 - i] = '=';
-
-	printf("%s: ", msg);
-	for (int i = 0; i < sizeof encoded_data; i++) {
-		printf("%c", encoded_data[i]);
-    }
-	printf("\n");
-}
 void crypto_shared_secret(uint8_t *shared_secret,
                           uint8_t *scalar_mult,
                           uint8_t *client_pub,
@@ -103,7 +61,14 @@ int byte_buffer_init(byte_buffer_s *buf, uint32_t num_elems, uint32_t msg_size, 
 		fprintf(stderr, "calloc error in mix_buf_init\n");
 		return -1;
 	}
-	buf->pos = buf->base;
+	buf->pos = buf->base + prefix_size;
 	buf->data = buf->base + prefix_size;
 	return 0;
+}
+
+void buffer_clear(byte_buffer_s *buf)
+{
+	memset(buf->base, 0, buf->prefix_size);
+	buf->pos = buf->data;
+	buf->num_msgs = 0;
 }

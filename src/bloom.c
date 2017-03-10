@@ -182,6 +182,8 @@ int bloom_init(bloomfilter_s *bf, double p, uint32_t n, uint64_t hash_key, uint8
 	bf->partition_offsets = part_offsets;
 	bf->target_falsepos_rate = p;
 	bf->size_bytes = actual_size;
+	bf->total_size_bytes = actual_size + prefix_len;
+	bf->prefix_len = prefix_len;
 
 	return 0;
 }

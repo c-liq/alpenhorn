@@ -46,6 +46,7 @@ void connection_init(connection *conn)
 	conn->curr_msg_len = 0;
 	conn->on_write = NULL;
 	conn->on_read = NULL;
+	conn->event.events = 0;
 }
 
 int net_send_nb(int sock_fd, uint8_t *buf, size_t n)
