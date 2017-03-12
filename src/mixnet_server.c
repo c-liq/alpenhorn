@@ -25,6 +25,16 @@ struct mixnet_server
 	connection *clients;
 };
 
+void net_mix_pkg_broadcast(net_server_s *s)
+{
+	uint8_t buf[net_header_BYTES];
+	serialize_uint32(buf, NEW_AF_ROUND);
+	serialize_uint32(buf + net_msg_type_BYTES, s->mix->af_data.round);
+	for (int i = 0; i < num_pkg_servers; i++) {
+		send(s->pkg_conns[i].sock_fd, buf, net_header_BYTES, 0);
+	}
+}
+
 void net_mix_new_dr(net_server_s *s)
 {
 	if (!s->mix->is_last) {
@@ -381,7 +391,8 @@ void net_broadcast_new_afr(net_server_s *s)
 	uint8_t bc_buf[net_header_BYTES];
 	serialize_uint32(bc_buf, NEW_AF_ROUND);
 	serialize_uint32(bc_buf + 4, s->mix->af_data.round);
-
+	serialize_uint32(s->bc_buf.base + 4, s->mix->af_data.round + 1);
+	serialize_uint32(s->bc_buf.base + 8, s->mix->dial_data.round + 1);
 	connection *conn = s->clients;
 	while (conn) {
 		send(conn->sock_fd, bc_buf, sizeof bc_buf, 0);
@@ -448,7 +459,6 @@ void net_mix_entry_clientread(void *server, connection *conn, ssize_t count)
 			}
 
 		}
-		printf("Client msg bytes read: %ld | remaining: %ld\n", conn->bytes_read, conn->read_remaining);
 		if (conn->bytes_read < net_header_BYTES + conn->curr_msg_len) {
 			return;
 		}
@@ -573,6 +583,7 @@ void net_mix_af_forward(net_server_s *s)
 	byte_buffer_s *buf = &s->mix->af_data.out_buf;
 	net_mix_batch_forward(s, buf);
 	mix_af_newround(s->mix);
+	net_mix_pkg_broadcast(s);
 	mix_af_add_noise(s->mix);
 }
 

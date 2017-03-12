@@ -163,9 +163,9 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	}
 
 	mix->af_data.round = 0;
-	mix->af_data.round_duration = 20;
+	mix->af_data.round_duration = 10;
 	mix->dial_data.round = 0;
-	mix->dial_data.round_duration = 120;
+	mix->dial_data.round_duration = 120000;
 	mix->af_data.noisemu = 1;
 	mix->dial_data.noisemu = 1;
 	mix->af_data.num_mailboxes = 1;

@@ -6,6 +6,7 @@
 #include "bloom.h"
 #include <math.h>
 
+
 uint32_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id)
 {
 	uint64_t hash = XXH64(user_id, user_id_BYTES, 0);
@@ -53,11 +54,13 @@ void af_add_friend(client_s *client, const char *user_id)
 	af_create_request(client);
 }
 
-void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages)
+void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages, uint32_t round)
 {
+	round = c->af_round - 1;
+	printf("Processing AF mailbox for round %u\n", round);
 	uint8_t *msg_ptr = mailbox;
 	for (int i = 0; i < num_messages; i++) {
-		af_decrypt_request(c, msg_ptr);
+		af_decrypt_request(c, msg_ptr, round);
 		msg_ptr += af_ibeenc_request_BYTES;
 	}
 }
@@ -140,8 +143,26 @@ void init_fr_buf(struct friend_request_buf *buf)
 	buf->multisig = buf->client_sig + crypto_sign_BYTES;
 }
 
-void af_accept_request(client_s *c, friend_request_s *req)
+int af_accept_request(client_s *c, const char *user_id)
 {
+	if (!user_id) {
+		fprintf(stderr, "no user id supplied to accept request\n");
+		return -1;
+	}
+	friend_request_s *req = NULL;
+	friend_request_s *tmp = c->friend_requests;
+	while (tmp) {
+		if (!(strncmp((char *) user_id, (char *) tmp->user_id, user_id_BYTES))) {
+			req = tmp;
+			break;
+		}
+		tmp = tmp->next;
+	}
+
+	if (!req) {
+		fprintf(stderr, "could not find pending friend request matching id\n");
+		return -1;
+	}
 	uint8_t *dr_ptr = c->friend_request_buf + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES + crypto_NBYTES;
 	uint8_t *user_id_ptr = dr_ptr + round_BYTES;
 	uint8_t *dh_pk_ptr = user_id_ptr + user_id_BYTES;
@@ -153,7 +174,7 @@ void af_accept_request(client_s *c, friend_request_s *req)
 	keywheel_s *new_kw = kw_from_request(&c->keywheel, friend_userid_ptr, dh_pk_ptr, req->dh_pk);
 	if (!new_kw) {
 		fprintf(stderr, "Client: Couldn't construct keywheel for new contact\n");
-		return;
+		return -1;
 	}
 
 	memcpy(user_id_ptr, c->user_id, user_id_BYTES);
@@ -171,10 +192,8 @@ void af_accept_request(client_s *c, friend_request_s *req)
 	// Only information identifying the destination of a request, the mailbox no. of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
 	serialize_uint32(c->friend_request_buf, mb);
-
-	printhex("af", c->friend_request_buf + mb_BYTES, onionenc_friend_request_BYTES);
 	// Encrypt the request in layers ready for the mixnet
-	//af_onion_encrypt_request(c);
+	af_onion_encrypt_request(c);
 }
 
 void af_create_request(client_s *c)
@@ -205,10 +224,6 @@ void af_create_request(client_s *c)
 	// Also include the multisignature from PKG servers, primary source of verification
 	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
-	printhex("uid", c->user_id, user_id_BYTES);
-	printhex("b4 ibe",
-	         dr_ptr,
-	         round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES);
 	ibe_encrypt(c->friend_request_buf + mb_BYTES, dr_ptr, af_request_BYTES,
 	            &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
 	            c->friend_request_id, user_id_BYTES, &c->pairing);
@@ -216,20 +231,17 @@ void af_create_request(client_s *c)
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
 	serialize_uint32(c->friend_request_buf, mb);
 	// Encrypt the request in layers ready for the mixnet
-	printhex("enc", c->friend_request_buf + mb_BYTES, af_ibeenc_request_BYTES);
 	af_onion_encrypt_request(c);
 }
 
-int af_decrypt_request(client_s *c, uint8_t *request_buf)
+int af_decrypt_request(client_s *c, uint8_t *request_buf, uint32_t round)
 {
 	uint8_t request_buffer[af_request_BYTES];
-	printhex("dec", request_buf, af_ibeenc_request_BYTES);
-	int result;
-	result = ibe_decrypt(request_buffer, request_buf, af_request_BYTES + crypto_MACBYTES,
-	                     &c->pkg_ibe_secret_combined_g2, &c->pairing);
+	int result = ibe_decrypt(request_buffer, request_buf, af_request_BYTES + crypto_MACBYTES,
+	                         &c->pkg_ibe_secret_combined_g2[!c->curr_ibe], &c->pairing);
 
 	if (result) {
-		fprintf(stderr, "%s: ibe decryption failure\n", c->user_id);
+		//	fprintf(stderr, "%s: ibe decryption failure\n", c->user_id);
 		return -1;
 	}
 
@@ -242,14 +254,13 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf)
 
 	// Reconstruct the message signed by the PKG's so we can verify the signature
 	uint8_t multisig_message[pkg_sig_message_BYTES];
-	serialize_uint32(multisig_message, c->af_round);
+	serialize_uint32(multisig_message, round);
 	memcpy(multisig_message + round_BYTES, user_id_ptr, user_id_BYTES);
 	memcpy(multisig_message + round_BYTES + user_id_BYTES, lt_sig_key_ptr, crypto_sign_PUBLICKEYBYTES);
 
 	element_t sig_verify_elem, hash_elem;
 	element_init(sig_verify_elem, c->pairing.G1);
 	element_init(hash_elem, c->pairing.G1);
-
 	result = bls_verify_signature(sig_verify_elem,
 	                              hash_elem,
 	                              multisig_ptr,
@@ -278,10 +289,9 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf)
 	memcpy(new_req->user_id, user_id_ptr, user_id_BYTES);
 	memcpy(new_req->dh_pk, dh_pub_ptr, crypto_box_PUBLICKEYBYTES);
 	memcpy(new_req->lt_sig_key, lt_sig_key_ptr, crypto_sign_PUBLICKEYBYTES);
+
 	new_req->dialling_round = deserialize_uint32(dialling_round_ptr);
-	if (c->friend_requests) {
-		new_req->next = c->friend_requests;
-	}
+	new_req->next = c->friend_requests;
 	c->friend_requests = new_req;
 	print_friend_request(c->friend_requests);
 	return 0;
@@ -333,7 +343,6 @@ int af_create_pkg_auth_request(client_s *client)
 	                            pkg_broadcast_msg_BYTES,
 	                            num_pkg_servers,
 	                            &client->pairing);
-	element_printf("ibe pk client: %B\n", &client->pkg_eph_pub_combined_g1);
 	return 0;
 }
 
@@ -342,7 +351,7 @@ int af_process_auth_responses(client_s *c)
 	uint8_t *auth_response;
 	uint8_t *nonce_ptr;
 
-	element_set1(&c->pkg_ibe_secret_combined_g2);
+	element_set1(&c->pkg_ibe_secret_combined_g2[!c->curr_ibe]);
 	element_set1(&c->pkg_multisig_combined_g1);
 	element_t g1_tmp;
 	element_t g2_tmp;
@@ -350,7 +359,6 @@ int af_process_auth_responses(client_s *c)
 	element_init(g2_tmp, c->pairing.G2);
 	for (int i = 0; i < num_pkg_servers; i++) {
 		auth_response = c->pkg_auth_responses[i];
-		printhex("BEEEP BEEEP\n------\n", auth_response, pkg_enc_auth_res_BYTES);
 		nonce_ptr = auth_response + pkg_auth_res_BYTES + crypto_MACBYTES;
 		int res = crypto_chacha_decrypt(auth_response, NULL, NULL, auth_response,
 		                                pkg_auth_res_BYTES + crypto_MACBYTES,
@@ -363,9 +371,11 @@ int af_process_auth_responses(client_s *c)
 		element_from_bytes_compressed(g1_tmp, auth_response);
 		element_from_bytes_compressed(g2_tmp, auth_response + g1_elem_compressed_BYTES);
 		element_add(&c->pkg_multisig_combined_g1, &c->pkg_multisig_combined_g1, g1_tmp);
-		element_add(&c->pkg_ibe_secret_combined_g2, &c->pkg_ibe_secret_combined_g2, g2_tmp);
-		element_printf("client sk: %B\n", &c->pkg_ibe_secret_combined_g2);
+		element_add(&c->pkg_ibe_secret_combined_g2[!c->curr_ibe], &c->pkg_ibe_secret_combined_g2[!c->curr_ibe], g2_tmp);
 	}
+	c->authed = true;
+	c->curr_ibe = !c->curr_ibe;
+	printf("[Client authed for round %u]\n", c->af_round);
 	return 0;
 }
 
@@ -420,6 +430,7 @@ int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg
 
 void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, const uint8_t *lt_sk_hex)
 {
+	c->authed = false;
 	c->af_num_mailboxes = 1;
 	c->dial_num_mailboxes = 1;
 	c->dialling_round = 0;
@@ -433,7 +444,9 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 
 	pairing_init_set_str(&c->pairing, pbc_params);
 	element_init(&c->pkg_multisig_combined_g1, c->pairing.G1);
-	element_init(&c->pkg_ibe_secret_combined_g2, c->pairing.G2);
+	element_init(&c->pkg_ibe_secret_combined_g2[0], c->pairing.G2);
+	element_init(&c->pkg_ibe_secret_combined_g2[1], c->pairing.G2);
+	c->curr_ibe = 0;
 	element_init(&c->pkg_eph_pub_combined_g1, c->pairing.G1);
 	element_init(&c->pkg_friend_elem, c->pairing.G2);
 	element_init(&c->ibe_gen_element_g1, c->pairing.G1);

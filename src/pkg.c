@@ -32,7 +32,16 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 		memset(&server->clients[i], 0, sizeof(pkg_client));
 		pkg_client_init(&server->clients[i], server, user_ids[i], user_lt_pub_sig_keys[i]);
 	}
-	pkg_new_round(server);
+
+	pkg_new_ibe_keypair(server);
+	crypto_box_keypair(server->broadcast_dh_pkey_ptr, server->eph_secret_dh_key);
+	serialize_uint32(server->eph_broadcast_message, PKG_BR_MSG);
+	serialize_uint32(server->eph_broadcast_message + sizeof(uint32_t), server->current_round);
+	// Extract secret keys and generate signatures for each client_s
+	for (int i = 0; i < server->num_clients; i++) {
+		pkg_extract_client_sk(server, &server->clients[i]);
+		pkg_sign_for_client(server, &server->clients[i]);
+	}
 	return 0;
 }
 
@@ -144,7 +153,6 @@ int pkg_auth_client(pkg_server *server, pkg_client *client)
 
 void pkg_encrypt_client_response(pkg_server *server, pkg_client *client)
 {
-
 	serialize_uint32(client->eph_client_data + sizeof(uint32_t), server->current_round);
 	uint8_t
 		*nonce_ptr = client->eph_client_data + net_header_BYTES + g1_elem_compressed_BYTES + g2_elem_compressed_BYTES
@@ -159,14 +167,12 @@ void pkg_encrypt_client_response(pkg_server *server, pkg_client *client)
 	                                          NULL,
 	                                          nonce_ptr,
 	                                          client->eph_symmetric_key);
-
 }
 
 void pkg_new_ibe_keypair(pkg_server *server)
 {
 	element_random(server->eph_secret_key_elem_zr);
 	element_pow_zn(server->eph_pub_key_elem_g1, &server->ibe_gen_elem_g1, server->eph_secret_key_elem_zr);
-	element_printf("pkg ibe pk: %B\n", server->eph_pub_key_elem_g1);
 	element_to_bytes_compressed(server->eph_broadcast_message + net_header_BYTES, server->eph_pub_key_elem_g1);
 
 }
@@ -175,12 +181,12 @@ void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
 {
 	element_pow_zn(client->eph_sk_G2, client->hashed_id_elem_g2, server->eph_secret_key_elem_zr);
 	element_to_bytes_compressed(client->auth_response_ibe_key_ptr, client->eph_sk_G2);
-	printhex("ibe key hex", client->auth_response_ibe_key_ptr, element_length_in_bytes_compressed(client->eph_sk_G2));
+
 }
 
 void pkg_sign_for_client(pkg_server *server, pkg_client *client)
 {
-	serialize_uint32(client->rnd_sig_msg, server->current_round);
+	serialize_uint32(client->rnd_sig_msg, server->current_round + 1);
 	bls_sign_message(client->eph_client_data + net_header_BYTES, client->eph_sig_elem_G1,
 	                 client->eph_sig_hash_elem_g1, client->rnd_sig_msg,
 	                 pkg_sig_message_BYTES, server->lt_sig_sk_elem);

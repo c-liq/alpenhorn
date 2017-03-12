@@ -42,6 +42,7 @@ struct client_connection
 	struct epoll_event event;
 	void (*on_read)(void *owner, client_connection *conn, ssize_t count);
 	void (*on_write)(void *owner, client_connection *conn, ssize_t count);
+	unsigned char conn_type;
 };
 
 typedef struct client_net client_net_s;
@@ -69,7 +70,7 @@ void do_action(client_net_s *c, action *a)
 		af_add_friend(c->client, a->user_id);
 		break;
 	case CONFIRM_FRIEND:
-		af_accept_request(c->client, NULL);
+		af_accept_request(c->client, a->user_id);
 		break;
 	case DIAL_FRIEND:
 		dial_call_friend(c->client, (uint8_t *) a->user_id, a->intent);
@@ -131,6 +132,7 @@ int net_client_init(client_net_s *cs, client_s *c)
 	cs->num_auth_responses = 0;
 	cs->num_broadcast_responses = 0;
 	cs->running = 0;
+
 
 	client_connection_init(&cs->mix_entry);
 	client_connection_init(&cs->mix_last);
@@ -226,6 +228,13 @@ void epoll_send(client_net_s *c, client_connection *conn)
 }
 //Todo
 
+void net_process_read(void *s, client_connection *conn, ssize_t count)
+{
+	client_net_s *net_cli = (client_net_s *) s;
+	conn->bytes_read = count;
+
+}
+
 void net_client_lastmix_read(void *s, client_connection *conn, ssize_t count)
 {
 	client_net_s *c = (client_net_s *) s;
@@ -284,7 +293,14 @@ void net_client_lastmix_read(void *s, client_connection *conn, ssize_t count)
 			dial_process_mb(c->client, conn->read_buf->base + net_header_BYTES);
 		}
 		else if (conn->msg_type == AF_MB) {
-			af_process_mb(c->client, conn->read_buf->base + net_header_BYTES, conn->read_buf->num_msgs);
+			uint32_t round = deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES);
+			af_process_mb(c->client, conn->read_buf->base + net_header_BYTES, conn->read_buf->num_msgs, round);
+			c->client->last_mailbox_read++;
+			if (c->num_auth_responses == num_pkg_servers) {
+				printf("Processed mailbox -> Replace IBE keys by processing auth responses\n");
+				af_process_auth_responses(c->client);
+				c->num_auth_responses = 0;
+			}
 		}
 		else if (conn->msg_type == NEW_AFMB_AVAIL) {
 			serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining, CLIENT_AF_MB_REQUEST);
@@ -350,10 +366,29 @@ void net_client_mixentry_read(void *cl_ptr, client_connection *conn, ssize_t cou
 			       c->client->friend_request_buf,
 			       onionenc_friend_request_BYTES);
 			conn->write_remaining += net_header_BYTES + onionenc_friend_request_BYTES;
+
+			c->client->authed = false;
+			c->num_broadcast_responses = 0;
+			c->num_auth_responses = 0;
 			c->client->af_round++;
 			epoll_send(c, conn);
 			af_fake_request(c->client);
 		}
+	}
+}
+
+void net_client_pkg_auth(client_net_s *cn)
+{
+	for (int i = 0; i < num_pkg_servers; i++) {
+		client_connection *conn = &cn->pkg_client_connections[i];
+		memcpy(conn->write_buf,
+		       cn->client->pkg_auth_requests[i],
+		       net_header_BYTES + cli_pkg_single_auth_req_BYTES);
+		conn->bytes_written = 0;
+		serialize_uint32(conn->write_buf, CLI_AUTH_REQ);
+		serialize_uint32(conn->write_buf + sizeof(uint32_t), cn->client->af_round);
+		conn->write_remaining = net_header_BYTES + cli_pkg_single_auth_req_BYTES;
+		epoll_csend(cn, &cn->pkg_client_connections[i]);
 	}
 }
 
@@ -381,7 +416,8 @@ void net_client_pkg_read(void *cl_ptr, client_connection *conn, ssize_t count)
 		}
 
 		else {
-			fprintf(stderr, "Invalid message\n");
+			fprintf(stderr, "Invalid message %ld %ld\n", count, conn->bytes_read);
+			printhex("read buf", conn->read_buf->base, conn->bytes_read);
 			close(conn->sock_fd);
 			return;
 		}
@@ -401,22 +437,35 @@ void net_client_pkg_read(void *cl_ptr, client_connection *conn, ssize_t count)
 		       conn->read_buf->base + net_header_BYTES,
 		       pkg_broadcast_msg_BYTES);
 		client->num_broadcast_responses++;
+		if (client->num_broadcast_responses == num_pkg_servers) {
+			af_create_pkg_auth_request(client->client);
+			net_client_pkg_auth(client);
+			client->num_broadcast_responses = 0;
+		}
 	}
 
 	else if (conn->msg_type == PKG_AUTH_RES_MSG) {
 		memcpy(client->client->pkg_auth_responses[conn->id],
 		       conn->read_buf->base + net_header_BYTES,
 		       pkg_enc_auth_res_BYTES);
-		printhex("auth response", conn->read_buf->base + net_header_BYTES, pkg_enc_auth_res_BYTES);
+		//printhex("auth response", conn->read_buf->base + net_header_BYTES, pkg_enc_auth_res_BYTES);
 		client->num_auth_responses++;
+
+		if (client->client->last_mailbox_read == client->client->af_round - 1) {
+			printf("All auth responses received, MB processed already so replace IBE keys\n");
+			af_process_auth_responses(client->client);
+			client->num_auth_responses = 0;
+			client->num_broadcast_responses = 0;
+		}
+
 	}
 
 	size_t remaining = (size_t) conn->bytes_read - (conn->curr_msg_len + net_header_BYTES);
 	if (remaining > 0) {
-		if (conn->read_buf) {
-			memcpy(conn->read_buf->base, conn->read_buf->base + conn->curr_msg_len, remaining);
-			conn->read_buf->pos = conn->read_buf->base + remaining;
-		}
+		printf("Remaining after processing msg length %ld: %lu\n", conn->curr_msg_len, remaining);
+		memcpy(conn->read_buf->base, conn->read_buf->base + conn->bytes_read, remaining);
+		conn->read_buf->pos = conn->read_buf->base + remaining;
+
 	}
 	conn->msg_type = 0;
 	conn->curr_msg_len = 0;
@@ -431,7 +480,16 @@ int epoll_read(client_net_s *c, client_connection *conn)
 	for (;;) {
 		ssize_t count;
 		byte_buffer_s *read_buf = conn->read_buf;
-		count = read(conn->sock_fd, read_buf->pos, (size_t) read_buf->capacity_bytes - conn->bytes_read);
+		size_t buf_space = read_buf->capacity_bytes - conn->bytes_read;
+		if (buf_space <= 0) {
+			fprintf(stderr, "NO BUFFER SPACE REMAINING BEEP BOOP LALALALA\n------------------\n");
+			abort();
+		}
+		/*printf("Buf stats:\n-----------\n");
+		printf("Capacity: %d\n", read_buf->capacity_bytes);
+		printf("Bytes read: %ld\n", conn->bytes_read);
+		printf("Point difference betwen base and pos: %ld\n", (size_t)&conn->read_buf->pos - (size_t)&conn->read_buf->base);*/
+		count = read(conn->sock_fd, read_buf->pos, buf_space);
 
 		if (count == -1) {
 			if (errno != EAGAIN) {
@@ -441,7 +499,7 @@ int epoll_read(client_net_s *c, client_connection *conn)
 			break;
 		}
 		else if (count == 0) {
-			printf("Sock read 0 in epoll read, sock %d\n", conn->sock_fd);
+			printf("(%c) Sock read 0 in epoll read, sock %d\n", conn->conn_type, conn->sock_fd);
 			close_client_connection = 1;
 			break;
 		}
@@ -465,6 +523,7 @@ int net_client_startup(client_net_s *cn)
 		fprintf(stderr, "could not connect to mix distribution server\n");
 		return -1;
 	}
+	cn->mix_last.conn_type = 'L';
 	cn->mix_last.sock_fd = mix_last_sfd;
 	cn->mix_last.on_read = net_client_lastmix_read;
 	cn->mix_last.event.events = EPOLLIN | EPOLLET;
@@ -477,6 +536,7 @@ int net_client_startup(client_net_s *cn)
 	}
 	cn->mix_entry.sock_fd = mix_sfd;
 	cn->mix_entry.on_read = net_client_mixentry_read;
+	cn->mix_entry.conn_type = 'E';
 	int res;
 	res = net_read_nb(mix_sfd, cn->mix_entry.read_buf->base, 12 + net_client_connect_BYTES);
 	if (res == -1) {
@@ -484,6 +544,7 @@ int net_client_startup(client_net_s *cn)
 	}
 	cn->client->af_round = deserialize_uint32(cn->mix_entry.read_buf->base + 4);
 	cn->client->dialling_round = deserialize_uint32(cn->mix_entry.read_buf->base + 8);
+	cn->client->last_mailbox_read = cn->client->af_round - 1;
 
 	uint8_t *dh_ptr = cn->mix_entry.read_buf->base + 12;
 	for (uint32_t i = 0; i < num_mix_servers; i++) {
@@ -494,7 +555,6 @@ int net_client_startup(client_net_s *cn)
 
 	af_fake_request(cn->client);
 	dial_fake_request(cn->client);
-
 	socket_set_nb(cn->mix_entry.sock_fd);
 	cn->mix_entry.event.data.ptr = &cn->mix_entry;
 	cn->mix_entry.event.events = EPOLLIN | EPOLLET;
@@ -509,7 +569,7 @@ int net_client_startup(client_net_s *cn)
 
 		pkg_conn->id = i;
 		pkg_conn->bytes_read = 0;
-
+		pkg_conn->conn_type = 'P';
 		pkg_conn->write_remaining = 0;
 		pkg_conn->bytes_written = 0;
 		pkg_conn->on_read = net_client_pkg_read;
@@ -519,45 +579,8 @@ int net_client_startup(client_net_s *cn)
 	}
 
 	struct epoll_event *events = cn->events;
-	while (cn->num_broadcast_responses < num_pkg_servers) {
-		int n = epoll_wait(cn->epoll_inst, cn->events, 100, 100);
-		client_connection *conn = NULL;
-		// Error of some sort on the socket
-		for (int i = 0; i < n; i++) {
-			conn = events[i].data.ptr;
-			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
-				close(conn->sock_fd);
-				free(events[i].data.ptr);
-				continue;
-			}
-				// Read from a socket
-			else if (events[i].events & EPOLLIN) {
-				epoll_read(cn, conn);
-			}
-			else if (events[i].events & EPOLLOUT) {
-				epoll_csend(cn, conn);
-			}
-		}
-	}
 
-	res = af_create_pkg_auth_request(cn->client);
-	if (res) {
-		fprintf(stderr, "Error creating authentication request\n");
-	}
-
-	for (int i = 0; i < num_pkg_servers; i++) {
-		client_connection *conn = &cn->pkg_client_connections[i];
-		memcpy(conn->write_buf,
-		       cn->client->pkg_auth_requests[i],
-		       net_header_BYTES + cli_pkg_single_auth_req_BYTES);
-		conn->bytes_written = 0;
-		serialize_uint32(conn->write_buf, CLI_AUTH_REQ);
-		serialize_uint32(conn->write_buf + sizeof(uint32_t), cn->client->af_round);
-		conn->write_remaining = net_header_BYTES + cli_pkg_single_auth_req_BYTES;
-		epoll_csend(cn, &cn->pkg_client_connections[i]);
-	}
-
-	while (cn->num_auth_responses < num_pkg_servers) {
+	while (!cn->client->authed) {
 		int n = epoll_wait(cn->epoll_inst, cn->events, 100, 5000);
 		client_connection *conn = NULL;
 		// Error of some sort on the socket
@@ -577,7 +600,9 @@ int net_client_startup(client_net_s *cn)
 			}
 		}
 	}
-	af_process_auth_responses(cn->client);
+	//af_process_auth_responses(cn->client);
+	cn->num_auth_responses = 0;
+	cn->num_broadcast_responses = 0;
 	return 0;
 }
 
@@ -617,10 +642,17 @@ void *net_client_loop(void *cns)
 
 }
 
-int main()
+int main(int argc, char **argv)
 {
 	client_s c;
-	client_init(&c, user_ids[0], user_lt_pub_sig_keys[0], user_lt_secret_sig_keys[0]);
+	int uid;
+	if (argc < 2) {
+		uid = 0;
+	}
+	else {
+		uid = atoi(argv[1]);
+	}
+	client_init(&c, user_ids[uid], user_lt_pub_sig_keys[uid], user_lt_secret_sig_keys[uid]);
 	client_net_s s;
 	net_client_init(&s, &c);
 	net_client_startup(&s);

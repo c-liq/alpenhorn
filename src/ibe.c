@@ -76,7 +76,6 @@ int ibe_encrypt(uint8_t *out, uint8_t *msg, uint32_t msg_len, element_s *public_
 	uint8_t *symm_ciphertext = nonce + crypto_NBYTES;
 	// Generate fresh random one-time-use key_state and nonce
 	randombytes_buf(ibe_encrypted_symm_key, crypto_ghash_BYTES);
-	printhex("sk", ibe_encrypted_symm_key, crypto_ghash_BYTES);
 	randombytes_buf(nonce, crypto_NBYTES);
 	// Encrypt the plaintext message
 	int res = crypto_aead_chacha20poly1305_ietf_encrypt(symm_ciphertext,
@@ -131,7 +130,6 @@ int ibe_decrypt(uint8_t *out, uint8_t *c, uint32_t clen, element_s *private_key,
 	for (int i = 0; i < crypto_aead_chacha20poly1305_ietf_KEYBYTES; i++) {
 		secret_key[i] = secret_key[i] ^ encrypted_symm_key_ptr[i];
 	}
-	printhex("ss", secret_key, crypto_ghash_BYTES);
 	int res = crypto_chacha_decrypt(out,
 	                                NULL,
 	                                NULL,

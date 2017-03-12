@@ -1,5 +1,4 @@
 #include "pkg_net.h"
-
 #include "pkg.h"
 #include "net_common.h"
 #include <sys/epoll.h>
@@ -8,24 +7,26 @@
 #include <memory.h>
 #include <errno.h>
 
-struct pkg_conn
+typedef struct pkg_connection pkg_connection;
+
+struct pkg_connection
 {
-	int sock_fd;
-	uint32_t type;
 	uint32_t id;
-	uint8_t read_buf[buf_size];
-	uint32_t read_remaining;
-	uint32_t curr_msg_len;
-	uint32_t bytes_read;
+	int sock_fd;
+	byte_buffer_s *read_buf;
+	size_t curr_msg_len;
+	size_t bytes_read;
 	uint32_t msg_type;
 	uint8_t write_buf[buf_size];
-	uint32_t bytes_written;
-	uint32_t write_remaining;
+	size_t bytes_written;
+	size_t write_remaining;
 	struct epoll_event event;
-	uint32_t broadcast_remaining;
+	void (*on_read)(void *owner, pkg_connection *conn, ssize_t count);
+	void (*on_write)(void *owner, pkg_connection *conn, ssize_t count);
+	pkg_connection *next;
+	pkg_connection *prev;
 };
 
-typedef struct pkg_conn pkg_conn_s;
 
 #define CLI_AUTH_REQ 50
 
@@ -34,35 +35,54 @@ struct pkg_net
 	pkg_server *pkg;
 	struct epoll_event *events;
 	int epoll_inst;
-	connection mix_conn;
+	pkg_connection mix_conn;
 	int listen_fd;
+	pkg_connection *clients;
 };
 
 typedef struct pkg_net pkg_net_s;
 
-void epoll_pkg_send(pkg_net_s *s, pkg_conn_s *conn);
+void epoll_pkg_send(pkg_net_s *s, pkg_connection *conn);
 
-void net_pkg_auth_client(pkg_net_s *s, pkg_conn_s *conn, pkg_client *client)
+void net_pkg_auth_client(pkg_net_s *s, pkg_connection *conn, pkg_client *client)
 {
 	int res = pkg_auth_client(s->pkg, client);
 	if (!res) {
-		memcpy(conn->write_buf, client->eph_client_data, net_header_BYTES + pkg_enc_auth_res_BYTES);
-		conn->write_remaining = net_header_BYTES + pkg_enc_auth_res_BYTES;
-		printhex("pkg auth response", client->eph_client_data + net_header_BYTES, pkg_enc_auth_res_BYTES);
+		memcpy(conn->write_buf + conn->bytes_written,
+		       client->eph_client_data,
+		       net_header_BYTES + pkg_enc_auth_res_BYTES);
+		conn->write_remaining += net_header_BYTES + pkg_enc_auth_res_BYTES;
 		epoll_pkg_send(s, conn);
 	}
 }
-
-void epoll_broadcast_msg(pkg_net_s *s, pkg_conn_s *conn)
+void remove_client(pkg_net_s *s, pkg_connection *conn)
 {
-	ssize_t count = send(conn->sock_fd, s->pkg->eph_broadcast_message, net_header_BYTES + pkg_broadcast_msg_BYTES, 0);
-	printf("Sent %ld bytes of broadcast msg to  client\n", count);
+	epoll_ctl(s->epoll_inst, EPOLL_CTL_DEL, conn->sock_fd, &conn->event);
+	if (conn == s->clients) {
+		s->clients = conn->next;
+	}
+	if (conn->next) {
+		conn->next->prev = conn->prev;
+	}
+	if (conn->prev) {
+		conn->prev->next = conn->next;
+	}
+	free(conn);
 }
 
-void epoll_pkg_send(pkg_net_s *s, pkg_conn_s *conn)
+void epoll_broadcast_msg(pkg_net_s *s, pkg_connection *conn)
+{
+	memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining,
+	       s->pkg->eph_broadcast_message,
+	       net_header_BYTES + pkg_broadcast_msg_BYTES);
+	conn->write_remaining += net_header_BYTES + pkg_broadcast_msg_BYTES;
+	epoll_pkg_send(s, conn);
+}
+
+void epoll_pkg_send(pkg_net_s *s, pkg_connection *conn)
 {
 	int close_connection = 0;
-	for (;;) {
+	while (conn->write_remaining > 0) {
 		ssize_t count = send(conn->sock_fd, conn->write_buf + conn->bytes_written, conn->write_remaining, 0);
 		if (count == -1) {
 			if (errno != EAGAIN) {
@@ -85,78 +105,89 @@ void epoll_pkg_send(pkg_net_s *s, pkg_conn_s *conn)
 		//free(conn);
 	}
 
+	if (conn->write_remaining == 0) {
+		conn->bytes_written = 0;
+	}
+
 	// If we haven't finished writing, make sure EPOLLOUT is set
 	if (conn->write_remaining != 0 && !(conn->event.events & EPOLLOUT)) {
-		conn->event.events = EPOLLOUT | EPOLLERR | EPOLLERR;
+		conn->event.events = EPOLLOUT;
 		epoll_ctl(s->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
 	}
 		// If we have finished writing, make sure to unset EPOLLOUT
 	else if (conn->write_remaining == 0 && conn->event.events & EPOLLOUT) {
-		conn->event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+		conn->event.events = EPOLLIN;
 		epoll_ctl(s->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
 	}
 }
 
-void pkg_client_read(pkg_net_s *s, pkg_conn_s *conn, ssize_t count)
+void pkg_mix_read(void *srv, pkg_connection *conn, ssize_t count)
 {
-	ssize_t c_read = count;
+	pkg_net_s *s = (pkg_net_s *) srv;
+	pkg_new_round(s->pkg);
+	pkg_connection *curr = s->clients;
+	printf("PKG advanced to round %d\n", s->pkg->current_round);
+	while (curr) {
+		epoll_broadcast_msg(s, curr);
+		curr = curr->next;
+	}
+}
+
+void pkg_client_read(void *srv, pkg_connection *conn, ssize_t count)
+{
+	pkg_net_s *s = (pkg_net_s *) srv;
+	conn->bytes_read += count;
 	if (conn->curr_msg_len == 0) {
 		if ((count < net_header_BYTES)) {
 			return;
 		}
-		uint32_t msg_type = deserialize_uint32(conn->read_buf);
+		uint32_t msg_type = deserialize_uint32(conn->read_buf->base);
 		if (msg_type == CLI_AUTH_REQ) {
 			conn->msg_type = CLI_AUTH_REQ;
 			conn->curr_msg_len = cli_pkg_single_auth_req_BYTES;
-			conn->read_remaining = cli_pkg_single_auth_req_BYTES;
 		}
 		else {
 			fprintf(stderr, "Invalid message\n");
 			close(conn->sock_fd);
 			return;
 		}
-		c_read -= net_header_BYTES;
+
 	}
 
-	conn->read_remaining -= c_read;
-	conn->bytes_read += count;
-	printf("Just read %lu of %u | %d remaining | Message type: %d\n",
-	       c_read,
-	       conn->curr_msg_len,
-	       conn->read_remaining,
-	       conn->msg_type);
-	if (conn->read_remaining <= 0) {
-		if (conn->msg_type == CLI_AUTH_REQ) {
-			int index = pkg_client_lookup(s->pkg, conn->read_buf + net_header_BYTES);
-			if (index != -1) {
-				pkg_client *cl = &s->pkg->clients[index];
-				printf("Received auth request from %s for round %d\n",
-				       conn->read_buf + net_header_BYTES, deserialize_uint32(conn->read_buf + 4));
-				memcpy(cl->auth_msg_from_client,
-				       conn->read_buf + net_header_BYTES + user_id_BYTES,
-				       cli_pkg_single_auth_req_BYTES - user_id_BYTES);
-				int res = pkg_auth_client(s->pkg, cl);
-				if (!res) {
-					net_pkg_auth_client(s, conn, cl);
-				}
-			}
-			else {
-				fprintf(stderr, "User lookup failed for %s\n", conn->read_buf + net_header_BYTES);
-			}
+	if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
+		return;
+	}
+	if (conn->msg_type == CLI_AUTH_REQ) {
+		int index = pkg_client_lookup(s->pkg, conn->read_buf->base + net_header_BYTES);
+		if (index != -1) {
+			pkg_client *cl = &s->pkg->clients[index];
+			printf("Received auth request from %s for round %d\n",
+			       conn->read_buf->base + net_header_BYTES, deserialize_uint32(conn->read_buf->base + 4));
+			memcpy(cl->auth_msg_from_client,
+			       conn->read_buf->base + net_header_BYTES + user_id_BYTES,
+			       cli_pkg_single_auth_req_BYTES - user_id_BYTES);
+			net_pkg_auth_client(s, conn, cl);
+
 		}
-
-		conn->msg_type = 0;
-		conn->curr_msg_len = 0;
-		conn->bytes_read = 0;
+		else {
+			fprintf(stderr, "User lookup failed for %s\n", conn->read_buf->base + net_header_BYTES);
+		}
 	}
+
+	conn->msg_type = 0;
+	conn->curr_msg_len = 0;
+	conn->bytes_read = 0;
+	
 }
 
-int net_cli_epread(pkg_net_s *s, pkg_conn_s *conn)
+int net_cli_epread(pkg_net_s *s, pkg_connection *conn)
 {
 	int close_connection = 0;
 	for (;;) {
 		ssize_t count;
-		count = read(conn->sock_fd, conn->read_buf + conn->bytes_read, sizeof conn->read_buf - conn->bytes_read);
+		count = read(conn->sock_fd,
+		             conn->read_buf->base + conn->bytes_read,
+		             conn->read_buf->capacity_bytes - conn->bytes_read);
 
 		if (count == -1) {
 			if (errno != EAGAIN) {
@@ -169,8 +200,9 @@ int net_cli_epread(pkg_net_s *s, pkg_conn_s *conn)
 			close_connection = 1;
 			break;
 		}
-		printf("Just read %ld from socket %d\n", count, conn->sock_fd);
-		pkg_client_read(s, conn, count);
+		if (conn->on_read) {
+			conn->on_read(s, conn, count);
+		}
 	}
 
 	if (close_connection) {
@@ -182,9 +214,12 @@ int net_cli_epread(pkg_net_s *s, pkg_conn_s *conn)
 int pkg_server_startup(pkg_net_s *s, pkg_server *pkg)
 {
 	memset(&s->mix_conn, 0, sizeof s->mix_conn);
+	s->clients = NULL;
 	struct epoll_event event;
 	s->pkg = pkg;
 	s->epoll_inst = epoll_create1(0);
+	s->mix_conn.read_buf = calloc(1, sizeof *s->mix_conn.read_buf);
+	byte_buffer_init(s->mix_conn.read_buf, 1, 16384, 0);
 	s->events = calloc(1000, sizeof *s->events);
 	int mix_fd = net_connect("127.0.0.1", "3000", 1);
 	if (mix_fd == -1) {
@@ -192,6 +227,7 @@ int pkg_server_startup(pkg_net_s *s, pkg_server *pkg)
 		return -1;
 	}
 	s->mix_conn.sock_fd = mix_fd;
+	s->mix_conn.on_read = pkg_mix_read;
 	event.data.ptr = &s->mix_conn;
 	event.events = EPOLLIN | EPOLLET;
 	epoll_ctl(s->epoll_inst, EPOLL_CTL_ADD, mix_fd, &event);
@@ -229,11 +265,20 @@ int epoll_paccept(pkg_net_s *s)
 			continue;
 		}
 
-		pkg_conn_s *new_conn = calloc(1, sizeof(*new_conn));
+		pkg_connection *new_conn = calloc(1, sizeof(*new_conn));
 		if (!new_conn) {
 			perror("malloc");
 			return -1;
 		}
+		if (s->clients) {
+			s->clients->prev = new_conn;
+		}
+		new_conn->next = s->clients;
+		new_conn->prev = NULL;
+		new_conn->read_buf = calloc(1, sizeof *new_conn->read_buf);
+		byte_buffer_init(new_conn->read_buf, 1, 16384, 0);
+		s->clients = new_conn;
+		new_conn->on_read = pkg_client_read;
 		new_conn->sock_fd = new_sock;
 		event.data.ptr = new_conn;
 		event.events = EPOLLIN | EPOLLET;
@@ -250,20 +295,20 @@ int epoll_paccept(pkg_net_s *s)
 	return 0;
 }
 
-void net_pkg_server_loop(pkg_net_s *es, void(*on_read)(pkg_net_s *, pkg_conn_s *, ssize_t))
+void net_pkg_server_loop(pkg_net_s *es, void(*on_read)(pkg_net_s *, pkg_connection *, ssize_t))
 {
 
 	struct epoll_event *events = es->events;
 
 	for (;;) {
 		int n = epoll_wait(es->epoll_inst, es->events, 100, 5000);
-		pkg_conn_s *conn = NULL;
+		pkg_connection *conn = NULL;
 		// Error of some sort on the socket
 		for (int i = 0; i < n; i++) {
 			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
-				conn = (pkg_conn_s *) events[i].data.ptr;
+				conn = (pkg_connection *) events[i].data.ptr;
 				close(conn->sock_fd);
-				free(events[i].data.ptr);
+				remove_client(es, conn);
 				continue;
 			}
 			else if (es->listen_fd == events[i].data.fd) {

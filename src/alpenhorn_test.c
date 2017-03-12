@@ -99,10 +99,10 @@ int main()
 	//mix_dial_distribute(m1);
 	mix_af_distribute(&mix_servers[1]);
 	af_mailbox_s *mb = &mix_servers[1].af_mb_container.mailboxes[0];
-	af_process_mb(&clients[2], mb->data + net_header_BYTES, mb->num_messages);
+	af_process_mb(&clients[2], mb->data + net_header_BYTES, mb->num_messages, 0);
 	af_accept_request(&clients[2], bob->friend_requests);
 	//kw_print_table(&bob->keywheel);
-	af_decrypt_request(chris, bob->friend_request_buf + mb_BYTES);
+	af_decrypt_request(chris, bob->friend_request_buf + mb_BYTES, 0);
 	friend_request_s *fr = chris->friend_requests;
 	print_friend_request(fr);
 	kw_complete_keywheel(&chris->keywheel, fr->user_id, fr->dh_pk, 0);

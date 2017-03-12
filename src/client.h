@@ -2,6 +2,7 @@
 #define ALPENHORN_CLIENT_H
 
 #include <pbc/pbc.h>
+#include <stdbool.h>
 #include "keywheel_table.h"
 #include "pbc_sign.h"
 #include "config.h"
@@ -40,7 +41,8 @@ struct client
 	uint8_t pkg_auth_responses[num_pkg_servers][net_header_BYTES + pkg_enc_auth_res_BYTES];
 	element_s pkg_multisig_combined_g1;
 	// Epheremal IBE secret key_state - decrypts friend requests
-	element_s pkg_ibe_secret_combined_g2;
+	element_s pkg_ibe_secret_combined_g2[2];
+	int curr_ibe;
 	// Buffer for the fully encrypted add friend request
 	// Contains the plaintext request, encrypted through IBE, with a mailbox identifier prepended
 	// Then onion-encrypted in layers for the mix_s servers
@@ -57,6 +59,8 @@ struct client
 	double bloom_p_val;
 	uint32_t num_intents;
 	friend_request_s *friend_requests;
+	bool authed;
+	uint32_t last_mailbox_read;
 };
 
 struct friend_request
@@ -81,14 +85,14 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 int af_create_pkg_auth_request(client_s *client);
 void af_create_request(client_s *c);
 int af_process_auth_responses(client_s *c);
-int af_decrypt_request(client_s *c, uint8_t *request_buf);
+int af_decrypt_request(client_s *c, uint8_t *request_buf, uint32_t round);
 void print_friend_request(friend_request_s *req);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
 int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id);
 void af_add_friend(client_s *client, const char *user_id);
-void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages);
-void af_accept_request(client_s *c, friend_request_s *req);
+void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages, uint32_t round);
+int af_accept_request(client_s *c, const char *user_id);
 int dial_call_friend(client_s *c, const uint8_t *user_id, uint32_t intent);
 int dial_process_mb(client_s *c, uint8_t *mb_data);
 void dial_fake_request(client_s *c);
