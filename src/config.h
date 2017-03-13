@@ -22,7 +22,7 @@
 #define mb_BYTES 4U
 #define round_BYTES 4U
 #define dialling_token_BYTES 32U
-#define num_pkg_servers 1U
+#define num_pkg_servers 2U
 #define num_mix_servers 2U
 #define user_id_BYTES 60U
 #define net_msg_type_BYTES 4U

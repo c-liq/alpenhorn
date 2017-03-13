@@ -66,7 +66,6 @@ void do_action(client_net_s *c, action *a)
 {
 	switch (a->type) {
 	case ADD_FRIEND:
-		printf("Doing action add friend.\n");
 		af_add_friend(c->client, a->user_id);
 		break;
 	case CONFIRM_FRIEND:
@@ -99,7 +98,6 @@ action *action_stack_pop(client_net_s *c)
 void *action_stack_push(client_net_s *c, action *new_action)
 {
 	pthread_mutex_lock(&c->aq_lock);
-	printf("Pushing action type %c | userid: %s\n", new_action->type, new_action->user_id);
 	new_action->next = c->action_stack;
 	c->action_stack = new_action;
 	pthread_mutex_unlock(&c->aq_lock);
@@ -119,7 +117,7 @@ void client_connection_init(client_connection *conn)
 	conn->event.events = 0;
 	conn->read_buf = calloc(1, sizeof *conn->read_buf);
 	byte_buffer_init(conn->read_buf, 1, 16384, 0);
-	memset(conn->write_buf, 0, sizeof conn->write_buf);
+	memset(conn->write_buf, 0, buf_size);
 }
 
 int net_client_init(client_net_s *cs, client_s *c)
@@ -249,14 +247,14 @@ void net_client_lastmix_read(void *s, client_connection *conn, ssize_t count)
 			if (msg_type == NEW_AFMB_AVAIL) {
 				conn->curr_msg_len = 0;
 				conn->msg_type = NEW_AFMB_AVAIL;
-				printf("Client received AF avail msg for round %d\n",
-				       deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES));
+				//printf("Client received AF avail msg for round %d\n",
+				//      deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES));
 			}
 			else if (msg_type == NEW_DMB_AVAIL) {
 				conn->curr_msg_len = 0;
 				conn->msg_type = NEW_DMB_AVAIL;
-				printf("Client received Dial avail msg for round %d\n",
-				       deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES));
+				//printf("Client received Dial avail msg for round %d\n",
+				//  deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES));
 			}
 
 			else if (msg_type == DIAL_MB) {
@@ -297,7 +295,7 @@ void net_client_lastmix_read(void *s, client_connection *conn, ssize_t count)
 			af_process_mb(c->client, conn->read_buf->base + net_header_BYTES, conn->read_buf->num_msgs, round);
 			c->client->last_mailbox_read++;
 			if (c->num_auth_responses == num_pkg_servers) {
-				printf("Processed mailbox -> Replace IBE keys by processing auth responses\n");
+				//printf("Processed mailbox -> Replace IBE keys by processing auth responses\n");
 				af_process_auth_responses(c->client);
 				c->num_auth_responses = 0;
 			}
@@ -451,8 +449,9 @@ void net_client_pkg_read(void *cl_ptr, client_connection *conn, ssize_t count)
 		//printhex("auth response", conn->read_buf->base + net_header_BYTES, pkg_enc_auth_res_BYTES);
 		client->num_auth_responses++;
 
-		if (client->client->last_mailbox_read == client->client->af_round - 1) {
-			printf("All auth responses received, MB processed already so replace IBE keys\n");
+		if (client->client->last_mailbox_read == client->client->af_round - 1
+			&& client->num_auth_responses == num_pkg_servers) {
+			//printf("All auth responses received, MB processed already so replace IBE keys\n");
 			af_process_auth_responses(client->client);
 			client->num_auth_responses = 0;
 			client->num_broadcast_responses = 0;
@@ -485,10 +484,7 @@ int epoll_read(client_net_s *c, client_connection *conn)
 			fprintf(stderr, "NO BUFFER SPACE REMAINING BEEP BOOP LALALALA\n------------------\n");
 			abort();
 		}
-		/*printf("Buf stats:\n-----------\n");
-		printf("Capacity: %d\n", read_buf->capacity_bytes);
-		printf("Bytes read: %ld\n", conn->bytes_read);
-		printf("Point difference betwen base and pos: %ld\n", (size_t)&conn->read_buf->pos - (size_t)&conn->read_buf->base);*/
+
 		count = read(conn->sock_fd, read_buf->pos, buf_space);
 
 		if (count == -1) {
@@ -549,7 +545,6 @@ int net_client_startup(client_net_s *cn)
 	uint8_t *dh_ptr = cn->mix_entry.read_buf->base + 12;
 	for (uint32_t i = 0; i < num_mix_servers; i++) {
 		memcpy(cn->client->mix_eph_pub_keys[i], dh_ptr, crypto_box_PUBLICKEYBYTES);
-		printhex("mix pk", cn->client->mix_eph_pub_keys[i], crypto_box_PUBLICKEYBYTES);
 		dh_ptr += crypto_box_PUBLICKEYBYTES + 12;
 	}
 
@@ -644,7 +639,7 @@ void *net_client_loop(void *cns)
 
 int main(int argc, char **argv)
 {
-	client_s c;
+
 	int uid;
 	if (argc < 2) {
 		uid = 0;
@@ -652,38 +647,81 @@ int main(int argc, char **argv)
 	else {
 		uid = atoi(argv[1]);
 	}
-	client_init(&c, user_ids[uid], user_lt_pub_sig_keys[uid], user_lt_secret_sig_keys[uid]);
+	client_s *c = client_alloc(user_ids[uid], user_lt_pub_sig_keys[uid], user_lt_secret_sig_keys[uid]);
 	client_net_s s;
-	net_client_init(&s, &c);
+	net_client_init(&s, c);
 	net_client_startup(&s);
 	pthread_t net_thread;
 	pthread_create(&net_thread, NULL, net_client_loop, &s);
 	int running = 1;
+	char buf[user_id_BYTES + 1];
 	while (running) {
+		memset(buf, 0, sizeof buf);
 		action *act = calloc(1, sizeof *act);
 		memset(act->user_id, 0, user_id_BYTES);
-		int a = getc(stdin);
-		switch (a) {
+		fgets(buf, 3, stdin);
+		size_t id_len;
+		switch (buf[0]) {
 		case ADD_FRIEND:
 			printf("Enter friend's user ID: ");
 			fflush(stdout);
 			fflush(stdin);
-			fscanf(stdin, "%s\n", act->user_id);
+			fgets(buf, sizeof buf, stdin);
+			id_len = strlen(buf) - 1;
+			if (buf[id_len] == '\n') {
+				buf[id_len] = '\0';
+			}
+			memcpy(act->user_id, buf, user_id_BYTES);
 			act->type = ADD_FRIEND;
 			action_stack_push(&s, act);
-			fflush(stdin);
 			break;
 		case CONFIRM_FRIEND:
 			printf("Enter friend's user ID: ");
 			fflush(stdout);
 			fflush(stdin);
-			fscanf(stdin, "%s\n", act->user_id);
+			fgets(buf, sizeof buf, stdin);
+			id_len = strlen(buf) - 1;
+			if (buf[id_len] == '\n') {
+				buf[id_len] = '\0';
+			}
+			memcpy(act->user_id, buf, user_id_BYTES);
 			act->type = CONFIRM_FRIEND;
 			action_stack_push(&s, act);
 			fflush(stdin);
 			break;
+		case DIAL_FRIEND: {
+			printf("Enter friend's user ID: ");
+			fflush(stdout);
+			fgets(buf, sizeof buf, stdin);
+			fflush(stdin);
+			id_len = strlen(buf) - 1;
+			if (buf[id_len] == '\n') {
+				buf[id_len] = '\0';
+			}
+			memcpy(act->user_id, buf, user_id_BYTES);
+			printf("Enter intent: ");
+			fflush(stdout);
+			char intent_buf[4];
+			fgets(intent_buf, sizeof intent_buf, stdin);
+			int i = atoi(intent_buf);
+			if (i > c->num_intents - 1 || i < 0) {
+				fprintf(stderr, "Invalid intent\n");
+				free(act);
+				break;
+			}
+
+			act->type = DIAL_FRIEND;
+			act->intent = (uint32_t) i;
+			action_stack_push(&s, act);
+			fflush(stdin);
+			break;
+		}
+		case PRINT_KW_TABLE:
+			act->type = PRINT_KW_TABLE;
+			action_stack_push(&s, act);
+			fflush(stdin);
 		default:
-			if (a == 123456789) {
+			if (buf[0] == 'Q') {
 				running = 0;
 			}
 			fflush(stdin);

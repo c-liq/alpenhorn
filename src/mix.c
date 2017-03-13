@@ -163,9 +163,9 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	}
 
 	mix->af_data.round = 0;
-	mix->af_data.round_duration = 10;
+	mix->af_data.round_duration = 30;
 	mix->dial_data.round = 0;
-	mix->dial_data.round_duration = 120000;
+	mix->dial_data.round_duration = 20;
 	mix->af_data.noisemu = 1;
 	mix->dial_data.noisemu = 1;
 	mix->af_data.num_mailboxes = 1;
@@ -198,6 +198,7 @@ void mix_af_newround(mix_s *mix)
 			mix->af_data.mb_counts[i] = 0;
 		}
 	}
+	mix_af_add_noise(mix);
 }
 
 void mix_dial_newround(mix_s *mix)
@@ -210,6 +211,7 @@ void mix_dial_newround(mix_s *mix)
 			mix->dial_data.mailbox_counts[i] = 0;
 		}
 	}
+	mix_dial_add_noise(mix);
 }
 
 void mix_shuffle_messages(uint8_t *messages, uint32_t msg_count, uint32_t msg_length)
@@ -389,7 +391,7 @@ int mix_decrypt_messages(mix_s *mix,
 				uint32_t n = deserialize_uint32(curr_out_ptr);
 				result = mix_update_mailbox_counts(n, num_mailboxes, mailbox_counts);
 				if (result) {
-					printf("Invalid mailbox %d -- cover traffic\n", n);
+					//printf("Invalid mailbox %d -- cover traffic\n", n);
 				}
 			}
 			if (!result) {

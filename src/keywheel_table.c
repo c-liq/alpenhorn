@@ -160,12 +160,14 @@ keywheel_unsynced *kw_unsynced_lookup(keywheel_table_s *table, const uint8_t *us
 
 void kw_print_table(keywheel_table_s *table)
 {
+	keywheel_s *entry = table->keywheels;
 	printf("Keywheel table\n----------\n");
-	for (int i = 0; i < table->num_keywheels; i++) {
-		keywheel_s *entry = &table->keywheels[i];
-		printf("%60s", entry->user_id);
+	while (entry) {
+		printf("%s", entry->user_id);
 		printhex(" ", entry->key_ptr, crypto_maxhash_BYTES);
+		entry = entry->next;
 	}
+	printf("-------------------------\n");
 }
 
 int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id)

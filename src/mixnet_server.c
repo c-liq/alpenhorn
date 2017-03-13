@@ -77,14 +77,13 @@ void net_mix_last_read(void *server, connection *conn, ssize_t count)
 			}
 
 		}
-		printf("Client msg bytes read: %ld | remaining: %ld\n", conn->bytes_read, conn->read_remaining);
 		if (conn->bytes_read < net_header_BYTES + conn->curr_msg_len) {
 			return;
 		}
 
 		if (conn->msg_type == CLIENT_DIAL_MB_REQUEST) {
 			uint32_t round_num = deserialize_uint32(conn->internal_read_buf + net_msg_type_BYTES);
-			printf("Received dr mailbox download request for round %d from %.60s\n",
+			printf("Received Dial mailbox download request for round %d from %.60s\n",
 			       round_num,
 			       conn->internal_read_buf + net_header_BYTES);
 			uint32_t mb_round = deserialize_uint32(conn->internal_read_buf + 4);
@@ -105,7 +104,7 @@ void net_mix_last_read(void *server, connection *conn, ssize_t count)
 		}
 		else if (conn->msg_type == CLIENT_AF_MB_REQUEST) {
 			uint32_t round_num = deserialize_uint32(conn->internal_read_buf + net_msg_type_BYTES);
-			printf("Received af mailbox download request for round %d from %.60s\n",
+			printf("Received AF mailbox download request for round %d from %.60s\n",
 			       round_num,
 			       conn->internal_read_buf + net_header_BYTES);
 			uint32_t mb = (uint32_t) (XXH64(conn->internal_read_buf + 8, user_id_BYTES, 0)
@@ -184,6 +183,15 @@ void net_client_lastmix_read(void *s, connection *conn, ssize_t count)
 				mix_af_decrypt_messages(srv->mix);
 
 				if (srv->mix->is_last) {
+					mix_af_s *af_data = &srv->mix->af_data;
+					printf("AF Round %d: Received %d msgs, added %d noisem, discarded %d noise -> Distributing %d\n",
+					       af_data->round,
+					       af_data->in_buf.num_msgs,
+					       af_data->noisemu,
+					       af_data->in_buf.num_msgs + af_data->noisemu - af_data->out_buf.num_msgs,
+					       af_data->out_buf.num_msgs);
+
+
 					mix_af_distribute(srv->mix);
 					net_broadcast_new_afmb(srv, srv->mix->af_data.round);
 				}
@@ -196,8 +204,14 @@ void net_client_lastmix_read(void *s, connection *conn, ssize_t count)
 			}
 			else if (conn->msg_type == DIAL_BATCH) {
 				mix_dial_decrypt_messages(srv->mix);
-
 				if (srv->mix->is_last) {
+					mix_dial_s *dial_data = &srv->mix->dial_data;
+					printf("Dial Round %d: Received %d msgs, added %d noisem, discarded %d noise -> Distributing %d\n",
+					       dial_data->round,
+					       dial_data->in_buf.num_msgs,
+					       dial_data->noisemu,
+					       dial_data->in_buf.num_msgs + dial_data->noisemu - dial_data->out_buf.num_msgs,
+					       dial_data->out_buf.num_msgs);
 					mix_dial_distribute(srv->mix);
 					net_broadcast_new_dmb(srv, srv->mix->dial_data.round);
 				}
@@ -285,8 +299,7 @@ int net_mix_sync(net_server_s *es)
 			memcpy(es->mix->mix_dh_pks[i], ptr, crypto_box_PUBLICKEYBYTES);
 			ptr += es->bc_buf.prefix_size + crypto_box_PUBLICKEYBYTES;
 		}
-		mix_dial_add_noise(es->mix);
-		mix_af_add_noise(es->mix);
+
 		es->next_mix.event.events = EPOLLIN | EPOLLET;
 		es->next_mix.event.data.ptr = &es->next_mix;
 		res = epoll_ctl(es->epoll_inst, EPOLL_CTL_ADD, es->next_mix.sock_fd, &es->next_mix.event);
@@ -298,6 +311,7 @@ int net_mix_sync(net_server_s *es)
 		if (res) {
 			fprintf(stderr, "error when setting socket to non blocking\n");
 		}
+
 	}
 
 	if (es->mix->server_id > 0) {
@@ -321,6 +335,8 @@ int net_mix_sync(net_server_s *es)
 			return -1;
 		}
 	}
+	mix_dial_add_noise(es->mix);
+	mix_af_add_noise(es->mix);
 	return 0;
 }
 
@@ -569,6 +585,7 @@ void net_mix_batch_forward(net_server_s *s, byte_buffer_s *buf)
 		fprintf(stderr, "STOP TRYING TO FORWARD PLS\n");
 		return;
 	}
+
 	conn->write_buf = buf;
 	conn->bytes_written = 0;
 	conn->write_remaining = net_header_BYTES + (buf->num_msgs * buf->msg_len_bytes);
@@ -579,21 +596,31 @@ void net_mix_batch_forward(net_server_s *s, byte_buffer_s *buf)
 void net_mix_af_forward(net_server_s *s)
 {
 	mix_af_decrypt_messages(s->mix);
+	mix_af_s *af_data = &s->mix->af_data;
+	printf("AF Round %d: Received %d msgs, added %d noise -> Forwarding %d\n",
+	       af_data->round,
+	       af_data->in_buf.num_msgs,
+	       af_data->noisemu,
+	       af_data->out_buf.num_msgs);
 	net_broadcast_new_afr(s);
 	byte_buffer_s *buf = &s->mix->af_data.out_buf;
 	net_mix_batch_forward(s, buf);
 	mix_af_newround(s->mix);
 	net_mix_pkg_broadcast(s);
-	mix_af_add_noise(s->mix);
 }
 
 void net_mix_dial_forward(net_server_s *s)
 {
 	mix_dial_decrypt_messages(s->mix);
+	mix_dial_s *dial_data = &s->mix->dial_data;
+	printf("Dial Round %d: Received %d msgs, added %d noise -> Forwarding %d\n",
+	       dial_data->round,
+	       dial_data->in_buf.num_msgs,
+	       dial_data->noisemu,
+	       dial_data->out_buf.num_msgs);
 	net_broadcast_new_dr(s);
 	net_mix_batch_forward(s, &s->mix->dial_data.out_buf);
 	mix_dial_newround(s->mix);
-	mix_dial_add_noise(s->mix);
 }
 
 void epoll_send(net_server_s *s, connection *conn)

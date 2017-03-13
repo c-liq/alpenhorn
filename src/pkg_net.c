@@ -330,10 +330,22 @@ void net_pkg_server_loop(pkg_net_s *es, void(*on_read)(pkg_net_s *, pkg_connecti
 	}
 }
 
-int main()
+int main(int argc, char **argv)
 {
+	int sid;
+	if (argc < 2) {
+		fprintf(stderr, "No server id provided\n");
+		return 1;
+	}
+
+	sid = atoi(argv[1]);
+	if (sid > num_pkg_servers) {
+		fprintf(stderr, "Invalid server id %d\n", sid);
+		return 1;
+	}
+
 	pkg_server s;
-	pkg_server_init(&s, 0);
+	pkg_server_init(&s, (uint32_t) sid);
 	pkg_net_s pkg_s;
 	printf("Starting pkg server\n");
 	pkg_server_startup(&pkg_s, &s);

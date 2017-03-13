@@ -67,5 +67,6 @@ keywheel_s *kw_from_request(keywheel_table_s *table, const uint8_t *user_id, uin
 int kw_save(keywheel_table_s *table);
 int kw_load(keywheel_table_s *table, uint32_t dial_round, char *file_path);
 void kw_print_table(keywheel_table_s *table);
+keywheel_unsynced *kw_unsynced_lookup(keywheel_table_s *table, const uint8_t *user_id);
 
 #endif //ALPENHORN_KEYWHEEL_H

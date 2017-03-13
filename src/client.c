@@ -43,6 +43,9 @@ int dial_call_friend(client_s *c, const uint8_t *user_id, const uint32_t intent)
 		fprintf(stderr, "Error while onion encrypting dialling token\n");
 		return -1;
 	}
+	char session_key_hex[dialling_token_BYTES * 2 + 1];
+	sodium_bin2hex(session_key_hex, sizeof session_key_hex, c->session_key_buf, dialling_token_BYTES);
+	printf("Calling friend %s | Session Key: %s\n", user_id, session_key_hex);
 	return 0;
 }
 
@@ -93,30 +96,29 @@ int dial_process_mb(client_s *c, uint8_t *mb_data)
 {
 	uint32_t round_num = deserialize_uint32(mb_data);
 	uint32_t num_tokens = deserialize_uint32(mb_data + 4);
-	printf("Num Tokens: %d\n", num_tokens);
 
 	bloomfilter_s bloom;
 	int found = 0, num_calls = 0;
 	uint8_t dial_token_buf[dialling_token_BYTES];
-	keywheel_s *kw;
-	bloom_init(&bloom, c->bloom_p_val, num_tokens, 0, mb_data, 8);
 
-	for (uint32_t i = 0; i < c->keywheel.num_keywheels; i++) {
-		kw = &c->keywheel.keywheels[i];
+	bloom_init(&bloom, c->bloom_p_val, num_tokens, 0, mb_data, 8);
+	keywheel_s *curr_kw = c->keywheel.keywheels;
+	while (curr_kw) {
 		for (uint32_t j = 0; j < c->num_intents; j++) {
-			kw_dialling_token(dial_token_buf, &c->keywheel, kw->user_id, j);
+			kw_dialling_token(dial_token_buf, &c->keywheel, curr_kw->user_id, j);
 			found = bloom_lookup(&bloom, dial_token_buf, dialling_token_BYTES);
 			if (found) {
 				incoming_call_s *new_call = calloc(1, sizeof *new_call);
 				new_call->round = round_num;
 				new_call->intent = j;
-				memcpy(new_call->user_id, kw->user_id, user_id_BYTES);
-				kw_session_key(new_call->session_key, &c->keywheel, kw->user_id);
+				memcpy(new_call->user_id, curr_kw->user_id, user_id_BYTES);
+				kw_session_key(new_call->session_key, &c->keywheel, curr_kw->user_id);
 				num_calls++;
 				print_call(new_call);
 				break;
 			}
 		}
+		curr_kw = curr_kw->next;
 	}
 	return num_calls;
 }
@@ -163,6 +165,8 @@ int af_accept_request(client_s *c, const char *user_id)
 		fprintf(stderr, "could not find pending friend request matching id\n");
 		return -1;
 	}
+
+	printf("Responding to friend request from %s\n", user_id);
 	uint8_t *dr_ptr = c->friend_request_buf + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES + crypto_NBYTES;
 	uint8_t *user_id_ptr = dr_ptr + round_BYTES;
 	uint8_t *dh_pk_ptr = user_id_ptr + user_id_BYTES;
@@ -170,12 +174,23 @@ int af_accept_request(client_s *c, const char *user_id)
 	uint8_t *client_sig_ptr = lt_sig_key_ptr + crypto_sign_PUBLICKEYBYTES;
 	uint8_t *multisig_ptr = client_sig_ptr + crypto_sign_BYTES;
 
-	uint8_t *friend_userid_ptr = req->user_id;
-	keywheel_s *new_kw = kw_from_request(&c->keywheel, friend_userid_ptr, dh_pk_ptr, req->dh_pk);
+	keywheel_s *new_kw = kw_from_request(&c->keywheel, req->user_id, dh_pk_ptr, req->dh_pk);
 	if (!new_kw) {
 		fprintf(stderr, "Client: Couldn't construct keywheel for new contact\n");
 		return -1;
 	}
+	if (req == c->friend_requests) {
+		c->friend_requests = req->next;
+	}
+
+	if (req->next) {
+		req->next->prev = req->prev;
+	}
+
+	if (req->prev) {
+		req->prev->next = req->next;
+	}
+	free(req);
 
 	memcpy(user_id_ptr, c->user_id, user_id_BYTES);
 	memcpy(lt_sig_key_ptr, c->lg_sig_pk, crypto_sign_PUBLICKEYBYTES);
@@ -188,7 +203,7 @@ int af_accept_request(client_s *c, const char *user_id)
 	// Encrypt the request using IBE
 	ibe_encrypt(c->friend_request_buf + mb_BYTES, dr_ptr, af_request_BYTES,
 	            &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
-	            friend_userid_ptr, user_id_BYTES, &c->pairing);
+	            new_kw->user_id, user_id_BYTES, &c->pairing);
 	// Only information identifying the destination of a request, the mailbox no. of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
 	serialize_uint32(c->friend_request_buf, mb);
@@ -285,6 +300,11 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint32_t round)
 	}
 	// Both signatures verified, copy the relevant information into a new structure
 	// Ultimately to be passed on to the higher level application
+	keywheel_unsynced *entry = kw_unsynced_lookup(&c->keywheel, user_id_ptr);
+	if (entry) {
+		int res = kw_complete_keywheel(&c->keywheel, user_id_ptr, dh_pub_ptr, deserialize_uint32(dialling_round_ptr));
+		kw_print_table(&c->keywheel);
+	}
 	friend_request_s *new_req = calloc(1, sizeof(friend_request_s));
 	memcpy(new_req->user_id, user_id_ptr, user_id_BYTES);
 	memcpy(new_req->dh_pk, dh_pub_ptr, crypto_box_PUBLICKEYBYTES);

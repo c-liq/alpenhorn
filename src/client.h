@@ -70,6 +70,7 @@ struct friend_request
 	uint32_t dialling_round;
 	uint8_t lt_sig_key[crypto_sign_PUBLICKEYBYTES];
 	friend_request_s *next;
+	friend_request_s *prev;
 };
 
 struct incoming_call
