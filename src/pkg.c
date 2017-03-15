@@ -9,7 +9,7 @@
 int pkg_server_init(pkg_server *server, uint32_t server_id)
 {
 	pairing_init_set_str(server->pairing, pbc_params);
-	server->current_round = 0;
+	server->current_round = 1;
 	server->num_clients = 3;
 	server->srv_id = server_id;
 	pairing_ptr pairing = server->pairing;

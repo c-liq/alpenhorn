@@ -24,7 +24,6 @@ struct keywheel_table
 	size_t unconfirmed_capacity;
 	size_t num_unsynced;
 	uint32_t table_round;
-	uint32_t cli_dial_round;
 	char *table_file;
 };
 
@@ -32,9 +31,7 @@ struct keywheel
 {
 	uint8_t user_id[user_id_BYTES];
 	uint8_t hash_key[crypto_generichash_BYTES];
-	uint8_t key_state[intent_BYTES + crypto_generichash_BYTES_MAX];
-	uint8_t *intent_ptr;
-	uint8_t *key_ptr;
+	uint8_t key_state[2][intent_BYTES + crypto_generichash_BYTES_MAX];
 	uint32_t dialling_round;
 	keywheel_s *next;
 	keywheel_s *prev;
@@ -51,8 +48,8 @@ struct keywheel_unsynced
 };
 
 int kw_table_init(keywheel_table_s *table, uint32_t dial_round, char *table_file);
-int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint32_t intent);
-int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id);
+int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint32_t intent, bool is_outgoing);
+int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id, bool is_outgoing);
 void kw_advance_table(keywheel_table_s *table);
 int kw_new_keywheel(keywheel_table_s *table,
                     const uint8_t *user_id,

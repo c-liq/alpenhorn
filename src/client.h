@@ -46,8 +46,8 @@ struct client
 	// Buffer for the fully encrypted add friend request
 	// Contains the plaintext request, encrypted through IBE, with a mailbox identifier prepended
 	// Then onion-encrypted in layers for the mix_s servers
-	uint8_t friend_request_buf[onionenc_friend_request_BYTES];
-	uint8_t dial_request_buf[onionenc_dial_token_BYTES];
+	uint8_t friend_request_buf[net_header_BYTES + onionenc_friend_request_BYTES];
+	uint8_t dial_request_buf[net_header_BYTES + onionenc_dial_token_BYTES];
 	uint8_t session_key_buf[crypto_ghash_BYTES];
 	// Epheremal public DH keys from mix_s servers - used to onion encrypt friend requests
 	uint8_t mix_eph_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];

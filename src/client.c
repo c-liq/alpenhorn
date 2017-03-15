@@ -24,15 +24,16 @@ int dial_call_friend(client_s *c, const uint8_t *user_id, const uint32_t intent)
 	//verify userid string
 	int result;
 	uint32_t mailbox = dial_calc_mailbox_num(c, user_id);
-	serialize_uint32(c->dial_request_buf, mailbox);
-
-	result = kw_dialling_token(c->dial_request_buf + mb_BYTES, &c->keywheel, user_id, intent);
+	serialize_uint32(c->dial_request_buf + net_header_BYTES, mailbox);
+	serialize_uint32(c->dial_request_buf, CLIENT_DIAL_MSG);
+	serialize_uint32(c->dial_request_buf + net_msg_type_BYTES, c->dialling_round);
+	result = kw_dialling_token(c->dial_request_buf + net_header_BYTES + mb_BYTES, &c->keywheel, user_id, intent, true);
 	if (result) {
 		fprintf(stderr, "could not create dialling token for %s\n", user_id);
 		return -1;
 	}
 
-	result = kw_session_key(c->session_key_buf, &c->keywheel, user_id);
+	result = kw_session_key(c->session_key_buf, &c->keywheel, user_id, true);
 	if (result) {
 		fprintf(stderr, "could not generate session key for %s\n", user_id);
 		return -1;
@@ -59,7 +60,7 @@ void af_add_friend(client_s *client, const char *user_id)
 
 void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages, uint32_t round)
 {
-	round = c->af_round - 1;
+
 	printf("Processing AF mailbox for round %u\n", round);
 	uint8_t *msg_ptr = mailbox;
 	for (int i = 0; i < num_messages; i++) {
@@ -72,14 +73,18 @@ void af_fake_request(client_s *c)
 {
 	memset(c->friend_request_buf, 0, sizeof c->friend_request_buf);
 	// To avoid distributing cover requests, set the mailbox to an invalid number so last mix server can discard them
-	serialize_uint32(c->friend_request_buf, c->af_num_mailboxes + 1);
+	serialize_uint32(c->friend_request_buf, CLIENT_AF_MSG);
+	serialize_uint32(c->friend_request_buf + net_msg_type_BYTES, c->af_round);
+	serialize_uint32(c->friend_request_buf + net_header_BYTES, c->af_num_mailboxes + 1);
 	af_onion_encrypt_request(c);
 }
 
 void dial_fake_request(client_s *c)
 {
 	memset(c->dial_request_buf, 0, sizeof c->dial_request_buf);
-	serialize_uint32(c->dial_request_buf, c->dial_num_mailboxes + 1);
+	serialize_uint32(c->dial_request_buf, CLIENT_DIAL_MSG);
+	serialize_uint32(c->dial_request_buf + net_msg_type_BYTES, c->dialling_round);
+	serialize_uint32(c->dial_request_buf + net_header_BYTES, c->dial_num_mailboxes + 1);
 	dial_onion_encrypt_request(c);
 }
 
@@ -94,9 +99,10 @@ void print_call(incoming_call_s *call)
 
 int dial_process_mb(client_s *c, uint8_t *mb_data)
 {
+
 	uint32_t round_num = deserialize_uint32(mb_data);
 	uint32_t num_tokens = deserialize_uint32(mb_data + 4);
-
+	printf("Processing Dial mb for round %d\n", round_num);
 	bloomfilter_s bloom;
 	int found = 0, num_calls = 0;
 	uint8_t dial_token_buf[dialling_token_BYTES];
@@ -105,14 +111,14 @@ int dial_process_mb(client_s *c, uint8_t *mb_data)
 	keywheel_s *curr_kw = c->keywheel.keywheels;
 	while (curr_kw) {
 		for (uint32_t j = 0; j < c->num_intents; j++) {
-			kw_dialling_token(dial_token_buf, &c->keywheel, curr_kw->user_id, j);
+			kw_dialling_token(dial_token_buf, &c->keywheel, curr_kw->user_id, j, false);
 			found = bloom_lookup(&bloom, dial_token_buf, dialling_token_BYTES);
 			if (found) {
 				incoming_call_s *new_call = calloc(1, sizeof *new_call);
 				new_call->round = round_num;
 				new_call->intent = j;
 				memcpy(new_call->user_id, curr_kw->user_id, user_id_BYTES);
-				kw_session_key(new_call->session_key, &c->keywheel, curr_kw->user_id);
+				kw_session_key(new_call->session_key, &c->keywheel, curr_kw->user_id, false);
 				num_calls++;
 				print_call(new_call);
 				break;
@@ -167,7 +173,12 @@ int af_accept_request(client_s *c, const char *user_id)
 	}
 
 	printf("Responding to friend request from %s\n", user_id);
-	uint8_t *dr_ptr = c->friend_request_buf + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES + crypto_NBYTES;
+	serialize_uint32(c->friend_request_buf, CLIENT_AF_MSG);
+	serialize_uint32(c->friend_request_buf + net_msg_type_BYTES, c->af_round);
+
+	uint8_t *dr_ptr =
+		c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES
+			+ crypto_NBYTES;
 	uint8_t *user_id_ptr = dr_ptr + round_BYTES;
 	uint8_t *dh_pk_ptr = user_id_ptr + user_id_BYTES;
 	uint8_t *lt_sig_key_ptr = dh_pk_ptr + crypto_box_PUBLICKEYBYTES;
@@ -201,19 +212,24 @@ int af_accept_request(client_s *c, const char *user_id)
 	                     c->lt_sig_sk);
 	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
-	ibe_encrypt(c->friend_request_buf + mb_BYTES, dr_ptr, af_request_BYTES,
+	ibe_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
 	            &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
 	            new_kw->user_id, user_id_BYTES, &c->pairing);
 	// Only information identifying the destination of a request, the mailbox no. of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
-	serialize_uint32(c->friend_request_buf, mb);
+	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
 	// Encrypt the request in layers ready for the mixnet
 	af_onion_encrypt_request(c);
 }
 
 void af_create_request(client_s *c)
 {
-	uint8_t *dr_ptr = c->friend_request_buf + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES + crypto_NBYTES;
+	serialize_uint32(c->friend_request_buf, CLIENT_AF_MSG);
+	serialize_uint32(c->friend_request_buf + net_msg_type_BYTES, c->af_round);
+
+	uint8_t *dr_ptr =
+		c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES
+			+ crypto_NBYTES;
 	uint8_t *user_id_ptr = dr_ptr + round_BYTES;
 	uint8_t *dh_pub_ptr = user_id_ptr + user_id_BYTES;
 	uint8_t *lt_sig_key_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
@@ -239,12 +255,12 @@ void af_create_request(client_s *c)
 	// Also include the multisignature from PKG servers, primary source of verification
 	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
-	ibe_encrypt(c->friend_request_buf + mb_BYTES, dr_ptr, af_request_BYTES,
+	ibe_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
 	            &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
 	            c->friend_request_id, user_id_BYTES, &c->pairing);
 	// Only information identifying the destination of a request, the mailbox no. of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
-	serialize_uint32(c->friend_request_buf, mb);
+	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
 	// Encrypt the request in layers ready for the mixnet
 	af_onion_encrypt_request(c);
 }
@@ -256,7 +272,7 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint32_t round)
 	                         &c->pkg_ibe_secret_combined_g2[!c->curr_ibe], &c->pairing);
 
 	if (result) {
-		//	fprintf(stderr, "%s: ibe decryption failure\n", c->user_id);
+		fprintf(stderr, "%s: ibe decryption failure\n", c->user_id);
 		return -1;
 	}
 
@@ -368,15 +384,15 @@ int af_create_pkg_auth_request(client_s *client)
 
 int af_process_auth_responses(client_s *c)
 {
+	element_set1(&c->pkg_ibe_secret_combined_g2[!c->curr_ibe]);
+	element_set1(&c->pkg_multisig_combined_g1);
+	element_t g1_tmp, g2_tmp;
+	element_init(g1_tmp, c->pairing.G1);
+	element_init(g2_tmp, c->pairing.G2);
+
 	uint8_t *auth_response;
 	uint8_t *nonce_ptr;
 
-	element_set1(&c->pkg_ibe_secret_combined_g2[!c->curr_ibe]);
-	element_set1(&c->pkg_multisig_combined_g1);
-	element_t g1_tmp;
-	element_t g2_tmp;
-	element_init(g1_tmp, c->pairing.G1);
-	element_init(g2_tmp, c->pairing.G2);
 	for (int i = 0; i < num_pkg_servers; i++) {
 		auth_response = c->pkg_auth_responses[i];
 		nonce_ptr = auth_response + pkg_auth_res_BYTES + crypto_MACBYTES;
@@ -413,12 +429,12 @@ int onion_encrypt_message(client_s *client, uint8_t *msg, uint32_t base_msg_leng
 
 int af_onion_encrypt_request(client_s *client)
 {
-	return onion_encrypt_message(client, client->friend_request_buf, af_ibeenc_request_BYTES);
+	return onion_encrypt_message(client, client->friend_request_buf + net_header_BYTES, af_ibeenc_request_BYTES);
 }
 
 int dial_onion_encrypt_request(client_s *client)
 {
-	return onion_encrypt_message(client, client->dial_request_buf, dialling_token_BYTES);
+	return onion_encrypt_message(client, client->dial_request_buf + net_header_BYTES, dialling_token_BYTES);
 }
 
 int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id)
@@ -453,8 +469,8 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 	c->authed = false;
 	c->af_num_mailboxes = 1;
 	c->dial_num_mailboxes = 1;
-	c->dialling_round = 0;
-	c->af_round = 0;
+	c->dialling_round = 1;
+	c->af_round = 1;
 	c->friend_requests = NULL;
 
 	memcpy(c->user_id, user_id, user_id_BYTES);
@@ -501,7 +517,7 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 	               NULL);
 
 	kw_table_init(&c->keywheel, c->dialling_round, NULL);
-	c->num_intents = 3;
+	c->num_intents = 1;
 	c->bloom_p_val = pow(10.0, -10.0);
 }
 

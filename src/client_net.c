@@ -226,10 +226,40 @@ void epoll_send(client_net_s *c, client_connection *conn)
 }
 //Todo
 
+void net_process_msg(void *s, client_connection *conn)
+{
+	switch (conn->msg_type) {
+	case NEW_AF_ROUND:
+	default:
+		fprintf(stderr, "Invalid message header\n");
+	}
+
+}
+
+
 void net_process_read(void *s, client_connection *conn, ssize_t count)
 {
 	client_net_s *net_cli = (client_net_s *) s;
-	conn->bytes_read = count;
+	conn->bytes_read += count;
+
+	while (conn->bytes_read > 0) {
+		if (conn->curr_msg_len == 0) {
+			if ((count < net_header_BYTES)) {
+				return;
+			}
+
+			conn->msg_type = deserialize_uint32(conn->read_buf->base);
+			conn->read_buf->msg_len_bytes = deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES);
+
+			// Message hasn't been fully transferred
+			if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
+				return;
+			}
+
+			net_process_msg(s, conn);
+
+		}
+	}
 
 }
 
@@ -267,7 +297,7 @@ void net_client_lastmix_read(void *s, client_connection *conn, ssize_t count)
 			else if (msg_type == AF_MB) {
 				conn->msg_type = AF_MB;
 				uint32_t num_msgs = deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES);
-				conn->curr_msg_len = af_ibeenc_request_BYTES * num_msgs;
+				conn->curr_msg_len = 4 + af_ibeenc_request_BYTES * num_msgs;
 				conn->read_buf->pos += count;
 				conn->read_buf->num_msgs = num_msgs;
 			}
@@ -289,11 +319,12 @@ void net_client_lastmix_read(void *s, client_connection *conn, ssize_t count)
 
 		if (conn->msg_type == DIAL_MB) {
 			dial_process_mb(c->client, conn->read_buf->base + net_header_BYTES);
+			kw_advance_table(&c->client->keywheel);
 		}
 		else if (conn->msg_type == AF_MB) {
-			uint32_t round = deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES);
-			af_process_mb(c->client, conn->read_buf->base + net_header_BYTES, conn->read_buf->num_msgs, round);
-			c->client->last_mailbox_read++;
+			uint32_t round = deserialize_uint32(conn->read_buf->base + net_header_BYTES);
+			af_process_mb(c->client, conn->read_buf->base + net_header_BYTES + 4, conn->read_buf->num_msgs, round);
+			c->client->last_mailbox_read = round;
 			if (c->num_auth_responses == num_pkg_servers) {
 				//printf("Processed mailbox -> Replace IBE keys by processing auth responses\n");
 				af_process_auth_responses(c->client);
@@ -345,30 +376,24 @@ void net_client_mixentry_read(void *cl_ptr, client_connection *conn, ssize_t cou
 
 		uint32_t msg_type = deserialize_uint32(conn->read_buf->base);
 		if (msg_type == NEW_DIAL_ROUND) {
-			serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining, CLIENT_DIAL_MSG);
-			serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining + 4,
-			                 c->client->dialling_round);
-			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + 8,
-			       c->client->dial_request_buf,
-			       onionenc_dial_token_BYTES);
+			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining,
+			       c->client->dial_request_buf, net_header_BYTES + onionenc_dial_token_BYTES);
 			conn->write_remaining += net_header_BYTES + onionenc_dial_token_BYTES;
 			c->client->dialling_round++;
+			printf("Dial round %d started\n", c->client->dialling_round);
 			epoll_send(c, conn);
 			dial_fake_request(c->client);
 		}
 		else if (msg_type == NEW_AF_ROUND) {
-			serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining, CLIENT_AF_MSG);
-			serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining + 4,
-			                 c->client->af_round);
-			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + 8,
+			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining,
 			       c->client->friend_request_buf,
-			       onionenc_friend_request_BYTES);
+			       net_header_BYTES + onionenc_friend_request_BYTES);
 			conn->write_remaining += net_header_BYTES + onionenc_friend_request_BYTES;
-
 			c->client->authed = false;
 			c->num_broadcast_responses = 0;
 			c->num_auth_responses = 0;
 			c->client->af_round++;
+			printf("AF round %d started\n", c->client->af_round);
 			epoll_send(c, conn);
 			af_fake_request(c->client);
 		}
@@ -540,6 +565,7 @@ int net_client_startup(client_net_s *cn)
 	}
 	cn->client->af_round = deserialize_uint32(cn->mix_entry.read_buf->base + 4);
 	cn->client->dialling_round = deserialize_uint32(cn->mix_entry.read_buf->base + 8);
+	cn->client->keywheel.table_round = cn->client->dialling_round;
 	cn->client->last_mailbox_read = cn->client->af_round - 1;
 
 	uint8_t *dh_ptr = cn->mix_entry.read_buf->base + 12;

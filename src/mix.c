@@ -41,13 +41,14 @@ void mix_af_distribute(mix_s *mix)
 		af_mailbox_s *mb = &c->mailboxes[i];
 		mb->id = i;
 		mb->num_messages = mix->af_data.mb_counts[i];
-		uint32_t mailbox_sz = net_header_BYTES + (af_ibeenc_request_BYTES * mb->num_messages);
+		uint32_t mailbox_sz = net_header_BYTES + 4 + (af_ibeenc_request_BYTES * mb->num_messages);
 		printf("Mailbox num msgs: %d - Mailbox size bytes: %d\n", mb->num_messages, mailbox_sz);
 		mb->size_bytes = mailbox_sz;
 		mb->data = calloc(1, mailbox_sz);
 		serialize_uint32(mb->data, AF_MB);
 		serialize_uint32(mb->data + 4, mb->num_messages);
-		mb->next_msg_ptr = mb->data + net_header_BYTES;
+		serialize_uint32(mb->data + 8, c->round);
+		mb->next_msg_ptr = mb->data + net_header_BYTES + 4;
 	}
 
 	uint32_t curr_mailbox = 0;
@@ -162,10 +163,10 @@ int mix_init(mix_s *mix, uint32_t server_id)
 		memset(&mix->dial_mb_containers[i], 0, sizeof *mix->dial_mb_containers);
 	}
 
-	mix->af_data.round = 0;
-	mix->af_data.round_duration = 30;
-	mix->dial_data.round = 0;
-	mix->dial_data.round_duration = 20;
+	mix->af_data.round = 1;
+	mix->af_data.round_duration = 19;
+	mix->dial_data.round = 1;
+	mix->dial_data.round_duration = 12;
 	mix->af_data.noisemu = 1;
 	mix->dial_data.noisemu = 1;
 	mix->af_data.num_mailboxes = 1;
