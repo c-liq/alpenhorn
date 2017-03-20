@@ -14,7 +14,7 @@ void epoll_send (net_server_s *s, connection *conn);
 void net_mix_af_forward(net_server_s *s);
 void net_mix_dial_forward(net_server_s *s);
 void net_mix_batch_forward(net_server_s *s, byte_buffer_s *buf);
-void net_broadcast_new_dmb(net_server_s *s, uint32_t round);
-void net_broadcast_new_afmb(net_server_s *s, uint32_t round);
+void net_broadcast_new_dmb(net_server_s *s, uint64_t round);
+void net_broadcast_new_afmb(net_server_s *s, uint64_t round);
 
 #endif //ALPENHORN_ENTRY_SERVER_H

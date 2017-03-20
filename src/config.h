@@ -5,8 +5,8 @@
 #include <sys/types.h>
 
 #define CLI_AUTH_REQ 50
-#define CLIENT_DIAL_MSG 150
-#define CLIENT_AF_MSG 151
+#define CLIENT_DIAL_MSG 27
+#define CLIENT_AF_MSG 28
 #define CLIENT_DIAL_MB_REQUEST 152
 #define CLIENT_AF_MB_REQUEST 153
 
@@ -20,17 +20,16 @@
 
 #define intent_BYTES 4U
 #define mb_BYTES 4U
-#define round_BYTES 4U
+#define round_BYTES 8U
 #define dialling_token_BYTES 32U
 #define num_pkg_servers 2U
 #define num_mix_servers 2U
 #define user_id_BYTES 60U
 #define net_msg_type_BYTES 4U
 
-#define net_header_BYTES 8U
-#define net_client_connect_BYTES num_mix_servers * (12U + crypto_box_PUBLICKEYBYTES)
+#define net_header_BYTES 24U
+#define net_client_connect_BYTES (num_mix_servers * crypto_box_PUBLICKEYBYTES)
 #define net_client_dial_mb_request (net_header_BYTES + user_id_BYTES)
-
 
 #define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + round_BYTES)
 #define af_ibeenc_request_BYTES (af_request_BYTES + crypto_ghash_BYTES + g1_elem_compressed_BYTES + crypto_MACBYTES + crypto_NBYTES)
@@ -38,7 +37,6 @@
 #define onionenc_friend_request_BYTES (mb_BYTES + af_ibeenc_request_BYTES + (num_mix_servers * onion_layer_BYTES))
 #define onionenc_dial_token_BYTES (mb_BYTES + dialling_token_BYTES + (num_mix_servers * onion_layer_BYTES))
 #define cli_pkg_single_auth_req_BYTES (user_id_BYTES + crypto_sign_BYTES + crypto_box_PUBLICKEYBYTES)
-#define cli_pkg_combined_auth_req_BYTES (user_id_BYTES + (num_pkg_servers * cli_pkg_single_auth_req_BYTES))
 
 #define pkg_auth_res_BYTES (g1_elem_compressed_BYTES + g2_elem_compressed_BYTES)
 #define pkg_enc_auth_res_BYTES (pkg_auth_res_BYTES + crypto_MACBYTES + crypto_NBYTES)

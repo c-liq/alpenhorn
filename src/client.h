@@ -21,10 +21,10 @@ struct client
 	uint8_t lt_sig_sk[crypto_sign_SECRETKEYBYTES];
 	uint8_t lg_sig_pk[crypto_sign_PUBLICKEYBYTES];
 	pairing_s pairing;
-	uint32_t dialling_round;
+	uint64_t dialling_round;
 	keywheel_table_s keywheel;
 	uint8_t friend_request_id[user_id_BYTES];
-	uint32_t af_round;
+	uint64_t af_round;
 	uint32_t dial_num_mailboxes;
 	uint32_t af_num_mailboxes;
 	// Long term BLS pub keys, private counterpart signs auth messages in friend requests
@@ -60,14 +60,14 @@ struct client
 	uint32_t num_intents;
 	friend_request_s *friend_requests;
 	bool authed;
-	uint32_t last_mailbox_read;
+	bool mb_processed;
 };
 
 struct friend_request
 {
 	uint8_t user_id[user_id_BYTES];
 	uint8_t dh_pk[crypto_box_PUBLICKEYBYTES];
-	uint32_t dialling_round;
+	uint64_t dialling_round;
 	uint8_t lt_sig_key[crypto_sign_PUBLICKEYBYTES];
 	friend_request_s *next;
 	friend_request_s *prev;
@@ -77,7 +77,7 @@ struct incoming_call
 {
 	uint8_t user_id[user_id_BYTES];
 	uint8_t session_key[crypto_ghash_BYTES];
-	uint32_t round;
+	uint64_t round;
 	uint32_t intent;
 };
 
@@ -86,16 +86,16 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 int af_create_pkg_auth_request(client_s *client);
 void af_create_request(client_s *c);
 int af_process_auth_responses(client_s *c);
-int af_decrypt_request(client_s *c, uint8_t *request_buf, uint32_t round);
+int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round);
 void print_friend_request(friend_request_s *req);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
 int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id);
 void af_add_friend(client_s *client, const char *user_id);
-void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages, uint32_t round);
+void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages, uint64_t round);
 int af_accept_request(client_s *c, const char *user_id);
 int dial_call_friend(client_s *c, const uint8_t *user_id, uint32_t intent);
-int dial_process_mb(client_s *c, uint8_t *mb_data);
+int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint32_t num_tokens);
 void dial_fake_request(client_s *c);
 void af_fake_request(client_s *c);
 #endif //ALPENHORN_CLIENT_H

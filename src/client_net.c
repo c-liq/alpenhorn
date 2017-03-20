@@ -40,8 +40,7 @@ struct client_connection
 	size_t bytes_written;
 	size_t write_remaining;
 	struct epoll_event event;
-	void (*on_read)(void *owner, client_connection *conn, ssize_t count);
-	void (*on_write)(void *owner, client_connection *conn, ssize_t count);
+	void (*process)(void *owner, client_connection *conn);
 	unsigned char conn_type;
 };
 
@@ -95,7 +94,7 @@ action *action_stack_pop(client_net_s *c)
 	return popped;
 }
 
-void *action_stack_push(client_net_s *c, action *new_action)
+void action_stack_push(client_net_s *c, action *new_action)
 {
 	pthread_mutex_lock(&c->aq_lock);
 	new_action->next = c->action_stack;
@@ -112,12 +111,20 @@ void client_connection_init(client_connection *conn)
 	conn->sock_fd = -1;
 	conn->event.data.ptr = conn;
 	conn->curr_msg_len = 0;
-	conn->on_write = NULL;
-	conn->on_read = NULL;
+	conn->process = NULL;
 	conn->event.events = 0;
 	conn->read_buf = calloc(1, sizeof *conn->read_buf);
-	byte_buffer_init(conn->read_buf, 1, 16384, 0);
+	byte_buffer_init(conn->read_buf, 16384, 0);
 	memset(conn->write_buf, 0, buf_size);
+}
+
+void ep_socket_send(client_net_s *s, client_connection *conn);
+
+void net_send_message(void *s, struct client_connection *conn, uint8_t *msg, uint32_t msg_size_bytes)
+{
+	memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining, msg, msg_size_bytes);
+	conn->write_remaining += msg_size_bytes;
+	ep_socket_send(s, conn);
 }
 
 int net_client_init(client_net_s *cs, client_s *c)
@@ -130,8 +137,6 @@ int net_client_init(client_net_s *cs, client_s *c)
 	cs->num_auth_responses = 0;
 	cs->num_broadcast_responses = 0;
 	cs->running = 0;
-
-
 	client_connection_init(&cs->mix_entry);
 	client_connection_init(&cs->mix_last);
 	for (int i = 0; i < num_pkg_servers; i++) {
@@ -140,46 +145,7 @@ int net_client_init(client_net_s *cs, client_s *c)
 	return 0;
 }
 
-void epoll_csend(client_net_s *c, client_connection *conn)
-{
-	int close_client_connection = 0;
-	for (;;) {
-		ssize_t count =
-			send(conn->sock_fd, conn->write_buf + conn->bytes_written, (size_t) conn->write_remaining, 0);
-		if (count == -1) {
-			if (errno != EAGAIN) {
-				perror("send");
-				close_client_connection = 1;
-			}
-			break;
-		}
-		else if (count == 0) {
-			close_client_connection = 1;
-			break;
-		}
-		else {
-			conn->bytes_written += count;
-			conn->write_remaining -= count;
-		}
-	}
-	if (close_client_connection) {
-		//close(conn->sock_fd);
-		//free(conn);
-	}
-
-	// If we haven't finished writing, make sure EPOLLOUT is set
-	if (conn->write_remaining != 0 && !(conn->event.events & EPOLLOUT)) {
-		conn->event.events = EPOLLOUT | EPOLLERR | EPOLLERR;
-		epoll_ctl(c->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
-	}
-		// If we have finished writing, make sure to unset EPOLLOUT
-	else if (conn->write_remaining == 0 && conn->event.events & EPOLLOUT) {
-		conn->event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
-		epoll_ctl(c->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
-	}
-}
-
-void epoll_send(client_net_s *c, client_connection *conn)
+void ep_socket_send(client_net_s *c, client_connection *conn)
 {
 	int close_client_connection = 0;
 	while (conn->write_remaining > 0) {
@@ -224,179 +190,35 @@ void epoll_send(client_net_s *c, client_connection *conn)
 		epoll_ctl(c->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
 	}
 }
-//Todo
 
-void net_process_msg(void *s, client_connection *conn)
-{
-	switch (conn->msg_type) {
-	case NEW_AF_ROUND:
-	default:
-		fprintf(stderr, "Invalid message header\n");
-	}
-
-}
-
-
-void net_process_read(void *s, client_connection *conn, ssize_t count)
-{
-	client_net_s *net_cli = (client_net_s *) s;
-	conn->bytes_read += count;
-
-	while (conn->bytes_read > 0) {
-		if (conn->curr_msg_len == 0) {
-			if ((count < net_header_BYTES)) {
-				return;
-			}
-
-			conn->msg_type = deserialize_uint32(conn->read_buf->base);
-			conn->read_buf->msg_len_bytes = deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES);
-
-			// Message hasn't been fully transferred
-			if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
-				return;
-			}
-
-			net_process_msg(s, conn);
-
-		}
-	}
-
-}
-
-void net_client_lastmix_read(void *s, client_connection *conn, ssize_t count)
+void mix_entry_process_msg(void *s, struct client_connection *conn)
 {
 	client_net_s *c = (client_net_s *) s;
-	conn->bytes_read += count;
-
-	while (conn->bytes_read > 0) {
-		if (conn->curr_msg_len == 0) {
-			if ((count < net_header_BYTES)) {
-				return;
-			}
-			uint32_t msg_type = deserialize_uint32(conn->read_buf->base);
-			if (msg_type == NEW_AFMB_AVAIL) {
-				conn->curr_msg_len = 0;
-				conn->msg_type = NEW_AFMB_AVAIL;
-				//printf("Client received AF avail msg for round %d\n",
-				//      deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES));
-			}
-			else if (msg_type == NEW_DMB_AVAIL) {
-				conn->curr_msg_len = 0;
-				conn->msg_type = NEW_DMB_AVAIL;
-				//printf("Client received Dial avail msg for round %d\n",
-				//  deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES));
-			}
-
-			else if (msg_type == DIAL_MB) {
-				conn->msg_type = DIAL_MB;
-				uint32_t msg_len = deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES);
-				conn->curr_msg_len = msg_len;
-				conn->read_buf->pos += count;
-			}
-
-			else if (msg_type == AF_MB) {
-				conn->msg_type = AF_MB;
-				uint32_t num_msgs = deserialize_uint32(conn->read_buf->base + net_msg_type_BYTES);
-				conn->curr_msg_len = 4 + af_ibeenc_request_BYTES * num_msgs;
-				conn->read_buf->pos += count;
-				conn->read_buf->num_msgs = num_msgs;
-			}
-			else {
-				fprintf(stderr, "Invalid message\n");
-				close(conn->sock_fd);
-				return;
-			}
-		}
-
-		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
-			printf("Mix last read: %ld (%ld)of %ld | Buf capacity: %d\n",
-			       count,
-			       conn->bytes_read,
-			       conn->curr_msg_len,
-			       conn->read_buf->capacity_bytes);
-			return;
-		}
-
-		if (conn->msg_type == DIAL_MB) {
-			dial_process_mb(c->client, conn->read_buf->base + net_header_BYTES);
-			kw_advance_table(&c->client->keywheel);
-		}
-		else if (conn->msg_type == AF_MB) {
-			uint32_t round = deserialize_uint32(conn->read_buf->base + net_header_BYTES);
-			af_process_mb(c->client, conn->read_buf->base + net_header_BYTES + 4, conn->read_buf->num_msgs, round);
-			c->client->last_mailbox_read = round;
-			if (c->num_auth_responses == num_pkg_servers) {
-				//printf("Processed mailbox -> Replace IBE keys by processing auth responses\n");
-				af_process_auth_responses(c->client);
-				c->num_auth_responses = 0;
-			}
-		}
-		else if (conn->msg_type == NEW_AFMB_AVAIL) {
-			serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining, CLIENT_AF_MB_REQUEST);
-			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + 4,
-			       conn->read_buf->base + net_msg_type_BYTES,
-			       round_BYTES);
-			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + 8,
-			       c->client->user_id,
-			       user_id_BYTES);
-			conn->write_remaining += net_header_BYTES + user_id_BYTES;
-			epoll_send(c, conn);
-		}
-		else if (conn->msg_type == NEW_DMB_AVAIL) {
-			serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining, CLIENT_DIAL_MB_REQUEST);
-			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + net_msg_type_BYTES,
-			       conn->read_buf->base + net_msg_type_BYTES,
-			       round_BYTES);
-			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + net_header_BYTES,
-			       c->client->user_id,
-			       user_id_BYTES);
-			conn->write_remaining += net_header_BYTES + user_id_BYTES;
-			epoll_send(c, conn);
-		}
-
-		size_t remaining = (size_t) conn->bytes_read - (conn->curr_msg_len + net_header_BYTES);
-		if (remaining > 0) {
-			if (conn->read_buf) {
-				memcpy(conn->read_buf->base, conn->read_buf->base + conn->curr_msg_len + net_header_BYTES, remaining);
-				conn->read_buf->pos = conn->read_buf->base + remaining;
-			}
-		}
-		conn->msg_type = 0;
-		conn->curr_msg_len = 0;
-		conn->bytes_read = remaining;
-		conn->read_buf->pos = conn->read_buf->base + remaining;
-	}
-
-}
-
-void net_client_mixentry_read(void *cl_ptr, client_connection *conn, ssize_t count)
-{
-	client_net_s *c = (client_net_s *) cl_ptr;
-	if (conn->curr_msg_len == 0) {
-
-		uint32_t msg_type = deserialize_uint32(conn->read_buf->base);
-		if (msg_type == NEW_DIAL_ROUND) {
-			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining,
-			       c->client->dial_request_buf, net_header_BYTES + onionenc_dial_token_BYTES);
-			conn->write_remaining += net_header_BYTES + onionenc_dial_token_BYTES;
-			c->client->dialling_round++;
-			printf("Dial round %d started\n", c->client->dialling_round);
-			epoll_send(c, conn);
-			dial_fake_request(c->client);
-		}
-		else if (msg_type == NEW_AF_ROUND) {
-			memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining,
-			       c->client->friend_request_buf,
-			       net_header_BYTES + onionenc_friend_request_BYTES);
-			conn->write_remaining += net_header_BYTES + onionenc_friend_request_BYTES;
-			c->client->authed = false;
-			c->num_broadcast_responses = 0;
-			c->num_auth_responses = 0;
-			c->client->af_round++;
-			printf("AF round %d started\n", c->client->af_round);
-			epoll_send(c, conn);
-			af_fake_request(c->client);
-		}
+	switch (conn->msg_type) {
+	case NEW_AF_ROUND:
+		net_send_message(s, conn, c->client->friend_request_buf, net_header_BYTES + onionenc_friend_request_BYTES);
+		c->client->authed = false;
+		c->num_broadcast_responses = 0;
+		c->num_auth_responses = 0;
+		c->client->af_round = deserialize_uint64(conn->read_buf->data + 8);
+		c->client->mb_processed = false;
+		printf("AF round %ld started\n", c->client->af_round);
+		af_fake_request(c->client);
+		break;
+	case NEW_DIAL_ROUND:
+		net_send_message(s, conn, c->client->dial_request_buf, net_header_BYTES + onionenc_dial_token_BYTES);
+		c->client->dialling_round = deserialize_uint64(conn->read_buf->data + 8);
+		printf("Dial round %ld started\n", c->client->dialling_round);
+		dial_fake_request(c->client);
+		break;
+	case MIX_SYNC:
+		c->client->af_round = deserialize_uint64(conn->read_buf->data + 8);
+		c->client->dialling_round = deserialize_uint64(conn->read_buf->data + 16);
+		memcpy(c->client->mix_eph_pub_keys, conn->read_buf->data + net_header_BYTES, net_client_connect_BYTES);
+		break;
+	default:
+		fprintf(stderr, "Invalid message from Mix Entry\n");
+		break;
 	}
 }
 
@@ -404,60 +226,18 @@ void net_client_pkg_auth(client_net_s *cn)
 {
 	for (int i = 0; i < num_pkg_servers; i++) {
 		client_connection *conn = &cn->pkg_client_connections[i];
-		memcpy(conn->write_buf,
-		       cn->client->pkg_auth_requests[i],
-		       net_header_BYTES + cli_pkg_single_auth_req_BYTES);
-		conn->bytes_written = 0;
-		serialize_uint32(conn->write_buf, CLI_AUTH_REQ);
-		serialize_uint32(conn->write_buf + sizeof(uint32_t), cn->client->af_round);
-		conn->write_remaining = net_header_BYTES + cli_pkg_single_auth_req_BYTES;
-		epoll_csend(cn, &cn->pkg_client_connections[i]);
+		net_send_message(cn, conn, cn->client->pkg_auth_requests[i], net_header_BYTES + cli_pkg_single_auth_req_BYTES);
 	}
+	cn->num_broadcast_responses = 0;
 }
 
-void net_client_pkg_read(void *cl_ptr, client_connection *conn, ssize_t count)
+void pkg_process_message(void *s, client_connection *conn)
 {
-	client_net_s *client = (client_net_s *) cl_ptr;
-	conn->bytes_read += count;
-
-	if (conn->curr_msg_len == 0) {
-		if ((count < net_header_BYTES)) {
-			return;
-		}
-
-		uint32_t msg_type = deserialize_uint32(conn->read_buf->base);
-		if (msg_type == PKG_BR_MSG) {
-			conn->msg_type = PKG_BR_MSG;
-			conn->curr_msg_len = pkg_broadcast_msg_BYTES;
-
-		}
-
-		else if (msg_type == PKG_AUTH_RES_MSG) {
-			conn->msg_type = PKG_AUTH_RES_MSG;
-			conn->curr_msg_len = pkg_enc_auth_res_BYTES;
-
-		}
-
-		else {
-			fprintf(stderr, "Invalid message %ld %ld\n", count, conn->bytes_read);
-			printhex("read buf", conn->read_buf->base, conn->bytes_read);
-			close(conn->sock_fd);
-			return;
-		}
-	}
-
-	if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
-		printf("Mix last read: %ld (%ld)of %ld | Buf capacity: %d\n",
-		       count,
-		       conn->bytes_read,
-		       conn->curr_msg_len,
-		       conn->read_buf->capacity_bytes);
-		return;
-	}
-
-	if (conn->msg_type == PKG_BR_MSG) {
+	client_net_s *client = (client_net_s *) s;
+	switch (conn->msg_type) {
+	case PKG_BR_MSG:
 		memcpy(client->client->pkg_broadcast_msgs[conn->id],
-		       conn->read_buf->base + net_header_BYTES,
+		       conn->read_buf->data + net_header_BYTES,
 		       pkg_broadcast_msg_BYTES);
 		client->num_broadcast_responses++;
 		if (client->num_broadcast_responses == num_pkg_servers) {
@@ -465,52 +245,133 @@ void net_client_pkg_read(void *cl_ptr, client_connection *conn, ssize_t count)
 			net_client_pkg_auth(client);
 			client->num_broadcast_responses = 0;
 		}
-	}
+		break;
 
-	else if (conn->msg_type == PKG_AUTH_RES_MSG) {
+	case PKG_AUTH_RES_MSG:
 		memcpy(client->client->pkg_auth_responses[conn->id],
 		       conn->read_buf->base + net_header_BYTES,
 		       pkg_enc_auth_res_BYTES);
 		//printhex("auth response", conn->read_buf->base + net_header_BYTES, pkg_enc_auth_res_BYTES);
 		client->num_auth_responses++;
-
-		if (client->client->last_mailbox_read == client->client->af_round - 1
-			&& client->num_auth_responses == num_pkg_servers) {
+		if (client->num_auth_responses == num_pkg_servers && client->client->mb_processed) {
 			//printf("All auth responses received, MB processed already so replace IBE keys\n");
 			af_process_auth_responses(client->client);
 			client->num_auth_responses = 0;
-			client->num_broadcast_responses = 0;
+		}
+		break;
+	default:
+		fprintf(stderr, "Invalid message received from PKG server\n");
+		printhex("Message", conn->read_buf->data, conn->curr_msg_len);
+		break;
+	}
+}
+
+void mix_last_process_message(void *s, struct client_connection *conn)
+{
+	client_net_s *c = (client_net_s *) s;
+	switch (conn->msg_type) {
+	case DIAL_MB:
+		dial_process_mb(c->client,
+		                conn->read_buf->data + net_header_BYTES,
+		                deserialize_uint64(conn->read_buf->data + 8),
+		                deserialize_uint32(conn->read_buf->data + 16));
+		kw_advance_table(&c->client->keywheel);
+		break;
+	case AF_MB:
+		af_process_mb(c->client,
+		              conn->read_buf->data + net_header_BYTES,
+		              deserialize_uint32(conn->read_buf->data + 16),
+		              deserialize_uint64(conn->read_buf->data + 8));
+		c->client->mb_processed = true;
+		if (c->num_auth_responses == num_pkg_servers && !c->client->authed) {
+			//printf("Processed mailbox -> Replace IBE keys by processing auth responses\n");
+			af_process_auth_responses(c->client);
+			c->num_auth_responses = 0;
+		};
+		break;
+	case NEW_AFMB_AVAIL:
+		serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining, CLIENT_AF_MB_REQUEST);
+		serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining + 4, user_id_BYTES);
+		memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + 8,
+		       conn->read_buf->data + 8,
+		       round_BYTES);
+		memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + net_header_BYTES,
+		       c->client->user_id,
+		       user_id_BYTES);
+		conn->write_remaining += net_header_BYTES + user_id_BYTES;
+		ep_socket_send(c, conn);
+		break;
+	case NEW_DMB_AVAIL:
+		serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining, CLIENT_DIAL_MB_REQUEST);
+		serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining + 4, user_id_BYTES);
+		memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + 8,
+		       conn->read_buf->base + 8,
+		       round_BYTES);
+		memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + net_header_BYTES,
+		       c->client->user_id,
+		       user_id_BYTES);
+		conn->write_remaining += net_header_BYTES + user_id_BYTES;
+		ep_socket_send(c, conn);
+		break;
+	default:
+		fprintf(stderr, "Invalid message from Mix distribution server\n");
+		break;
+	}
+}
+
+void net_process_read(void *s, client_connection *conn, ssize_t count)
+{
+	conn->bytes_read += count;
+	conn->read_buf->pos += count;
+	conn->read_buf->used += count;
+
+	while (conn->bytes_read > 0) {
+		if (conn->curr_msg_len == 0) {
+			if ((count < net_header_BYTES)) {
+				return;
+			}
+
+			conn->msg_type = deserialize_uint32(conn->read_buf->data);
+			conn->curr_msg_len = deserialize_uint32(conn->read_buf->data + net_msg_type_BYTES);
+		}
+		// Message hasn't been fully received
+		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
+			return;
 		}
 
-	}
+		conn->process(s, conn);
 
-	size_t remaining = (size_t) conn->bytes_read - (conn->curr_msg_len + net_header_BYTES);
-	if (remaining > 0) {
-		printf("Remaining after processing msg length %ld: %lu\n", conn->curr_msg_len, remaining);
-		memcpy(conn->read_buf->base, conn->read_buf->base + conn->bytes_read, remaining);
-		conn->read_buf->pos = conn->read_buf->base + remaining;
+		uint32_t read_remaining = (uint32_t) (conn->bytes_read - conn->curr_msg_len - net_header_BYTES);
 
+		if (read_remaining > 0) {
+			memcpy(conn->read_buf->data,
+			       conn->read_buf->data + net_header_BYTES + conn->curr_msg_len,
+			       read_remaining);
+		}
+
+		conn->curr_msg_len = 0;
+		conn->msg_type = 0;
+		conn->bytes_read = read_remaining;
+		conn->read_buf->used = read_remaining;
+		conn->read_buf->pos = conn->read_buf->data + read_remaining;
 	}
-	conn->msg_type = 0;
-	conn->curr_msg_len = 0;
-	conn->bytes_read = remaining;
-	conn->read_buf->pos = conn->read_buf->base + remaining;
 
 }
 
-int epoll_read(client_net_s *c, client_connection *conn)
+int ep_socket_read(client_net_s *c, client_connection *conn)
 {
 	int close_client_connection = 0;
 	for (;;) {
 		ssize_t count;
 		byte_buffer_s *read_buf = conn->read_buf;
-		size_t buf_space = read_buf->capacity_bytes - conn->bytes_read;
+		ssize_t buf_space = read_buf->capacity - read_buf->used;
+
 		if (buf_space <= 0) {
-			fprintf(stderr, "NO BUFFER SPACE REMAINING BEEP BOOP LALALALA\n------------------\n");
-			abort();
+			byte_buffer_resize(read_buf, conn->curr_msg_len * 2);
+			buf_space = read_buf->capacity - conn->bytes_read;
 		}
 
-		count = read(conn->sock_fd, read_buf->pos, buf_space);
+		count = read(conn->sock_fd, read_buf->pos, (size_t) buf_space);
 
 		if (count == -1) {
 			if (errno != EAGAIN) {
@@ -524,9 +385,8 @@ int epoll_read(client_net_s *c, client_connection *conn)
 			close_client_connection = 1;
 			break;
 		}
-		if (conn->on_read) {
-			conn->on_read(c, conn, count);
-		}
+
+		net_process_read(c, conn, count);
 	}
 
 	if (close_client_connection) {
@@ -546,7 +406,7 @@ int net_client_startup(client_net_s *cn)
 	}
 	cn->mix_last.conn_type = 'L';
 	cn->mix_last.sock_fd = mix_last_sfd;
-	cn->mix_last.on_read = net_client_lastmix_read;
+	cn->mix_last.process = mix_last_process_message;
 	cn->mix_last.event.events = EPOLLIN | EPOLLET;
 	cn->mix_last.event.data.ptr = &cn->mix_last;
 	epoll_ctl(cn->epoll_inst, EPOLL_CTL_ADD, cn->mix_last.sock_fd, &cn->mix_last.event);
@@ -555,23 +415,26 @@ int net_client_startup(client_net_s *cn)
 		fprintf(stderr, "could not connect to mix entry server\n");
 		return -1;
 	}
+
 	cn->mix_entry.sock_fd = mix_sfd;
-	cn->mix_entry.on_read = net_client_mixentry_read;
+	cn->mix_entry.process = mix_entry_process_msg;
 	cn->mix_entry.conn_type = 'E';
-	int res;
-	res = net_read_nb(mix_sfd, cn->mix_entry.read_buf->base, 12 + net_client_connect_BYTES);
+
+	int res = net_read_nb(mix_sfd, cn->mix_entry.read_buf->base, net_header_BYTES + net_client_connect_BYTES);
 	if (res == -1) {
 		perror("client read");
 	}
-	cn->client->af_round = deserialize_uint32(cn->mix_entry.read_buf->base + 4);
-	cn->client->dialling_round = deserialize_uint32(cn->mix_entry.read_buf->base + 8);
-	cn->client->keywheel.table_round = cn->client->dialling_round;
-	cn->client->last_mailbox_read = cn->client->af_round - 1;
 
-	uint8_t *dh_ptr = cn->mix_entry.read_buf->base + 12;
+	cn->client->af_round = deserialize_uint64(cn->mix_entry.read_buf->data + 8);
+	cn->client->dialling_round = deserialize_uint64(cn->mix_entry.read_buf->base + 16);
+	cn->client->keywheel.table_round = cn->client->dialling_round;
+	cn->client->mb_processed = 1;
+	printf("[Connected: Dial round: %ld | Add friend round: %ld]\n", cn->client->dialling_round, cn->client->af_round);
+
+	uint8_t *dh_ptr = cn->mix_entry.read_buf->base + net_header_BYTES;
 	for (uint32_t i = 0; i < num_mix_servers; i++) {
 		memcpy(cn->client->mix_eph_pub_keys[i], dh_ptr, crypto_box_PUBLICKEYBYTES);
-		dh_ptr += crypto_box_PUBLICKEYBYTES + 12;
+		dh_ptr += crypto_box_PUBLICKEYBYTES;
 	}
 
 	af_fake_request(cn->client);
@@ -587,13 +450,12 @@ int net_client_startup(client_net_s *cn)
 		if (cn->pkg_client_connections[i].sock_fd == -1) {
 			return -1;
 		}
-
 		pkg_conn->id = i;
 		pkg_conn->bytes_read = 0;
 		pkg_conn->conn_type = 'P';
 		pkg_conn->write_remaining = 0;
 		pkg_conn->bytes_written = 0;
-		pkg_conn->on_read = net_client_pkg_read;
+		pkg_conn->process = pkg_process_message;
 		pkg_conn->event.data.ptr = &cn->pkg_client_connections[i];
 		pkg_conn->event.events = EPOLLIN | EPOLLET;
 		epoll_ctl(cn->epoll_inst, EPOLL_CTL_ADD, cn->pkg_client_connections[i].sock_fd, &pkg_conn->event);
@@ -614,14 +476,13 @@ int net_client_startup(client_net_s *cn)
 			}
 				// Read from a socket
 			else if (events[i].events & EPOLLIN) {
-				epoll_read(cn, conn);
+				ep_socket_read(cn, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
-				epoll_csend(cn, conn);
+				ep_socket_send(cn, conn);
 			}
 		}
 	}
-	//af_process_auth_responses(cn->client);
 	cn->num_auth_responses = 0;
 	cn->num_broadcast_responses = 0;
 	return 0;
@@ -629,7 +490,10 @@ int net_client_startup(client_net_s *cn)
 
 void *net_client_loop(void *cns)
 {
+
 	client_net_s *c = (client_net_s *) cns;
+	for (int i = 0; i < num_mix_servers; i++) {
+	}
 	struct epoll_event *events = c->events;
 	c->running = true;
 	while (c->running) {
@@ -639,28 +503,27 @@ void *net_client_loop(void *cns)
 			do_action(c, curr_action);
 			curr_action = action_stack_pop(c);
 		}
+
 		client_connection *conn = NULL;
-		// Error of some sort on the socket
 		for (int i = 0; i < n; i++) {
 			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
 				conn = events[i].data.ptr;
-				fprintf(stderr, "Mix loop: Closing client_connection on sock %d\n", conn->sock_fd);
-				close(conn->sock_fd);
-				free(events[i].data.ptr);
-				continue;
+				fprintf(stderr, "Client: Socket error on connection type %c - Exiting\n", conn->conn_type);
+				c->running = false;
+				break;
 			}
-				// Read from a socket
+
 			else if (events[i].events & EPOLLIN) {
 				conn = events[i].data.ptr;
-				epoll_read(c, conn);
+				ep_socket_read(c, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
 				conn = events[i].data.ptr;
-				epoll_send(c, conn);
+				ep_socket_send(c, conn);
 			}
 		}
 	}
-
+	return NULL;
 }
 
 int main(int argc, char **argv)
@@ -754,5 +617,4 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
-
 }

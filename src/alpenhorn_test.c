@@ -87,9 +87,9 @@ int main()
 
 	memcpy(m1->af_data.in_buf.base,
 	       m0->af_data.out_buf.base + net_header_BYTES,
-	       (m0->af_data.out_buf.num_msgs * m0->af_data.out_buf.msg_len_bytes));
+	       (m0->af_data.num_out_msgs * m0->af_data.out_msg_length));
 
-	m1->af_data.in_buf.num_msgs = m0->af_data.out_buf.num_msgs;
+	m1->af_data.num_inc_msgs = m0->af_data.num_out_msgs;
 	//printf("Decrypting dial msgs\n");
 	mix_af_add_noise(m1);
 	//mix_dial_add_noise(m1);
@@ -100,7 +100,7 @@ int main()
 	mix_af_distribute(&mix_servers[1]);
 	af_mailbox_s *mb = &mix_servers[1].af_mb_container.mailboxes[0];
 	af_process_mb(&clients[2], mb->data + net_header_BYTES, mb->num_messages, 0);
-	af_accept_request(&clients[2], bob->friend_requests);
+	//af_accept_request(&clients[2], bob->friend_requests->user_id);
 	//kw_print_table(&bob->keywheel);
 	af_decrypt_request(chris, bob->friend_request_buf + mb_BYTES, 0);
 	friend_request_s *fr = chris->friend_requests;
@@ -117,12 +117,12 @@ int main()
 	printf("Bloop\n");
 	memcpy(m1->dial_data.in_buf.base,
 	       m0->dial_data.out_buf.base + net_header_BYTES,
-	       (m0->dial_data.out_buf.msg_len_bytes * m0->dial_data.out_buf.num_msgs));
-	m1->dial_data.in_buf.num_msgs = m0->dial_data.out_buf.num_msgs;
+	       (m0->dial_data.out_msg_length * m0->dial_data.num_out_msgs));
+	m1->dial_data.num_inc_msgs = m0->dial_data.num_out_msgs;
 	mix_dial_add_noise(m1);
 	mix_dial_decrypt_messages(m1);
 	mix_dial_distribute(m1);
-	dial_process_mb(bob, m1->dial_mb_containers[0].mailboxes[0].bloom.base_ptr + 8);
+	dial_process_mb(bob, m1->dial_mb_containers[0].mailboxes[0].bloom.base_ptr + 8, 0, 0);
 	kw_save(&chris->keywheel);
 	keywheel_table_s tbl;
 	kw_load(&tbl, 0, "keywheel.table");

@@ -20,7 +20,7 @@ typedef struct dial_mailbox dial_mailbox_s;
 
 struct dial_mailbox_container
 {
-	uint32_t round;
+	uint64_t round;
 	uint32_t num_mailboxes;
 	dial_mailbox_s mailboxes[5];
 };
@@ -40,7 +40,7 @@ typedef struct af_mailbox af_mailbox_s;
 
 struct af_mailbox_container
 {
-	uint32_t round;
+	uint64_t round;
 	uint32_t num_mailboxes;
 	af_mailbox_s mailboxes[5];
 };
@@ -52,8 +52,12 @@ struct mix_af
 	uint32_t num_mailboxes;
 	byte_buffer_s in_buf;
 	byte_buffer_s out_buf;
+	uint32_t num_inc_msgs;
+	uint32_t num_out_msgs;
+	uint32_t inc_msg_length;
+	uint32_t out_msg_length;
 	uint32_t noisemu;
-	uint32_t round;
+	uint64_t round;
 	uint32_t round_duration;
 	uint32_t mb_counts[5];
 };
@@ -64,8 +68,12 @@ struct mix_dial
 {
 	uint32_t num_mailboxes;
 	byte_buffer_s in_buf;
+	uint32_t num_inc_msgs;
+	uint32_t num_out_msgs;
+	uint32_t inc_msg_length;
+	uint32_t out_msg_length;
 	byte_buffer_s out_buf;
-	uint32_t round;
+	uint64_t round;
 	uint32_t round_duration;
 	uint32_t noisemu;
 	uint32_t mailbox_counts[5];
@@ -107,6 +115,5 @@ void mix_af_add_inc_msg(mix_s *mix, uint8_t *buf);
 void mix_dial_add_inc_msg(mix_s *mix, uint8_t *msg);
 void mix_af_newround(mix_s *mix);
 void mix_dial_newround(mix_s *mix);
-int byte_buffer_init(byte_buffer_s *buf, uint32_t num_elems, uint32_t msg_size, uint32_t prefix_size);
-dial_mailbox_s *mix_dial_get_mailbox_buffer(mix_s *mix, uint32_t round, uint8_t *user_id);
+dial_mailbox_s *mix_dial_get_mailbox_buffer(mix_s *mix, uint64_t round, uint8_t *user_id);
 #endif //ALPENHORN_MIX_H

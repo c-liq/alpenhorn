@@ -13,7 +13,6 @@ static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
 
 static const char *pkg_cl_listen_ports[] = {"7500", "7501", "7502"};
 
-#define PKG_CONN 1
 #define PKG_BR_MSG 70
 #define PKG_AUTH_RES_MSG 80
 

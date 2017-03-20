@@ -36,6 +36,25 @@ uint32_t deserialize_uint32(uint8_t *in)
   return ntohl(*ptr);
 }
 
+void serialize_uint64(uint8_t *out, const uint64_t input)
+{
+
+	out[0] = (uint8_t) (input >> 56);
+	out[1] = (uint8_t) (input >> 48);
+	out[2] = (uint8_t) (input >> 40);
+	out[3] = (uint8_t) (input >> 32);
+	out[4] = (uint8_t) (input >> 24);
+	out[5] = (uint8_t) (input >> 16);
+	out[6] = (uint8_t) (input >> 8);
+	out[7] = (uint8_t) (input >> 0);
+}
+
+uint64_t deserialize_uint64(uint8_t *in)
+{
+	uint64_t *ptr = (uint64_t *) in;
+	return be64toh(*ptr);
+}
+
 int crypto_chacha_decrypt(uint8_t *m,
                           unsigned long long *mlen_p,
                           uint8_t *nsec,
@@ -49,26 +68,86 @@ int crypto_chacha_decrypt(uint8_t *m,
 	return crypto_aead_chacha20poly1305_ietf_decrypt(m, mlen_p, nsec, c, clen, ad, adlen, npub, k);
 };
 
-int byte_buffer_init(byte_buffer_s *buf, uint32_t num_elems, uint32_t msg_size, uint32_t prefix_size)
+int byte_buffer_resize(byte_buffer_s *buf, ssize_t new_capacity)
 {
-	buf->num_msgs = 0;
+	if (new_capacity <= buf->capacity) {
+		fprintf(stderr, "cannot shrink buffer\n");
+		return -1;
+	}
+
+	uint8_t *new_buf = realloc(buf->base, (size_t) new_capacity);
+	if (!new_buf) {
+		fprintf(stderr, "failed to resize byte buffer, realloc failure\n");
+		return -1;
+	}
+
+	buf->base = new_buf;
+	buf->data = new_buf + buf->prefix_size;
+	buf->pos = buf->data + buf->used;
+	buf->capacity = new_capacity;
+	return 0;
+}
+
+int byte_buffer_put(byte_buffer_s *buf, uint8_t *data, size_t size)
+{
+	if (size > buf->capacity - buf->used) {
+		int res = byte_buffer_resize(buf, buf->capacity * 2);
+		if (res)
+			return -1;
+	}
+
+	memcpy(buf->pos, data, size);
+	buf->pos += size;
+	buf->used += size;
+	return 0;
+}
+
+int byte_buffer_put_virtual(byte_buffer_s *buf, size_t size)
+{
+	if (size > buf->capacity - buf->used) {
+		int res = byte_buffer_resize(buf, buf->capacity * 2);
+		if (res)
+			return -1;
+	}
+	buf->pos += size;
+	buf->used += size;
+	return 0;
+}
+
+byte_buffer_s *byte_buffer_alloc(uint32_t capacity, uint32_t prefix_size)
+{
+	byte_buffer_s *buffer = calloc(1, sizeof *buffer);
+	if (!buffer) {
+		return NULL;
+	}
+
+	int res = byte_buffer_init(buffer, capacity, prefix_size);
+	if (res) {
+		free(buffer);
+		return NULL;
+	}
+	return buffer;
+}
+
+int byte_buffer_init(byte_buffer_s *buf, uint32_t capacity, uint32_t prefix_size)
+{
 	buf->prefix_size = prefix_size;
-	buf->msg_len_bytes = msg_size;
-	buf->capacity_msgs = num_elems;
-	buf->capacity_bytes = num_elems * msg_size;
-	buf->base = calloc(1, prefix_size + buf->capacity_bytes);
+	buf->capacity = capacity;
+	buf->base = calloc(1, prefix_size + buf->capacity);
+
 	if (!buf->base) {
 		fprintf(stderr, "calloc error in mix_buf_init\n");
 		return -1;
 	}
-	buf->pos = buf->base + prefix_size;
+
 	buf->data = buf->base + prefix_size;
+	buf->pos = buf->data;
+	buf->used = 0;
 	return 0;
 }
 
-void buffer_clear(byte_buffer_s *buf)
+void byte_buffer_clear(byte_buffer_s *buf)
 {
-	memset(buf->base, 0, buf->prefix_size);
 	buf->pos = buf->data;
-	buf->num_msgs = 0;
+	buf->used = 0;
 }

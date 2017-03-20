@@ -126,7 +126,7 @@ void pkg_mix_read(void *srv, pkg_connection *conn, ssize_t count)
 	pkg_net_s *s = (pkg_net_s *) srv;
 	pkg_new_round(s->pkg);
 	pkg_connection *curr = s->clients;
-	printf("PKG advanced to round %d\n", s->pkg->current_round);
+	printf("PKG advanced to round %ld\n", s->pkg->current_round);
 	while (curr) {
 		epoll_broadcast_msg(s, curr);
 		curr = curr->next;
@@ -161,10 +161,10 @@ void pkg_client_read(void *srv, pkg_connection *conn, ssize_t count)
 		int index = pkg_client_lookup(s->pkg, conn->read_buf->base + net_header_BYTES);
 		if (index != -1) {
 			pkg_client *cl = &s->pkg->clients[index];
-			printf("Received auth request from %s for round %d\n",
-			       conn->read_buf->base + net_header_BYTES, deserialize_uint32(conn->read_buf->base + 4));
+			printf("Received auth request from %s for round %ld\n",
+			       conn->read_buf->data + net_header_BYTES, deserialize_uint64(conn->read_buf->base + 8));
 			memcpy(cl->auth_msg_from_client,
-			       conn->read_buf->base + net_header_BYTES + user_id_BYTES,
+			       conn->read_buf->data + net_header_BYTES + user_id_BYTES,
 			       cli_pkg_single_auth_req_BYTES - user_id_BYTES);
 			net_pkg_auth_client(s, conn, cl);
 
@@ -187,7 +187,7 @@ int net_cli_epread(pkg_net_s *s, pkg_connection *conn)
 		ssize_t count;
 		count = read(conn->sock_fd,
 		             conn->read_buf->base + conn->bytes_read,
-		             conn->read_buf->capacity_bytes - conn->bytes_read);
+		             conn->read_buf->capacity - conn->bytes_read);
 
 		if (count == -1) {
 			if (errno != EAGAIN) {
@@ -219,7 +219,7 @@ int pkg_server_startup(pkg_net_s *s, pkg_server *pkg)
 	s->pkg = pkg;
 	s->epoll_inst = epoll_create1(0);
 	s->mix_conn.read_buf = calloc(1, sizeof *s->mix_conn.read_buf);
-	byte_buffer_init(s->mix_conn.read_buf, 1, 16384, 0);
+	byte_buffer_init(s->mix_conn.read_buf, 16384, 0);
 	s->events = calloc(1000, sizeof *s->events);
 	int mix_fd = net_connect("127.0.0.1", "3000", 1);
 	if (mix_fd == -1) {
@@ -276,7 +276,7 @@ int epoll_paccept(pkg_net_s *s)
 		new_conn->next = s->clients;
 		new_conn->prev = NULL;
 		new_conn->read_buf = calloc(1, sizeof *new_conn->read_buf);
-		byte_buffer_init(new_conn->read_buf, 1, 16384, 0);
+		byte_buffer_init(new_conn->read_buf, 16384, 0);
 		s->clients = new_conn;
 		new_conn->on_read = pkg_client_read;
 		new_conn->sock_fd = new_sock;
@@ -347,9 +347,8 @@ int main(int argc, char **argv)
 	pkg_server s;
 	pkg_server_init(&s, (uint32_t) sid);
 	pkg_net_s pkg_s;
-	printf("Starting pkg server\n");
 	pkg_server_startup(&pkg_s, &s);
-	printf("Starting pkg server loop\n");
+	printf("[PKG %d successfully initialised]\n", s.srv_id);
 	net_pkg_server_loop(&pkg_s, NULL);
 
 }

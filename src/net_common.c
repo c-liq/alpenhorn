@@ -33,7 +33,12 @@ int net_accept(int listen_sfd, int set_nb)
 
 void connection_init(connection *conn)
 {
-	conn->read_buf = NULL;
+	conn->read_buf = calloc(1, sizeof *conn->read_buf);
+	byte_buffer_init(conn->read_buf, 16384, 0);
+	if (!conn->read_buf) {
+		fprintf(stderr, "calloc fatal error\n");
+		abort();
+	}
 	memset(conn->internal_read_buf, 0, sizeof conn->internal_read_buf);
 	conn->read_remaining = 0;
 	conn->bytes_read = 0;
@@ -76,7 +81,6 @@ int net_read_nb(int sock_fd, uint8_t *buf, size_t n)
 			return -1;
 		}
 		bytes_read += tmp_read;
-		//printf("Read %ld (%d total) of %ld, %ld remaining\n", tmp_read, bytes_read, n, n - bytes_read);
 
 	}
 	//printf("%ld bytes -> ", n);

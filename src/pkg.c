@@ -36,7 +36,8 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 	pkg_new_ibe_keypair(server);
 	crypto_box_keypair(server->broadcast_dh_pkey_ptr, server->eph_secret_dh_key);
 	serialize_uint32(server->eph_broadcast_message, PKG_BR_MSG);
-	serialize_uint32(server->eph_broadcast_message + sizeof(uint32_t), server->current_round);
+	serialize_uint32(server->eph_broadcast_message + net_msg_type_BYTES, pkg_broadcast_msg_BYTES);
+	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
 	// Extract secret keys and generate signatures for each client_s
 	for (int i = 0; i < server->num_clients; i++) {
 		pkg_extract_client_sk(server, &server->clients[i]);
@@ -115,7 +116,8 @@ void pkg_new_round(pkg_server *server)
 	// Increment round counter
 	server->current_round++;
 	serialize_uint32(server->eph_broadcast_message, PKG_BR_MSG);
-	serialize_uint32(server->eph_broadcast_message + sizeof(uint32_t), server->current_round);
+	serialize_uint32(server->eph_broadcast_message + net_msg_type_BYTES, pkg_broadcast_msg_BYTES);
+	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
 	// Extract secret keys and generate signatures for each client_s
 	for (int i = 0; i < server->num_clients; i++) {
 		pkg_extract_client_sk(server, &server->clients[i]);
@@ -153,7 +155,8 @@ int pkg_auth_client(pkg_server *server, pkg_client *client)
 
 void pkg_encrypt_client_response(pkg_server *server, pkg_client *client)
 {
-	serialize_uint32(client->eph_client_data + sizeof(uint32_t), server->current_round);
+	serialize_uint32(client->eph_client_data + net_msg_type_BYTES, pkg_enc_auth_res_BYTES);
+	serialize_uint64(client->eph_client_data + 8, server->current_round);
 	uint8_t
 		*nonce_ptr = client->eph_client_data + net_header_BYTES + g1_elem_compressed_BYTES + g2_elem_compressed_BYTES
 		+ crypto_MACBYTES;
@@ -186,7 +189,7 @@ void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
 
 void pkg_sign_for_client(pkg_server *server, pkg_client *client)
 {
-	serialize_uint32(client->rnd_sig_msg, server->current_round + 1);
+	serialize_uint64(client->rnd_sig_msg, server->current_round + 1);
 	bls_sign_message(client->eph_client_data + net_header_BYTES, client->eph_sig_elem_G1,
 	                 client->eph_sig_hash_elem_g1, client->rnd_sig_msg,
 	                 pkg_sig_message_BYTES, server->lt_sig_sk_elem);

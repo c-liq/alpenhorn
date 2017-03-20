@@ -15,7 +15,7 @@ struct pkg_server
 {
 	int srv_id;
 	uint32_t num_clients;
-	uint32_t current_round;
+	uint64_t current_round;
 	pairing_t pairing;
 	pkg_client *clients;
 	// Long term BLS signatures, used to sign messages aiding verifying friend requests by recipients

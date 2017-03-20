@@ -13,7 +13,7 @@ int kw_save(keywheel_table_s *table)
 		return -1;
 	}
 
-	fprintf(out_file, "%d %ld %ld\n", table->table_round, table->num_keywheels, table->num_unsynced);
+	fprintf(out_file, "%ld %ld %ld\n", table->table_round, table->num_keywheels, table->num_unsynced);
 
 	char pk_buf[crypto_box_PUBLICKEYBYTES * 2 + 1];
 	char sk_buf[crypto_box_SECRETKEYBYTES * 2 + 1];
@@ -22,7 +22,7 @@ int kw_save(keywheel_table_s *table)
 	while (curr_kwu) {
 		sodium_bin2hex(pk_buf, sizeof pk_buf, curr_kwu->public_key, crypto_box_PUBLICKEYBYTES);
 		sodium_bin2hex(sk_buf, sizeof sk_buf, curr_kwu->secret_key, crypto_box_SECRETKEYBYTES);
-		fprintf(out_file, "%s %s %s %d\n", curr_kwu->user_id, pk_buf, sk_buf, curr_kwu->round_sent);
+		fprintf(out_file, "%s %s %s %ld\n", curr_kwu->user_id, pk_buf, sk_buf, curr_kwu->round_sent);
 		curr_kwu = curr_kwu->next;
 	}
 
@@ -33,7 +33,7 @@ int kw_save(keywheel_table_s *table)
 		               crypto_maxhash_BYTES * 2 + 1,
 		               curr_kw->key_state[0] + intent_BYTES,
 		               crypto_maxhash_BYTES);
-		fprintf(out_file, "%s %s %d\n", curr_kw->user_id, secret_buf, curr_kw->dialling_round);
+		fprintf(out_file, "%s %s %ld\n", curr_kw->user_id, secret_buf, curr_kw->dialling_round);
 		curr_kw = curr_kw->next;
 	}
 
@@ -46,7 +46,7 @@ int kw_save(keywheel_table_s *table)
 	return 0;
 }
 
-int kw_load(keywheel_table_s *table, uint32_t dial_round, char *file_path)
+int kw_load(keywheel_table_s *table, uint64_t dial_round, char *file_path)
 {
 	if (!file_path) {
 		fprintf(stderr, "no file path supplied to load table\n");
@@ -61,7 +61,7 @@ int kw_load(keywheel_table_s *table, uint32_t dial_round, char *file_path)
 
 	kw_table_init(table, dial_round, file_path);
 
-	fscanf(in_file, "%d %ld %ld\n", &table->table_round, &table->num_keywheels, &table->num_unsynced);
+	fscanf(in_file, "%ld %ld %ld\n", &table->table_round, &table->num_keywheels, &table->num_unsynced);
 
 	char pk_hex_buf[crypto_box_PUBLICKEYBYTES * 2 + 1];
 	char sk_hex_buf[crypto_box_SECRETKEYBYTES * 2 + 1];
@@ -82,7 +82,7 @@ int kw_load(keywheel_table_s *table, uint32_t dial_round, char *file_path)
 		curr->prev = prev;
 		prev = curr;
 
-		fscanf(in_file, "%s %s %s %u\n", curr->user_id, pk_hex_buf, sk_hex_buf, &curr->round_sent);
+		fscanf(in_file, "%s %s %s %lu\n", curr->user_id, pk_hex_buf, sk_hex_buf, &curr->round_sent);
 		sodium_hex2bin(curr->public_key, crypto_box_PUBLICKEYBYTES, pk_hex_buf, sizeof pk_hex_buf, NULL, NULL, NULL);
 		sodium_hex2bin(curr->secret_key, crypto_box_SECRETKEYBYTES, sk_hex_buf, sizeof sk_hex_buf, NULL, NULL, NULL);
 	}
@@ -105,7 +105,7 @@ int kw_load(keywheel_table_s *table, uint32_t dial_round, char *file_path)
 		curr->prev = prev_kw;
 		prev_kw = curr;
 
-		fscanf(in_file, "%s %s %u\n", curr->user_id, secret_hex_buf, &curr->dialling_round);
+		fscanf(in_file, "%s %s %lu\n", curr->user_id, secret_hex_buf, &curr->dialling_round);
 		sodium_hex2bin(curr->key_state[0] + intent_BYTES,
 		               crypto_maxhash_BYTES,
 		               secret_hex_buf,
@@ -124,7 +124,7 @@ int kw_load(keywheel_table_s *table, uint32_t dial_round, char *file_path)
 	return 0;
 }
 
-int kw_table_init(keywheel_table_s *table, uint32_t dial_round, char *file_path)
+int kw_table_init(keywheel_table_s *table, uint64_t dial_round, char *file_path)
 {
 	table->keywheels = NULL;
 	table->unsynced_keywheels = NULL;
@@ -166,11 +166,10 @@ keywheel_unsynced *kw_unsynced_lookup(keywheel_table_s *table, const uint8_t *us
 void kw_print_table(keywheel_table_s *table)
 {
 	keywheel_s *entry = table->keywheels;
-	printf("Keywheel table [Round %d\n-------------------------\n", table->table_round);
+	printf("Keywheel table [Round %ld\n-------------------------\n", table->table_round);
 	while (entry) {
-		printf("---%s\n", entry->user_id);
+		printf("---\n%s\n", entry->user_id);
 		printhex(" ", entry->key_state[0] + intent_BYTES, crypto_maxhash_BYTES);
-		printhex(" ", entry->key_state[1] + intent_BYTES, crypto_maxhash_BYTES);
 		printf("---\n");
 		entry = entry->next;
 	}
@@ -227,7 +226,7 @@ void kw_advance_table(keywheel_table_s *table)
 	table->table_round++;
 }
 
-int kw_new_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *pk, uint8_t *sk, uint32_t round_sent)
+int kw_new_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *pk, uint8_t *sk, uint64_t round_sent)
 {
 	keywheel_unsynced *nu = calloc(1, sizeof *nu);
 	if (!nu) {
@@ -269,8 +268,6 @@ keywheel_s *kw_from_request(keywheel_table_s *table,
 	}
 	memcpy(kw->user_id, user_id, user_id_BYTES);
 	kw->dialling_round = table->table_round;
-	printhex("our pk", dh_pk_out, crypto_box_PUBLICKEYBYTES);
-	printhex("their pk", friend_pk, crypto_box_PUBLICKEYBYTES);
 	crypto_shared_secret(kw->key_state[0] + intent_BYTES, scalar_mult, friend_pk, dh_pk_out, crypto_maxhash_BYTES);
 
 	kw->next = table->keywheels;
@@ -327,7 +324,7 @@ int kw_unsynced_remove(keywheel_table_s *table, const uint8_t *user_id)
 	return 0;
 }
 
-int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *friend_pk, const uint32_t round_sync)
+int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *friend_pk, const uint64_t round_sync)
 {
 	keywheel_unsynced *entry = kw_unsynced_lookup(table, user_id);
 	if (!entry) {
