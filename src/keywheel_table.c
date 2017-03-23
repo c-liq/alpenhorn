@@ -166,11 +166,10 @@ keywheel_unsynced *kw_unsynced_lookup(keywheel_table_s *table, const uint8_t *us
 void kw_print_table(keywheel_table_s *table)
 {
 	keywheel_s *entry = table->keywheels;
-	printf("Keywheel table [Round %ld\n-------------------------\n", table->table_round);
+	printf("Keywheel table [Round %ld]\n-------------------------\n", table->table_round);
 	while (entry) {
-		printf("---\n%s\n", entry->user_id);
-		printhex(" ", entry->key_state[0] + intent_BYTES, crypto_maxhash_BYTES);
-		printf("---\n");
+		printf("%s", entry->user_id);
+		printhex(" ", entry->key_state[0] + intent_BYTES, crypto_ghash_BYTES);
 		entry = entry->next;
 	}
 	printf("-------------------------\n");
@@ -345,8 +344,6 @@ int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_
 		return -1;
 	}
 	memcpy(kw->user_id, entry->user_id, user_id_BYTES);
-	printhex("our pk", entry->public_key, crypto_box_PUBLICKEYBYTES);
-	printhex("their pk", friend_pk, crypto_box_PUBLICKEYBYTES);
 	crypto_shared_secret(kw->key_state[0] + intent_BYTES,
 	                     scalar_mult,
 	                     entry->public_key,
@@ -360,7 +357,6 @@ int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_
 		                   crypto_maxhash_BYTES,
 		                   NULL,
 		                   0);
-		printhex("kw syncing", kw->key_state[0] + intent_BYTES, crypto_maxhash_BYTES);
 		kw->dialling_round++;
 	}
 	kw->next = table->keywheels;
@@ -370,24 +366,3 @@ int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_
 	kw_unsynced_remove(table, user_id);
 	return 0;
 }
-
-/*int main() {
-  keywheel_table table;
-  kw_table_init(&table);
-  uint8_t sk[crypto_box_PUBLICKEYBYTES];
-  uint8_t pk[crypto_box_SECRETKEYBYTES];
-  randombytes_buf(sk, crypto_box_SECRETKEYBYTES);
-  crypto_scalarmult_base(pk, sk);
-  table.current_round = 1;
-  uint8_t uname[user_id_BYTES] = {'c', 'h', 'r', 'i', 's'};
-  kw_new_keywheel(&table, uname, 1);
-  kw_complete_keywheel(&table, uname, pk, 1);
-  kw_print_table(&table);
-  kw_advance_table(&table);
-  uint8_t dial_token[dialling_token_BYTES];
-  uint8_t session_key[crypto_ghash_BYTES];
-  kw_generate_dialling_token(dial_token, &table, uname, 1);
-  kw_generate_session_key(session_key, &table, uname);
-  printhex("dial token", dial_token, dialling_token_BYTES);
-  printhex("session key", session_key, crypto_ghash_BYTES);
-}*/

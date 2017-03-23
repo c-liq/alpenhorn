@@ -56,7 +56,8 @@ struct mix_af
 	uint32_t num_out_msgs;
 	uint32_t inc_msg_length;
 	uint32_t out_msg_length;
-	uint32_t noisemu;
+	laplace_s laplace;
+	uint32_t last_noise_count;
 	uint64_t round;
 	uint32_t round_duration;
 	uint32_t mb_counts[5];
@@ -75,7 +76,8 @@ struct mix_dial
 	byte_buffer_s out_buf;
 	uint64_t round;
 	uint32_t round_duration;
-	uint32_t noisemu;
+	laplace_s laplace;
+	uint32_t last_noise_count;
 	uint32_t mailbox_counts[5];
 	double bloom_p_val;
 };

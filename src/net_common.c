@@ -1,7 +1,7 @@
-#include "mix.h"
+#include "../include/mix.h"
 #include <string.h>
-#include "mixnet_server.h"
-#include "net_common.h"
+#include "../include/mixnet_server.h"
+#include "../include/net_common.h"
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -52,6 +52,7 @@ void connection_init(connection *conn)
 	conn->on_write = NULL;
 	conn->on_read = NULL;
 	conn->event.events = 0;
+	conn->connected = 1;
 }
 
 int net_send_nb(int sock_fd, uint8_t *buf, size_t n)

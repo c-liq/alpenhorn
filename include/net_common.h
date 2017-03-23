@@ -54,6 +54,7 @@ struct connection
 	connection *prev;
 	uint32_t bc_bytes_remaining;
 	mailbox_request mb_request;
+	bool connected;
 };
 
 int net_accept(int listen_fd, int set_nb);

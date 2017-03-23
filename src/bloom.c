@@ -2,11 +2,9 @@
 #include <stdint.h>
 #include "utils.h"
 #include <math.h>
-#include "../lib/xxhash/xxhash.h"
+#include "xxhash/xxhash.h"
 #include "prime_gen.h"
 #include "bloom.h"
-
-
 #define MAX_PREFIX_SZ 256
 void bloom_calc_partitions(const int m_target,
                            uint32_t *m_actual_bytes,
@@ -29,6 +27,7 @@ void bloom_calc_partitions(const int m_target,
 		}
 		else if (target_avg > ptable[mid]) {
 			l = mid + 1;
+
 		}
 		else {
 			break;
@@ -217,35 +216,3 @@ void bloom_free(bloomfilter_s *bf)
 	free(bf);
 }
 
-/*
-int main() {
-  int res = sodium_init();
-  if (res)
-    exit(EXIT_FAILURE);
-
-  double p = pow(10.0, -10.0);
-  bloomfilter_s *bloom = bloom_alloc(p, 125000, 123456789);
-  bloom_print_stats(bloom);
-
-  int test_size = 125000;
-  uint8_t *positive_tests = malloc((test_size + 1) * crypto_box_SECRETKEYBYTES);
-  memset(positive_tests, 0, (test_size + 1) * crypto_box_SECRETKEYBYTES);
-  uint8_t *false_tests = malloc((test_size + 1) * crypto_box_SECRETKEYBYTES);
-  memset(false_tests, 0, (test_size + 1) * crypto_box_SECRETKEYBYTES);
-  for (int i = 0; i < test_size; i++) {
-    randombytes_buf(positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-    randombytes_buf(false_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-    bloom_add_elem(bloom, positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-  }
-  int pos_hits = 0, false_hits = 0;
-  for (int i = 0; i < test_size; i++) {
-    pos_hits += bloom_lookup(bloom, positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-    false_hits += bloom_lookup(bloom, false_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-  }
-  printf("pos: %d\n", pos_hits);
-  printf("false hits: %d\n", false_hits);
-  bloom_free(bloom);
-  free(positive_tests);
-  free(false_tests);
-
-};*/

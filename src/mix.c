@@ -1,5 +1,5 @@
 #include <string.h>
-#include "mix.h"
+#include "../include/mix.h"
 #include "../lib/xxhash/xxhash.h"
 #include <math.h>
 
@@ -83,7 +83,6 @@ void mix_dial_distribute(mix_s *mix)
 		dial_mailbox_s *mb = &c->mailboxes[i];
 		mb->id = i;
 		mb->num_messages = mix->dial_data.mailbox_counts[i];
-		mb->num_messages = 1000;
 		bloom_init(&mb->bloom, mix->dial_data.bloom_p_val, mb->num_messages, 0, NULL, net_header_BYTES);
 		// Fill in network prefix data
 		serialize_uint32(mb->bloom.base_ptr, DIAL_MB);
@@ -171,8 +170,10 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	mix->af_data.round_duration = 15;
 	mix->dial_data.round = 1;
 	mix->dial_data.round_duration = 10;
-	mix->af_data.noisemu = 100;
-	mix->dial_data.noisemu = 1000;
+	mix->af_data.laplace.mu = 100;
+	mix->af_data.laplace.b = 10;
+	mix->dial_data.laplace.mu = 4000;
+	mix->dial_data.laplace.b = 400;
 	mix->af_data.num_mailboxes = 1;
 	mix->dial_data.num_mailboxes = 1;
 	memset(&mix->af_mb_container, 0, sizeof mix->af_mb_container);
@@ -294,7 +295,8 @@ int mix_onion_encrypt_msg(mix_s *mix, uint8_t *msg, uint32_t msg_len)
 void mix_dial_add_noise(mix_s *mix)
 {
 	for (uint32_t i = 0; i < mix->dial_data.num_mailboxes; i++) {
-		for (int j = 0; j < mix->dial_data.noisemu; j++) {
+		uint32_t noise = laplace_rand(&mix->dial_data.laplace);
+		for (int j = 0; j < noise; j++) {
 			uint8_t *curr_ptr = mix->dial_data.out_buf.pos;
 			serialize_uint32(curr_ptr, i);
 			randombytes_buf(curr_ptr + sizeof i, dialling_token_BYTES);
@@ -303,8 +305,9 @@ void mix_dial_add_noise(mix_s *mix)
 			byte_buffer_put_virtual(&mix->dial_data.out_buf, mix->dial_data.out_msg_length);
 			mix->dial_data.num_out_msgs++;
 		}
+		mix->dial_data.last_noise_count = noise;
 		if (mix->num_out_onion_layers == 0) {
-			mix->dial_data.mailbox_counts[i] += mix->dial_data.noisemu;
+			mix->dial_data.mailbox_counts[i] += noise;
 		}
 	}
 }
@@ -312,7 +315,8 @@ void mix_dial_add_noise(mix_s *mix)
 void mix_af_add_noise(mix_s *mix)
 {
 	for (uint32_t i = 0; i < mix->af_data.num_mailboxes; i++) {
-		for (int j = 0; j < mix->af_data.noisemu; j++) {
+		uint32_t noise = laplace_rand(&mix->af_data.laplace);
+		for (int j = 0; j < noise; j++) {
 			uint8_t *curr_ptr = mix->af_data.out_buf.pos;
 			serialize_uint32(curr_ptr, i);
 			element_random(&mix->af_noise_Zr_elem);
@@ -326,8 +330,9 @@ void mix_af_add_noise(mix_s *mix)
 			mix->af_data.num_out_msgs++;
 			byte_buffer_put_virtual(&mix->af_data.out_buf, mix->af_data.out_msg_length);
 		}
+		mix->af_data.last_noise_count = noise;
 		if (mix->num_out_onion_layers == 0) {
-			mix->af_data.mb_counts[i] += mix->af_data.noisemu;
+			mix->af_data.mb_counts[i] += noise;
 		}
 	}
 }

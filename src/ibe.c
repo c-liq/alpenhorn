@@ -1,7 +1,4 @@
-//#define PBC_DEBUG
-
 #include "ibe.h"
-#include "config.h"
 
 struct ibe_params
 {

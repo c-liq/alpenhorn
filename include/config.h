@@ -91,16 +91,16 @@ static const char ibe_generator[] =
 static const uint8_t
 	user_ids[10][user_id_BYTES] = {"chris", "alice", "bob", "eve", "charlie", "jim", "megan", "john", "jill", "steve"};
 
-static const uint8_t user_lt_pub_sig_keys[10][64] = {"dce2ce56f88900d2fc09128fd308954ece30fbda56b1202fd21ece8cb8e231bf",
-                                                    "a11a8d3b6325efa5b6b5372f1a54783bf5b9b0816e7aad6c848bd4936b19a493",
-                                                    "deb27d637dbb5e82234439dc6410dcff2720412affe09d69adaafeb775ca6eb1",
-                                                    "cbf9aa2432aa0b7ed86fd4cee2e54f998b4019e0e1d2194d207553082bd3dd5e",
-                                                    "2ddb31f8c4cf162218eb5b897c33c0002de8b7fc3fd6edb8be9d0c4b2a4f385a",
-                                                    "2c13f995d0c403014e58309c5b24cdd13fb90b68e1f60f187e3ecebf936b78b0",
-                                                    "f9f8f4330c77763cb472d560da5765093b8b50645a4345de646c99d69387d442",
-                                                    "27fc5fab0c93af7f4cd5e09aae95080609720ecac24b8f93e517015dded669e0",
-                                                    "031ca754e5896d5e84eb21866439e1b631225193619734f364de90f228485f94",
-                                                    "b1fcd02a40da1e342f2c8404c7438e24d673666fe8160e5d23c7278244abc085"};
+static const uint8_t user_publickeys[10][64] = {"dce2ce56f88900d2fc09128fd308954ece30fbda56b1202fd21ece8cb8e231bf",
+                                                "a11a8d3b6325efa5b6b5372f1a54783bf5b9b0816e7aad6c848bd4936b19a493",
+                                                "deb27d637dbb5e82234439dc6410dcff2720412affe09d69adaafeb775ca6eb1",
+                                                "cbf9aa2432aa0b7ed86fd4cee2e54f998b4019e0e1d2194d207553082bd3dd5e",
+                                                "2ddb31f8c4cf162218eb5b897c33c0002de8b7fc3fd6edb8be9d0c4b2a4f385a",
+                                                "2c13f995d0c403014e58309c5b24cdd13fb90b68e1f60f187e3ecebf936b78b0",
+                                                "f9f8f4330c77763cb472d560da5765093b8b50645a4345de646c99d69387d442",
+                                                "27fc5fab0c93af7f4cd5e09aae95080609720ecac24b8f93e517015dded669e0",
+                                                "031ca754e5896d5e84eb21866439e1b631225193619734f364de90f228485f94",
+                                                "b1fcd02a40da1e342f2c8404c7438e24d673666fe8160e5d23c7278244abc085"};
 
 static const uint8_t user_lt_secret_sig_keys[10][128] =
     {"6581ce40d6971c2fd1d2ca07fe5280be823a327bca5bb8d3d110ec906247493cdce2ce56f88900d2fc09128fd308954ece30fbda56b1202fd21ece8cb8e231bf",

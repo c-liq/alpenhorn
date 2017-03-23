@@ -61,7 +61,7 @@ struct client_net
 	pthread_mutex_t aq_lock;
 };
 
-void do_action(client_net_s *c, action *a)
+int do_action(client_net_s *c, action *a)
 {
 	switch (a->type) {
 	case ADD_FRIEND:
@@ -77,6 +77,7 @@ void do_action(client_net_s *c, action *a)
 		kw_print_table(&c->client->keywheel);
 	}
 	free(a);
+	return 0;
 }
 
 action *action_stack_pop(client_net_s *c)
@@ -147,19 +148,19 @@ int net_client_init(client_net_s *cs, client_s *c)
 
 void ep_socket_send(client_net_s *c, client_connection *conn)
 {
-	int close_client_connection = 0;
+	int close = 0;
 	while (conn->write_remaining > 0) {
 		ssize_t count = send(conn->sock_fd, conn->write_buf + conn->bytes_written, conn->write_remaining, 0);
 		if (count == -1) {
 			if (errno != EAGAIN) {
 				fprintf(stderr, "socket send error %d on %d\n", errno, conn->sock_fd);
-				close_client_connection = 1;
+				close = 1;
 			}
 			break;
 		}
 		else if (count == 0) {
 			fprintf(stderr, "Socket send 0 bytes on %d\n", conn->sock_fd);
-			close_client_connection = 1;
+			close = 1;
 			break;
 		}
 		else {
@@ -173,7 +174,7 @@ void ep_socket_send(client_net_s *c, client_connection *conn)
 		}
 	}
 
-	if (close_client_connection) {
+	if (close) {
 		fprintf(stderr, "Closing socket %d in epoll send\n", conn->sock_fd);
 		//close(conn->sock_fd);
 		return;
@@ -429,7 +430,10 @@ int net_client_startup(client_net_s *cn)
 	cn->client->dialling_round = deserialize_uint64(cn->mix_entry.read_buf->base + 16);
 	cn->client->keywheel.table_round = cn->client->dialling_round;
 	cn->client->mb_processed = 1;
-	printf("[Connected: Dial round: %ld | Add friend round: %ld]\n", cn->client->dialling_round, cn->client->af_round);
+	printf("[Connected as %s: Dial round: %ld | Add friend round: %ld]\n",
+	       cn->client->user_id,
+	       cn->client->dialling_round,
+	       cn->client->af_round);
 
 	uint8_t *dh_ptr = cn->mix_entry.read_buf->base + net_header_BYTES;
 	for (uint32_t i = 0; i < num_mix_servers; i++) {
@@ -498,10 +502,15 @@ void *net_client_loop(void *cns)
 	c->running = true;
 	while (c->running) {
 		int n = epoll_wait(c->epoll_inst, c->events, 100, 100);
-		action *curr_action = action_stack_pop(c);
-		while (curr_action) {
-			do_action(c, curr_action);
-			curr_action = action_stack_pop(c);
+		if (c->client->authed) {
+			action *curr_action = action_stack_pop(c);
+			while (curr_action) {
+				do_action(c, curr_action);
+				curr_action = action_stack_pop(c);
+			}
+		}
+		else if (c->action_stack) {
+			//fprintf(stderr, "[Client: not yet authed for round, postponing actions\n");
 		}
 
 		client_connection *conn = NULL;
@@ -536,7 +545,7 @@ int main(int argc, char **argv)
 	else {
 		uid = atoi(argv[1]);
 	}
-	client_s *c = client_alloc(user_ids[uid], user_lt_pub_sig_keys[uid], user_lt_secret_sig_keys[uid]);
+	client_s *c = client_alloc(user_ids[uid], user_publickeys[uid], user_lt_secret_sig_keys[uid]);
 	client_net_s s;
 	net_client_init(&s, c);
 	net_client_startup(&s);
@@ -606,9 +615,11 @@ int main(int argc, char **argv)
 			break;
 		}
 		case PRINT_KW_TABLE:
-			act->type = PRINT_KW_TABLE;
-			action_stack_push(&s, act);
-			fflush(stdin);
+			//act->type = PRINT_KW_TABLE;
+			//action_stack_push(&s, act);
+			//fflush(stdin);
+			kw_print_table(&c->keywheel);
+			break;
 		default:
 			if (buf[0] == 'Q') {
 				running = 0;

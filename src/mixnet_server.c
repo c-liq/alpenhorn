@@ -5,9 +5,15 @@
 #include <sys/epoll.h>
 #include <errno.h>
 #include <time.h>
+#include <signal.h>
 #include "mixnet_server.h"
-#include "../lib/xxhash/xxhash.h"
 
+
+struct remove_conn_list
+{
+	connection *conn;
+	connection *next;
+};
 
 struct mixnet_server
 {
@@ -23,6 +29,7 @@ struct mixnet_server
 	connection pkg_conns[num_pkg_servers];
 	byte_buffer_s bc_buf;
 	connection *clients;
+	struct remove_conn_list *remove_list;
 };
 
 void net_mix_pkg_broadcast(net_server_s *s)
@@ -81,7 +88,7 @@ void net_mix_last_read(void *server, connection *conn, ssize_t count)
 			uint64_t mb_round = deserialize_uint64(conn->read_buf->data + 8);
 			printf("Received Dial mailbox download request for round %ld from %.60s\n",
 			       mb_round,
-			       conn->internal_read_buf + net_header_BYTES);
+			       conn->read_buf->data + net_header_BYTES);
 			dial_mailbox_s
 				*request_mb = mix_dial_get_mailbox_buffer(s->mix, mb_round, conn->read_buf->data + net_header_BYTES);
 			if (!request_mb) {
@@ -167,11 +174,11 @@ void net_mix_mix_read(void *s, connection *conn, ssize_t count)
 			sleep(1);
 			if (srv->mix->is_last) {
 				mix_af_s *af_data = &srv->mix->af_data;
-				printf("AF Round %ld: Received %d msgs, added %d noisem, discarded %d noise -> Distributing %d\n",
+				printf("AF Round %ld: Received %d msgs, added %d noise, discarded %d cover msgs -> Distributing %d\n",
 				       af_data->round,
 				       af_data->num_inc_msgs,
-				       af_data->noisemu,
-				       af_data->num_inc_msgs + af_data->noisemu - af_data->num_out_msgs,
+				       af_data->last_noise_count,
+				       af_data->num_inc_msgs + af_data->last_noise_count - af_data->num_out_msgs,
 				       af_data->num_out_msgs);
 
 				mix_af_distribute(srv->mix);
@@ -196,8 +203,8 @@ void net_mix_mix_read(void *s, connection *conn, ssize_t count)
 				printf("Dial Round %ld: Received %d msgs, added %d noisem, discarded %d noise -> Distributing %d\n",
 				       dial_data->round,
 				       dial_data->num_inc_msgs,
-				       dial_data->noisemu,
-				       dial_data->num_inc_msgs + dial_data->noisemu - dial_data->num_out_msgs,
+				       dial_data->last_noise_count,
+				       dial_data->num_inc_msgs + dial_data->last_noise_count - dial_data->num_out_msgs,
 				       dial_data->num_out_msgs);
 				mix_dial_distribute(srv->mix);
 				net_broadcast_new_dmb(srv, srv->mix->dial_data.round);
@@ -505,7 +512,7 @@ int es_init(net_server_s *server, mix_s *mix)
 		fprintf(stderr, "Entry Server: failure when creating epoll instance\n");
 		return -1;
 	}
-
+	signal(SIGPIPE, SIG_IGN);
 	uint32_t buffer_size = crypto_box_PUBLICKEYBYTES * (num_mix_servers - server->mix->server_id);
 	byte_buffer_init(&server->bc_buf, buffer_size, net_header_BYTES);
 	serialize_uint32(server->bc_buf.base, MIX_SYNC);
@@ -576,10 +583,6 @@ int epoll_accept(net_server_s *es,
 void net_mix_batch_forward(net_server_s *s, byte_buffer_s *buf)
 {
 	connection *conn = &s->next_mix;
-	if (s->next_mix.sock_fd == -1) {
-		fprintf(stderr, "STOP TRYING TO FORWARD PLS\n");
-		return;
-	}
 
 	conn->write_buf = buf;
 	conn->bytes_written = 0;
@@ -596,7 +599,7 @@ void net_mix_af_forward(net_server_s *s)
 	printf("AF Round %ld: Received %d msgs, added %d noise -> Forwarding %d\n",
 	       af_data->round,
 	       af_data->num_inc_msgs,
-	       af_data->noisemu,
+	       af_data->last_noise_count,
 	       af_data->num_out_msgs);
 	byte_buffer_s *buf = &s->mix->af_data.out_buf;
 	net_mix_batch_forward(s, buf);
@@ -612,7 +615,7 @@ void net_mix_dial_forward(net_server_s *s)
 	printf("Dial Round %ld: Received %d msgs, added %d noise -> Forwarding %d\n",
 	       dial_data->round,
 	       dial_data->num_inc_msgs,
-	       dial_data->noisemu,
+	       dial_data->last_noise_count,
 	       dial_data->num_out_msgs);
 	net_mix_batch_forward(s, &s->mix->dial_data.out_buf);
 	mix_dial_newround(s->mix);
@@ -648,7 +651,6 @@ void epoll_send(net_server_s *s, connection *conn)
 		}
 	}
 	if (close_connection) {
-		fprintf(stderr, "Closing socket %d in epoll send\n", conn->sock_fd);
 		//close(conn->sock_fd);
 		return;
 		//free(conn);
@@ -717,37 +719,6 @@ void check_time(net_server_s *s)
 		printf("New add friend round started: %lu\n", s->mix->af_data.round);
 	}
 }
-
-/*void net_mix_loop(net_server_s *es)
-{
-
-	struct epoll_event *events = es->events;
-	es->running = 1;
-	while (es->running) {
-		int n = epoll_wait(es->epoll_inst, es->events, 100, 5000);
-		connection *conn = NULL;
-		// Error of some sort on the socket
-		for (int i = 0; i < n; i++) {
-			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
-				conn = events[i].data.ptr;
-				fprintf(stderr, "Mix loop: Closing connection on sock %d\n", conn->sock_fd);
-				close(conn->sock_fd);
-				free(events[i].data.ptr);
-				continue;
-			}
-				// Read from a socket
-			else if (events[i].events & EPOLLIN) {
-				conn = events[i].data.ptr;
-				epoll_read(es, conn);
-			}
-			else if (events[i].events & EPOLLOUT) {
-				conn = events[i].data.ptr;
-				epoll_send(es, conn);
-			}
-		}
-	}
-
-}*/
 
 void net_srv_loop(net_server_s *es,
                   void on_accept(net_server_s *, connection *),

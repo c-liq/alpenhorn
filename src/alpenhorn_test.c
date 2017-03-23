@@ -1,4 +1,3 @@
-#define PBC_DEBUG
 #include <memory.h>
 #include "pbc/pbc.h"
 #include "pkg.h"
@@ -27,7 +26,7 @@ int main()
 	}
 
 	for (uint32_t i = 0; i < 3; i++) {
-		client_init(&clients[i], user_ids[i], user_lt_pub_sig_keys[i], user_lt_secret_sig_keys[i]);
+		client_init(&clients[i], user_ids[i], user_publickeys[i], user_lt_secret_sig_keys[i]);
 	}
 
 	// Mix broadcast

@@ -1,5 +1,6 @@
 #include <netinet/in.h>
 #include <memory.h>
+#include <math.h>
 #include "utils.h"
 
 void printhex(char *msg, uint8_t *data, uint32_t len)
@@ -151,3 +152,32 @@ void byte_buffer_clear(byte_buffer_s *buf)
 	buf->pos = buf->data;
 	buf->used = 0;
 }
+
+uint32_t laplace_rand(laplace_s *l)
+{
+	uint32_t rand = randombytes_uniform(l->b * 2);
+	return l->mu + rand - l->b;
+
+}
+
+/*
+uint32_t laplace_rand(laplace_s *l) {
+	double rand = ((double)(randombytes_random() % 10000) / 10000) - 0.5;
+	int sign;
+	double abs;
+
+	if (rand < 0) {
+		abs = -rand;
+		sign = -1;
+	}
+	else {
+		abs = rand;
+		sign = 1;
+	}
+	double x = l->mu - (l->b * sign * log(1 - (2 * abs)));
+	printf("rand: %f | abs: %f | x: %f\n", rand, abs,  x);
+	if (x <= 0) {
+		return laplace_rand(l);
+	}
+	return (uint32_t)x;
+}*/

@@ -2,16 +2,17 @@ cmake_minimum_required(VERSION 3.6)
 project(Alpenhorn)
 
 set(CMAKE_C_STANDARD 99)
-
-set(SOURCE_FILES src/keywheel_table.c src/keywheel_table.h src/pkg.c src/client.c src/mix.c src/mix.h src/pbc_sign.c param_gen.c
-        src/ibe.c src/ibe.h src/bloom.c src/prime_gen.c src/prime_gen.h src/pbc_sign.h src/pkg.h keygen.c src/alpenhorn_test.c
-        src/utils.c src/utils.h src/config.h src/mixnet_server.c src/mixnet_server.h src/bloom.h src/client_net.c src/client_net.h src/pkg_net.c src/pkg_net.h src/net_common.c src/net_common.h)
+include_directories(${Alpenhorn_SOURCE_DIR}/include)
+include_directories(${Alpenhorn_SOURCE_DIR}/lib)
+set(SOURCE_FILES src/keywheel_table.c include/keywheel_table.h src/pkg.c src/client.c src/mix.c include/mix.h src/pbc_sign.c param_gen.c
+        src/ibe.c src/ibe.h src/bloom.c src/prime_gen.c include/prime_gen.h include/pbc_sign.h include/pkg.h keygen.c src/alpenhorn_test.c
+        src/utils.c include/utils.h include/config.h src/mixnet_server.c include/mixnet_server.h include/bloom.h src/client_net.c include/client_net.h src/pkg_net.c include/pkg_net.h src/net_common.c include/net_common.h)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Werror -g")
-set(CLIENT_SOURCE_FILES src/config.h src/client.c src/client_net.c src/bloom.c src/pbc_sign.c src/ibe.c src/prime_gen.c src/keywheel_table.c src/net_common.c src/utils.c lib/xxhash/xxhash.c)
+set(CLIENT_SOURCE_FILES include/config.h src/client.c src/client_net.c src/bloom.c src/pbc_sign.c src/ibe.c src/prime_gen.c src/keywheel_table.c src/net_common.c src/utils.c lib/xxhash/xxhash.c)
 set(MIX_SOURCE_FILES src/mixnet_server.c src/mix.c src/utils.c src/prime_gen.c lib/xxhash/xxhash.c src/bloom.c src/net_common.c)
 set(PKG_SOURCE_FILES src/pkg.c src/pkg_net.c src/utils.c src/pbc_sign.c src/ibe.c lib/xxhash/xxhash.c src/net_common.c)
 set(ALPENHORN_TEST_FILES src/alpenhorn_test.c src/client.c src/pkg.c src/bloom.c src/prime_gen.c src/mix.c src/utils.c lib/xxhash/xxhash.c src/keywheel_table.c src/pbc_sign.c src/ibe.c)
-
+set(BLOOM_TEST_FILES src/bloom.c lib/xxhash/xxhash.c src/prime_gen.c tests/test_bloom.c src/client.c src/keywheel_table.c src/ibe.c src/pbc_sign.c src/utils.c)
 set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath /usr/local/lib")
 set(CMAKE_EXE_LINKER_FLAGS "-Wl,-rpath /usr/local/lib")
 set(CMAKE_C_FLAGS "-I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -l pbc -pthread")
@@ -21,3 +22,4 @@ add_executable(client_net ${CLIENT_SOURCE_FILES})
 add_executable(mixnet_server ${MIX_SOURCE_FILES})
 add_executable(pkg_server ${PKG_SOURCE_FILES})
 add_executable(alpenhorn_test ${ALPENHORN_TEST_FILES})
+add_executable(bloom_test ${BLOOM_TEST_FILES})

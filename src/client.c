@@ -1,9 +1,9 @@
 #include <sodium.h>
 #include <string.h>
-#include "client.h"
+#include "../include/client.h"
 #include "ibe.h"
 #include "../lib/xxhash/xxhash.h"
-#include "bloom.h"
+#include "../include/bloom.h"
 #include <math.h>
 
 
@@ -62,7 +62,7 @@ void af_add_friend(client_s *client, const char *user_id)
 void af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages, uint64_t round)
 {
 
-	//printf("Processing AF mailbox for round %lu, %d messages\n", round, num_messages);
+	printf("Processing AF mailbox for round %lu, %d messages\n", round, num_messages);
 	uint8_t *msg_ptr = mailbox;
 	for (int i = 0; i < num_messages; i++) {
 		af_decrypt_request(c, msg_ptr, round);
@@ -93,11 +93,12 @@ void dial_fake_request(client_s *c)
 
 void print_call(incoming_call_s *call)
 {
-	printf("Incoming call\n------------\n");
+	printf("------------\nIncoming call\n------------\n");
 	printf("User ID: %s\n", call->user_id);
 	printf("Round: %ld\n", call->round);
 	printf("Intent: %d\n", call->intent);
 	printhex("Session Key", call->session_key, crypto_ghash_BYTES);
+	printf("------------\n");
 }
 
 int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint32_t num_tokens)
@@ -107,7 +108,7 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint32_t num_
 		kw_advance_table(&c->keywheel);
 	}
 
-	//printf("Processing Dial mb for round %ld, %d tokens\n", round, num_tokens);
+	printf("Processing Dial mb for round %ld, %d tokens\n", round, num_tokens);
 	bloomfilter_s bloom;
 	int found = 0, num_calls = 0;
 	uint8_t dial_token_buf[dialling_token_BYTES];
@@ -126,7 +127,6 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint32_t num_
 				kw_session_key(new_call->session_key, &c->keywheel, curr_kw->user_id, false);
 				num_calls++;
 				print_call(new_call);
-				break;
 			}
 		}
 		curr_kw = curr_kw->next;
@@ -329,9 +329,11 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 		int res = kw_complete_keywheel(&c->keywheel, user_id_ptr, dh_pub_ptr, deserialize_uint64(dialling_round_ptr));
 		if (res) {
 			fprintf(stderr, "Failure occurred when trying to complete keywheel for %s\n", user_id_ptr);
+			return -1;
 		}
 		else {
 			printf("[Client: friend request accepted by %s, keywheel completed]\n", user_id_ptr);
+			return 0;
 		}
 
 	}
@@ -343,6 +345,7 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 	new_req->dialling_round = deserialize_uint64(dialling_round_ptr);
 	new_req->next = c->friend_requests;
 	c->friend_requests = new_req;
+	printf("[Client: friend request received]\n");
 	print_friend_request(c->friend_requests);
 	return 0;
 }
@@ -549,8 +552,10 @@ client_s *client_alloc(const uint8_t *user_id, const uint8_t *ltp_key, const uin
 
 void print_friend_request(friend_request_s *req)
 {
+	printf("------------\n");
 	printf("Sender id: %s\n", req->user_id);
-	printhex("Sender DH key_state", req->dh_pk, crypto_box_PUBLICKEYBYTES);
-	printhex("Sender signing key_state: ", req->lt_sig_key, crypto_sign_PUBLICKEYBYTES);
+	printhex("Sender DH key", req->dh_pk, crypto_box_PUBLICKEYBYTES);
+	printhex("Sender signing key: ", req->lt_sig_key, crypto_sign_PUBLICKEYBYTES);
 	printf("Dialling round: %ld\n", req->dialling_round);
+	printf("------------\n");
 }

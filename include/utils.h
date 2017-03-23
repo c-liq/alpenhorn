@@ -22,6 +22,16 @@ struct byte_buffer
 	ssize_t prefix_size;
 };
 
+struct laplace;
+
+typedef struct laplace laplace_s;
+
+struct laplace
+{
+	uint32_t mu;
+	uint32_t b;
+};
+
 typedef struct byte_buffer byte_buffer_s;
 
 void crypto_shared_secret(uint8_t *shared_secret,
@@ -54,5 +64,7 @@ int byte_buffer_resize(byte_buffer_s *buf, ssize_t new_capacity);
 void byte_buffer_clear(byte_buffer_s *buf);
 int byte_buffer_put(byte_buffer_s *buf, uint8_t *data, size_t size);
 int byte_buffer_put_virtual(byte_buffer_s *buf, size_t size);
+uint32_t laplace_rand(laplace_s *l);
+
 
 #endif //ALPENHORN_UTILS_H

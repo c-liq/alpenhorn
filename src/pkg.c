@@ -2,9 +2,9 @@
 #include <sodium.h>
 #include <string.h>
 #include <pbc/pbc_test.h>
-#include "pbc_sign.h"
-#include "pkg.h"
-#include "net_common.h"
+#include "../include/pbc_sign.h"
+#include "../include/pkg.h"
+#include "../include/net_common.h"
 
 int pkg_server_init(pkg_server *server, uint32_t server_id)
 {
@@ -30,7 +30,7 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 	server->clients = malloc(sizeof(pkg_client) * server->num_clients);
 	for (int i = 0; i < server->num_clients; i++) {
 		memset(&server->clients[i], 0, sizeof(pkg_client));
-		pkg_client_init(&server->clients[i], server, user_ids[i], user_lt_pub_sig_keys[i]);
+		pkg_client_init(&server->clients[i], server, user_ids[i], user_publickeys[i]);
 	}
 
 	pkg_new_ibe_keypair(server);
