@@ -10,7 +10,7 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 {
 	pairing_init_set_str(server->pairing, pbc_params);
 	server->current_round = 1;
-	server->num_clients = 3;
+	server->num_clients = 10000;
 	server->srv_id = server_id;
 	pairing_ptr pairing = server->pairing;
 	// Initialise gen_elem element + long term ibe public/secret signature keypair
@@ -28,9 +28,16 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 	element_init(server->eph_pub_key_elem_g1, pairing->G1);
 	// Allocate and initialise clients
 	server->clients = malloc(sizeof(pkg_client) * server->num_clients);
-	for (int i = 0; i < server->num_clients; i++) {
+	for (int i = 0; i < 5; i++) {
 		memset(&server->clients[i], 0, sizeof(pkg_client));
 		pkg_client_init(&server->clients[i], server, user_ids[i], user_publickeys[i]);
+	}
+	uint8_t user_buf[user_id_BYTES];
+	uint8_t pk_buff[crypto_box_PUBLICKEYBYTES];
+	for (int i = 5; i < server->num_clients; i++) {
+		randombytes_buf(user_buf, user_id_BYTES);
+		randombytes_buf(pk_buff, crypto_box_PUBLICKEYBYTES);
+		pkg_client_init(&server->clients[i], server, user_buf, pk_buff);
 	}
 
 	pkg_new_ibe_keypair(server);
@@ -184,7 +191,6 @@ void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
 {
 	element_pow_zn(client->eph_sk_G2, client->hashed_id_elem_g2, server->eph_secret_key_elem_zr);
 	element_to_bytes_compressed(client->auth_response_ibe_key_ptr, client->eph_sk_G2);
-
 }
 
 void pkg_sign_for_client(pkg_server *server, pkg_client *client)

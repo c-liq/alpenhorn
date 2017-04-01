@@ -2,7 +2,7 @@
 #include <string.h>
 #include "../include/client.h"
 #include "ibe.h"
-#include "../lib/xxhash/xxhash.h"
+#include "xxhash.h"
 #include "../include/bloom.h"
 #include <math.h>
 

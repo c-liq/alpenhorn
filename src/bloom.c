@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include "utils.h"
 #include <math.h>
-#include "xxhash/xxhash.h"
+#include "xxhash.h"
 #include "prime_gen.h"
 #include "bloom.h"
 #define MAX_PREFIX_SZ 256

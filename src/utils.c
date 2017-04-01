@@ -5,8 +5,8 @@
 
 void printhex(char *msg, uint8_t *data, uint32_t len)
 {
-  uint32_t hex_len = len * 2 + 1;
-  char hex_str[hex_len];
+	uint32_t hex_len = len * 2 + 1;
+	char hex_str[hex_len];
 	sodium_bin2hex(hex_str, hex_len, data, len);
 	printf("%s: %s\n", msg, hex_str);
 }
@@ -17,7 +17,7 @@ void crypto_shared_secret(uint8_t *shared_secret,
                           uint8_t *server_pub,
                           uint32_t output_size)
 {
-  crypto_generichash_state hash_state;
+	crypto_generichash_state hash_state;
 	crypto_generichash_init(&hash_state, NULL, 0U, output_size);
 	crypto_generichash_update(&hash_state, scalar_mult, crypto_scalarmult_BYTES);
 	crypto_generichash_update(&hash_state, client_pub, crypto_box_PUBLICKEYBYTES);
@@ -27,14 +27,50 @@ void crypto_shared_secret(uint8_t *shared_secret,
 
 void serialize_uint32(uint8_t *out, uint32_t in)
 {
-  uint32_t network_in = htonl(in);
-  memcpy (out, &network_in, sizeof network_in);
+	uint32_t network_in = htonl(in);
+	memcpy(out, &network_in, sizeof network_in);
 };
 
 uint32_t deserialize_uint32(uint8_t *in)
 {
-  uint32_t *ptr = (uint32_t *) in;
-  return ntohl(*ptr);
+	uint32_t *ptr = (uint32_t *) in;
+	return ntohl(*ptr);
+}
+
+ssize_t crypto_secret_nonce_seal(uint8_t *out, uint8_t *m, size_t mlen, uint8_t *k)
+{
+	randombytes_buf(out, crypto_NBYTES);
+	unsigned long long clen;
+	int res = crypto_aead_chacha20poly1305_ietf_encrypt(out + crypto_NBYTES,
+	                                                    &clen,
+	                                                    m,
+	                                                    mlen,
+	                                                    out,
+	                                                    crypto_NBYTES,
+	                                                    NULL,
+	                                                    out,
+	                                                    k);
+	if (res) {
+		return -1;
+	}
+	else {
+		printf("CIPHERTEXT LEN: %lld\n", clen);
+		return (size_t) clen + crypto_NBYTES;
+	}
+}
+
+int crypto_secret_nonce_open(uint8_t *out, uint8_t *c, size_t clen, uint8_t *k)
+{
+	printf("CIPHERTEXT LEN: %ld\n", clen - crypto_NBYTES);
+	return crypto_aead_chacha20poly1305_ietf_decrypt(out,
+	                                                 NULL,
+	                                                 NULL,
+	                                                 c + crypto_NBYTES,
+	                                                 clen - crypto_NBYTES,
+	                                                 c,
+	                                                 crypto_NBYTES,
+	                                                 c,
+	                                                 k);
 }
 
 void serialize_uint64(uint8_t *out, const uint64_t input)

@@ -39,7 +39,8 @@ void crypto_shared_secret(uint8_t *shared_secret,
                           uint8_t *client_pub,
                           uint8_t *server_pub,
                           uint32_t output_size);
-
+ssize_t crypto_secret_nonce_seal(uint8_t *out, uint8_t *c, size_t clen, uint8_t *k);
+int crypto_secret_nonce_open(uint8_t *out, uint8_t *c, size_t clen, uint8_t *k);
 void printhex(char *msg, uint8_t *data, uint32_t len);
 uint64_t deserialize_uint64(uint8_t *in);
 void serialize_uint64(uint8_t *out, const uint64_t input);

@@ -1,6 +1,6 @@
 #include <string.h>
 #include "../include/mix.h"
-#include "../lib/xxhash/xxhash.h"
+#include "xxhash.h"
 #include <math.h>
 
 

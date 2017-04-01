@@ -21,6 +21,7 @@ ibe_params *ibe_alloc(char *pb_params, const char *gen)
 	return params;
 }
 
+
 int ibe_extract(element_s *out, element_s *master_priv_key, const uint8_t *id, const uint32_t id_length)
 {
 	uint8_t id_hash[crypto_ghash_BYTES];
@@ -101,6 +102,73 @@ int ibe_encrypt(uint8_t *out, uint8_t *msg, uint32_t msg_len, element_s *public_
 	return 0;
 }
 
+int ibe_encryp2(uint8_t *out, uint8_t *msg, uint32_t msg_len, element_s *public_key,
+                element_s *gen, uint8_t *recv_id, size_t recv_id_len, pairing_s *pairing)
+{
+
+	uint8_t recv_id_hash[crypto_ghash_BYTES];
+	crypto_generichash(recv_id_hash, crypto_ghash_BYTES, recv_id, recv_id_len, NULL, 0);
+	element_s q_id;
+	element_init(&q_id, pairing->G2);
+	element_from_hash(&q_id, recv_id_hash, crypto_ghash_BYTES);
+	unsigned long long qid_length = (unsigned long long) element_length_in_bytes_compressed(&q_id);
+	uint8_t qid_serialized[qid_length];
+	element_to_bytes_compressed(qid_serialized, &q_id);
+
+	element_s r;
+	element_init(&r, pairing->Zr);
+	element_random(&r);
+	unsigned long long r_length = (unsigned long long) element_length_in_bytes_compressed(&r);
+	uint8_t r_serialized[r_length];
+	element_to_bytes_compressed(r_serialized, &r);
+
+	element_s rp;
+	element_init(&rp, pairing->G1);
+	element_pow_zn(&rp, gen, &r);
+	element_to_bytes_compressed(out, &rp);
+
+	element_s pairing_value;
+	element_init(&pairing_value, pairing->GT);
+	element_pairing(&pairing_value, public_key, &q_id);
+	element_pow_zn(&pairing_value, &pairing_value, &r);
+	unsigned long long pairing_val_length = (unsigned long long) element_length_in_bytes(&pairing_value);
+	uint8_t pairing_value_serialized[pairing_val_length];
+	element_to_bytes_compressed(pairing_value_serialized, &pairing_value);
+
+	crypto_generichash_state hash_state;
+	crypto_generichash_init(&hash_state, 0, 0, crypto_ghash_BYTES);
+	crypto_generichash_update(&hash_state, qid_serialized, qid_length);
+	crypto_generichash_update(&hash_state, out, r_length);
+	crypto_generichash_update(&hash_state, pairing_value_serialized, pairing_val_length);
+	uint8_t secret_key[crypto_ghash_BYTES];
+	crypto_generichash_final(&hash_state, secret_key, crypto_ghash_BYTES);
+
+	int res = crypto_secret_nonce_seal(out + r_length, msg, msg_len, secret_key);
+	if (res) {
+		fprintf(stderr, "[IBE encrypt] failure during symmetric encyrption\n");
+	}
+	sodium_memzero(secret_key, sizeof secret_key);
+	return res;
+}
+
+int
+ibe_decrypt2(uint8_t *out, uint8_t *c, uint32_t clen, element_s *private_key, pairing_s *pairing)
+{
+	element_s rp;
+	element_init(&rp, pairing->G1);
+	int read = element_from_bytes_compressed(&rp, c);
+	if (read != element_length_in_bytes_compressed(&rp)) {
+		fprintf(stderr, "could not deserialize element during ibe decryption\n");
+		element_clear(&rp);
+		return -1;
+	}
+
+	element_s pairing_val;
+	element_init(&pairing_val, pairing->GT);
+
+
+	return 0;
+}
 int ibe_decrypt(uint8_t *out, uint8_t *c, uint32_t clen, element_s *private_key, pairing_s *pairing)
 {
 	element_t u, prg;
