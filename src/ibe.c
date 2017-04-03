@@ -21,7 +21,6 @@ ibe_params *ibe_alloc(char *pb_params, const char *gen)
 	return params;
 }
 
-
 int ibe_extract(element_s *out, element_s *master_priv_key, const uint8_t *id, const uint32_t id_length)
 {
 	uint8_t id_hash[crypto_ghash_BYTES];
