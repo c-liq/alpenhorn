@@ -133,7 +133,7 @@ void fp2mpz(mpz_t rop, const fpe_t op)
 
 void mpz2fp2(fpe_t rop, const mpz_t op)
 {
-	gmp_printf("MPZ INT DESERIALIZED: %Zd\n", op);
+	//gmp_printf("MPZ INT DESERIALIZED: %Zd\n", op);
 	mpz_t v, vp, acc, tmp;
 	mpz_init(tmp);
 	mpz_init(vp);
