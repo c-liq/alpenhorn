@@ -218,9 +218,9 @@ int af_accept_request(client_s *c, const char *user_id)
 	                     c->lt_sig_sk);
 	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
-	ibe_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
-	            &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
-	            new_kw->user_id, user_id_BYTES, &c->pairing);
+	ibe_pbc_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
+	                &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
+	                new_kw->user_id, user_id_BYTES, &c->pairing);
 	// Only information identifying the destination of a request, the mailbox no. of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
 	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
@@ -235,9 +235,7 @@ void af_create_request(client_s *c)
 	serialize_uint32(c->friend_request_buf + net_msg_type_BYTES, onionenc_friend_request_BYTES);
 	serialize_uint64(c->friend_request_buf + 8, c->af_round);
 
-	uint8_t *dr_ptr =
-		c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES
-			+ crypto_NBYTES;
+	uint8_t *dr_ptr = c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_elem_compressed_BYTES + crypto_NBYTES;
 	uint8_t *user_id_ptr = dr_ptr + round_BYTES;
 	uint8_t *dh_pub_ptr = user_id_ptr + user_id_BYTES;
 	uint8_t *lt_sig_key_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
@@ -263,9 +261,10 @@ void af_create_request(client_s *c)
 	// Also include the multisignature from PKG servers, primary source of verification
 	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
-	ibe_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
-	            &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
-	            c->friend_request_id, user_id_BYTES, &c->pairing);
+	ssize_t res = ibe_pbc_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
+	                              &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
+	                              c->friend_request_id, user_id_BYTES, &c->pairing);
+	printf("Ciphertext size: %ld\n", res);
 	// Only information identifying the destination of a request, the mailbox no. of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
 	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
@@ -276,8 +275,8 @@ void af_create_request(client_s *c)
 int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 {
 	uint8_t request_buffer[af_request_BYTES];
-	int result = ibe_decrypt(request_buffer, request_buf, af_request_BYTES + crypto_MACBYTES,
-	                         &c->pkg_ibe_secret_combined_g2[!c->curr_ibe], &c->pairing);
+	ssize_t result = ibe_pbc_decrypt(request_buffer, request_buf, af_ibeenc_request_BYTES,
+	                                 &c->pkg_ibe_secret_combined_g2[!c->curr_ibe], c->hashed_id, &c->pairing);
 
 	if (result) {
 		//fprintf(stderr, "%s: ibe decryption failure\n", c->user_id);
@@ -537,6 +536,13 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 	kw_table_init(&c->keywheel, c->dialling_round, NULL);
 	c->num_intents = 1;
 	c->bloom_p_val = pow(10.0, -10.0);
+
+	uint8_t id_hash[crypto_ghash_BYTES];
+	crypto_generichash(id_hash, crypto_ghash_BYTES, c->user_id, user_id_BYTES, NULL, 0);
+	element_s q_id;
+	element_init(&q_id, c->pairing.G2);
+	element_from_hash(&q_id, id_hash, crypto_ghash_BYTES);
+	element_to_bytes_compressed(c->hashed_id, &q_id);
 }
 
 client_s *client_alloc(const uint8_t *user_id, const uint8_t *ltp_key, const uint8_t *lts_key)

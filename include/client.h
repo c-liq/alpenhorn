@@ -27,6 +27,7 @@ struct client
 	uint64_t af_round;
 	uint32_t dial_num_mailboxes;
 	uint32_t af_num_mailboxes;
+	uint8_t hashed_id[g2_elem_compressed_BYTES];
 	// Long term BLS pub keys, private counterpart signs auth messages in friend requests
 	element_s pkg_lt_sig_keys_combined;
 	uint8_t pkg_eph_pub_fragments_g1[num_pkg_servers][g2_elem_compressed_BYTES]; // Epheremal public IBE keys from PKG's

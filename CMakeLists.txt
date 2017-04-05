@@ -11,7 +11,7 @@ set(DCLXCI_SOURCE_FILES lib/dclxci/curvepoint_fp.c lib/dclxci/fp2e.c lib/dclxci/
         lib/dclxci/twistpoint_fp2_multiscalar.c lib/dclxci/scalar_sub_nored.s lib/dclxci/asfunctions.a lib/dclxci/index_heap.c lib/dclxci/heap_rootreplaced.s
         ${OFILES})
 
-set(SOURCE_FILES ${DCLXI_SOURCE_FILES} src/keywheel_table.c include/keywheel_table.h src/pkg.c src/client.c src/mix.c include/mix.h src/pbc_sign.c param_gen.c
+set(SOURCE_FILES ${DCLXI_SOURCE_FILES} include/client.h include/client_net.h src/keywheel_table.c include/keywheel_table.h src/pkg.c src/client.c src/mix.c include/mix.h src/pbc_sign.c param_gen.c
         lib/dclxci/gmp_convert.c lib/dclxci/gmp_convert.h src/ibe.c src/ibe.h src/bloom.c src/prime_gen.c include/prime_gen.h include/pbc_sign.h include/pkg.h keygen.c src/alpenhorn_test.c
         src/utils.c include/utils.h include/config.h src/mixnet_server.c include/mixnet_server.h include/bloom.h src/client_net.c include/client_net.h src/pkg_net.c include/pkg_net.h src/net_common.c include/net_common.h
         )
@@ -30,10 +30,11 @@ set(CMAKE_VERBOSE_MAKEFILE on)
 add_executable(client_net ${CLIENT_SOURCE_FILES})
 add_executable(mixnet_server ${MIX_SOURCE_FILES})
 add_executable(pkg_server ${PKG_SOURCE_FILES})
-add_executable(alpenhorn_test ${ALPENHORN_TEST_FILES})
-add_executable(bloom_test ${BLOOM_TEST_FILES})
-add_executable(test_bench_pkg_server ${TEST_PKG_FILES})
-add_executable(dummy ${SOURCE_FILES})
+#add_executable(alpenhorn_test ${ALPENHORN_TEST_FILES})
+#add_executable(bloom_test ${BLOOM_TEST_FILES})
+#add_executable(test_bench_pkg_server ${TEST_PKG_FILES})
+#add_executable(dummy ${SOURCE_FILES})
 add_executable(test_dxcvi ${DCLXCI_SOURCE_FILES} tests/test_bn256.c)
-set_target_properties(dummy PROPERTIES EXCLUDE_FROM_ALL 1)
-set_target_properties(test_dxcvi PROPERTIES COMPILE_FLAGS "-DQHASM")
+#add_executable(ibe src/ibe.c include/config.h src/utils.c)
+#set_target_properties(dummy PROPERTIES EXCLUDE_FROM_ALL 1)
+#set_target_properties(test_dxcvi PROPERTIES COMPILE_FLAGS "-DQHASM")

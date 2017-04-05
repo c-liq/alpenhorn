@@ -243,7 +243,7 @@ void fp2e_out_str(FILE *outfile, const fp2e_t op)
 	mpz_out_str(outfile, 10, ma);
 	fprintf(outfile, "*X + ");
 	mpz_out_str(outfile, 10, mb);
-	fprintf(outfile, ")");
+	fprintf(outfile, ")\n");
 	mpz_clear(ma);
 	mpz_clear(mb);
 }
