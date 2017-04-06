@@ -224,6 +224,7 @@ void fpe_out_str(FILE *outfile, const fpe_t op)
 	fp2mpz(t, op);
 	mpz_out_str(outfile, 10, t);
 	mpz_clear(t);
+	printf("\n");
 }
 
 void fp2e_out_str(FILE *outfile, const fp2e_t op)
