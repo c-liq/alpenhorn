@@ -11,8 +11,11 @@
 struct client;
 struct friend_request;
 struct incoming_call;
+
 typedef struct client client_s;
+
 typedef struct friend_request friend_request_s;
+
 typedef struct incoming_call incoming_call_s;
 
 struct client

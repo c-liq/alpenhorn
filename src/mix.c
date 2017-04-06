@@ -83,6 +83,7 @@ void mix_dial_distribute(mix_s *mix)
 		dial_mailbox_s *mb = &c->mailboxes[i];
 		mb->id = i;
 		mb->num_messages = mix->dial_data.mailbox_counts[i];
+		mb->num_messages = 1000;
 		bloom_init(&mb->bloom, mix->dial_data.bloom_p_val, mb->num_messages, 0, NULL, net_header_BYTES);
 		// Fill in network prefix data
 		serialize_uint32(mb->bloom.base_ptr, DIAL_MB);
@@ -170,10 +171,10 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	mix->af_data.round_duration = 15;
 	mix->dial_data.round = 1;
 	mix->dial_data.round_duration = 10;
-	mix->af_data.laplace.mu = 100;
-	mix->af_data.laplace.b = 10;
-	mix->dial_data.laplace.mu = 4000;
-	mix->dial_data.laplace.b = 400;
+	mix->af_data.laplace.mu = 1;
+	mix->af_data.laplace.b = 0;
+	mix->dial_data.laplace.mu = 2;
+	mix->dial_data.laplace.b = 0;
 	mix->af_data.num_mailboxes = 1;
 	mix->dial_data.num_mailboxes = 1;
 	memset(&mix->af_mb_container, 0, sizeof mix->af_mb_container);

@@ -32,7 +32,7 @@
 #define net_client_dial_mb_request (net_header_BYTES + user_id_BYTES)
 
 #define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + round_BYTES)
-#define af_ibeenc_request_BYTES (af_request_BYTES + crypto_ghash_BYTES + g1_elem_compressed_BYTES + crypto_MACBYTES + crypto_NBYTES)
+#define af_ibeenc_request_BYTES (af_request_BYTES + g1_elem_compressed_BYTES + crypto_MACBYTES + crypto_NBYTES)
 #define onion_layer_BYTES (crypto_NBYTES + crypto_box_PUBLICKEYBYTES + crypto_MACBYTES)
 #define onionenc_friend_request_BYTES (mb_BYTES + af_ibeenc_request_BYTES + (num_mix_servers * onion_layer_BYTES))
 #define onionenc_dial_token_BYTES (mb_BYTES + dialling_token_BYTES + (num_mix_servers * onion_layer_BYTES))

@@ -10,7 +10,7 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 {
 	pairing_init_set_str(server->pairing, pbc_params);
 	server->current_round = 1;
-	server->num_clients = 10000;
+	server->num_clients = 10;
 	server->srv_id = server_id;
 	pairing_ptr pairing = server->pairing;
 	// Initialise gen_elem element + long term ibe public/secret signature keypair

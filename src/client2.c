@@ -1,11 +1,15 @@
 #include <sodium.h>
 #include <string.h>
-#include "../include/client.h"
+#include "../include/client2.h"
 #include "ibe.h"
 #include "xxhash.h"
 #include "../include/bloom.h"
 #include <math.h>
 
+struct pbc_params
+{
+
+};
 
 uint32_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id)
 {
