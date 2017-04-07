@@ -1,7 +1,6 @@
 #include <memory.h>
-#include "pbc/pbc.h"
-#include "pkg.h"
-#include "client.h"
+#include "pkg2.h"
+#include "client2.h"
 #include "mix.h"
 
 int main()

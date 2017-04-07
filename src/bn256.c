@@ -1,3 +1,6 @@
+#include <sodium.h>
+#include <gmp.h>
+#include <dclxci/gmp_convert.h>
 #include "bn256.h"
 #include "dclxci/parameters.c"
 
@@ -31,6 +34,10 @@ static mpz_t mpz_sqrt_neg3;
 
 static mpz_t mpz_j;
 
+static mpz_t mpz_hash;
+
+bool running = 0;
+
 void bn256_scalar_random(scalar_t out)
 {
 	scalar_setrandom(out, bn_n);
@@ -58,11 +65,14 @@ void fpe_cube(fpe_t rop, fpe_t op)
 
 void mpz2scalar(scalar_t rop, mpz_t op)
 {
+	mpz_t tmp;
+	mpz_init_set(tmp, op);
 	for (int i = 0; i < 4; i++) {
-		unsigned long long x = mpz_get_ui(op);
+		unsigned long long x = mpz_get_ui(tmp);
 		rop[i] = x;
-		mpz_tdiv_q_2exp(op, op, 64);
+		mpz_tdiv_q_2exp(tmp, tmp, 64);
 	}
+	mpz_clear(tmp);
 }
 
 void fpe_get_weierstrass(fpe_t y, const fpe_t x)
@@ -94,82 +104,12 @@ void fp2e_get_weierstrass(fp2e_t y, const fp2e_t x)
 	fp2e_add(y, t, twist_b);
 }
 
-int bn256_hash_g2(twistpoint_fp2_struct_t *out, uint8_t *msg, ssize_t msg_len, mpz_t mpz_val)
-{
-	fpe_t t_single;
-	mpz_t hmmmm;
-	mpz_init(hmmmm);
-	if (!mpz_val) {
-		uint8_t hash[crypto_generichash_BYTES];
-		crypto_generichash(hash, crypto_generichash_BYTES, msg, sizeof msg_len, NULL, 0);
-		mpz_import(hmmmm, crypto_generichash_BYTES, 1, 1, 1, 0, hash);
-		mpz_mod(hmmmm, hmmmm, mpz_bn_p);
-		mpz2fp(t_single, hmmmm);
-	}
-	else {
-		mpz_set(hmmmm, mpz_val);
-		mpz2fp(t_single, hmmmm);
-	}
-
-	fp2e_t t;
-	_2fpe_to_fp2e(t, t_single, t_single);
-
-	fp2e_t w;
-	fp2e_mul(w, t, t);
-
-	fp2e_add(w, w, twist_b);
-	fp2e_add(w, w, fp2e_one);
-
-	fp2e_invert(w, w);
-	fp2e_mul(w, w, t);
-	fp2e_t fp2e_sqrtneg3;
-	fp2e_set_fpe(fp2e_sqrtneg3, fpe_sqrt_neg3);
-	fp2e_mul(w, w, fp2e_sqrtneg3);
-
-	fp2e_t x[3];
-	fp2e_t fp2e_j;
-	fp2e_set_fpe(fp2e_j, fpe_j);
-
-	fp2e_mul(x[0], w, t);
-	fp2e_sub(x[0], x[0], fp2e_j);
-
-	fp2e_neg(x[0], x[0]);
-
-	fp2e_add(x[1], x[0], fp2e_one);
-	fp2e_neg(x[1], x[1]);
-
-	fp2e_mul(x[2], w, w);
-	fp2e_invert(x[2], x[2]);
-	fp2e_add(x[2], x[2], fp2e_one);
-
-	fp2e_t x_3_plusb[3];
-	for (int i = 0; i < 3; i++) {
-		fp2e_get_weierstrass(x_3_plusb[i], x[i]);
-	}
-
-	int alpha, beta;
-	alpha = fp2e_legendre(x_3_plusb[0]);
-	beta = fp2e_legendre(x_3_plusb[1]);
-	int i = (alpha - 1) * beta % 3;
-	i = i < 0 ? i + 3 : i;
-	int negative = fp2e_legendre(t);
-
-	fp2e_t y;
-	fp2e_sqrt(y, x_3_plusb[i]);
-	if (negative) {
-		fp2e_neg(y, y);
-	}
-
-	fp2e_set(out->m_x, x[i]);
-	fp2e_set(out->m_y, y);
-	fp2e_setone(out->m_z);
-	fp2e_setzero(out->m_t);
-
-	return 0;
-}
-
 bool bn_init()
 {
+	if (running) return true;
+
+	mpz_init_set_str(mpz_hash, bn_pstr, 10);
+
 	mpz_t mpz_b0, mpz_b1;
 	mpz_init_set_str(mpz_b0, b0, 10);
 	mpz_init_set_str(mpz_b1, b1, 10);
@@ -188,6 +128,7 @@ bool bn_init()
 	mpz_mul_ui(cofactor_mpz, mpz_bn_p, 2);
 	mpz_sub(cofactor_mpz, cofactor_mpz, mpz_bn_n);
 	mpz2scalar(cofactor, cofactor_mpz);
+	gmp_printf("cofactor: %Zd\n", cofactor_mpz);
 	mpz_clear(cofactor_mpz);
 	fpe_setone(one);
 	mpz_t mpz_pplus1_div4;
@@ -201,10 +142,11 @@ bool bn_init()
 	mpz2fp(fpe_sqrt_neg3, mpz_sqrt_neg3);
 	mpz_clear(mpz_b0);
 	mpz_clear(mpz_b1);
+	running = true;
 	return true;
 }
 
-int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len)
+int xbn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len)
 {
 	uint8_t hash[crypto_generichash_BYTES];
 	crypto_generichash(hash, crypto_generichash_BYTES, msg, sizeof msg_len, NULL, 0);
@@ -296,14 +238,47 @@ int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len)
 		mpz_mod(y, y, mpz_bn_p);
 	}
 
-	mpz2fp(rop->m_x, xi_3_plusb[i]);
+	mpz2fp(rop->m_x, x[i]);
 	mpz2fp(rop->m_y, y);
 	fpe_setone(rop->m_z);
 	fpe_setzero(rop->m_t);
 	return l1 + l2 + l3;
 }
 
-/*void bn256_hash_g2(twistpoint_fp2_t rop, uint8_t *msg, size_t msg_len)
+int bn256_hash_g1(curvepoint_fp_t out, uint8_t *msg, size_t msg_len)
+{
+	uint8_t hash[crypto_generichash_BYTES];
+	crypto_generichash(hash, crypto_generichash_BYTES, msg, sizeof msg_len, NULL, 0);
+
+	mpz_import(mpz_hash, crypto_generichash_BYTES, 1, 1, 1, 0, hash);
+	mpz_mod(mpz_hash, mpz_hash, mpz_bn_p);
+
+	fpe_t x, y;
+	mpz2fp2(x, mpz_hash);
+
+	int is_negative = fpe_legendre(x);
+
+	for (;;) {
+		fpe_t tmp;
+		fpe_cube(tmp, x);
+		fpe_add(tmp, tmp, curve_b);
+		int res = fpe_sqrt(y, tmp);
+		if (res) {
+			if (is_negative) {
+				fpe_neg(y, y);
+			}
+			fpe_set(out->m_x, x);
+			fpe_set(out->m_y, y);
+			fpe_setone(out->m_z);
+			fpe_setzero(out->m_t);
+			break;
+		}
+		fpe_add(x, x, one);
+	}
+	return 0;
+}
+
+int xbn256_hash_g2(twistpoint_fp2_t rop, uint8_t *msg, ssize_t msg_len, mpz_t mpzttt)
 {
 	fp2e_t fp2e_one;
 	fp2e_setone(fp2e_one);
@@ -338,10 +313,10 @@ int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len)
 		fp2e_square(x3, x);
 		fp2e_mul(x3, x3, x);
 
-		fp2e_t t, y;
-		fp2e_add(t, x3, twist_b);
+		fp2e_t y;
+		fp2e_add(x3, x3, twist_b);
 
-		int res = fp2e_sqrt(y, t);
+		int res = fp2e_sqrt(y, x3);
 		if (res) {
 			twistpoint_fp2_affineset_fp2e(rop, x, y);
 			twistpoint_fp2_scalarmult_vartime(rop, rop, cofactor);
@@ -349,7 +324,77 @@ int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len)
 		}
 		fp2e_add(x, x, fp2e_one);
 	}
-}*/
+	return 0;
+}
+
+int bn256_hash_g2(twistpoint_fp2_struct_t *out, uint8_t *msg, ssize_t msg_len, mpz_t mpz_val)
+{
+	fpe_t t_single;
+	mpz_t hmmmm;
+	mpz_init(hmmmm);
+	if (!mpz_val) {
+		uint8_t hash[crypto_generichash_BYTES];
+		crypto_generichash(hash, crypto_generichash_BYTES, msg, sizeof msg_len, NULL, 0);
+		mpz_import(hmmmm, crypto_generichash_BYTES, 1, 1, 1, 0, hash);
+		mpz_mod(hmmmm, hmmmm, mpz_bn_p);
+		mpz2fp(t_single, hmmmm);
+	}
+	else {
+		mpz_set(hmmmm, mpz_val);
+		mpz2fp(t_single, hmmmm);
+	}
+
+	fp2e_t t;
+	_2fpe_to_fp2e(t, t_single, t_single);
+
+	fp2e_t w;
+	fp2e_mul(w, t, t);
+
+	fp2e_add(w, w, twist_b);
+	fp2e_add(w, w, fp2e_one);
+
+	fp2e_invert(w, w);
+	fp2e_mul(w, w, t);
+	fp2e_t fp2e_sqrtneg3;
+	fp2e_set_fpe(fp2e_sqrtneg3, fpe_sqrt_neg3);
+	fp2e_mul(w, w, fp2e_sqrtneg3);
+
+	fp2e_t x[3];
+	fp2e_t fp2e_j;
+	fp2e_set_fpe(fp2e_j, fpe_j);
+
+	fp2e_mul(x[0], w, t);
+	fp2e_sub(x[0], x[0], fp2e_j);
+
+	fp2e_neg(x[0], x[0]);
+
+	fp2e_add(x[1], x[0], fp2e_one);
+	fp2e_neg(x[1], x[1]);
+
+	fp2e_mul(x[2], w, w);
+	fp2e_invert(x[2], x[2]);
+	fp2e_add(x[2], x[2], fp2e_one);
+
+	fp2e_t x_3_plusb[3];
+	for (int i = 0; i < 3; i++) {
+		fp2e_get_weierstrass(x_3_plusb[i], x[i]);
+	}
+
+	int alpha, beta;
+	alpha = fp2e_legendre(x_3_plusb[0]);
+	beta = fp2e_legendre(x_3_plusb[1]);
+	int i = (alpha - 1) * beta % 3;
+	i = i < 0 ? i + 3 : i;
+	int negative = fp2e_legendre(t);
+
+	fp2e_t y;
+	fp2e_sqrt(y, x_3_plusb[i]);
+
+	twistpoint_fp2_affineset_fp2e(out, x[i], y);
+	twistpoint_fp2_scalarmult_vartime(out, out, cofactor);
+
+	return 0;
+}
 
 size_t serialize_fpe(void *out, fpe_t op)
 {
@@ -428,12 +473,16 @@ size_t bn256_serialize_gt(void *out, fp12e_t gt_elem)
 
 void bn256_deserialize_and_sum_g1(curvepoint_fp_t out, void *in, size_t count)
 {
+	if (count <= 0) return;
+
 	void *ptr = in;
-	curvepoint_fp_setneutral(out);
+	curvepoint_fp_t tmp;
+	bn256_deserialize_g1(tmp, ptr);
+	curvepoint_fp_set(out, tmp);
+	ptr += g1_bytes;
 	fpe_setone(out->m_z);
 
-	curvepoint_fp_t tmp;
-	for (size_t i = 0; i < count; i++) {
+	for (size_t i = 1; i < count; i++) {
 		bn256_deserialize_g1(tmp, ptr);
 		curvepoint_fp_add_vartime(out, out, tmp);
 		ptr += g1_bytes;
@@ -450,26 +499,30 @@ void bn256_deserialize_and_sum_g2(twistpoint_fp2_t out, void *in, size_t count)
 	for (size_t i = 0; i < count; i++) {
 		bn256_deserialize_g2(tmp, ptr);
 		twistpoint_fp2_add_vartime(out, out, tmp);
-		ptr += g1_bytes;
+		ptr += g2_bytes;
 	}
+
 }
 
 void bn256_sum_g1(curvepoint_fp_t out, curvepoint_fp_t *in, size_t count)
 {
-	curvepoint_fp_setneutral(out);
+	if (!in || count <= 0) return;
+
+	curvepoint_fp_set(out, in[0]);
 	fpe_setone(out->m_z);
 
-	for (size_t i = 0; i < count; i++) {
+	for (size_t i = 1; i < count; i++) {
 		curvepoint_fp_add_vartime(out, out, in[i]);
 	}
 }
 
 void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t *in, size_t count)
 {
-	twistpoint_fp2_setneutral(out);
-	fp2e_setone(out->m_z);
+	if (!in || count <= 0) return;
 
-	for (size_t i = 0; i < count; i++) {
+	twistpoint_fp2_set(out, in[0]);
+	fp2e_setone(out->m_z);
+	for (size_t i = 1; i < count; i++) {
 		twistpoint_fp2_add_vartime(out, out, in[i]);
 	}
 }

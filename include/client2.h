@@ -1,12 +1,13 @@
 #ifndef ALPENHORN_CLIENT_H
 #define ALPENHORN_CLIENT_H
 
-#include <pbc/pbc.h>
 #include <stdbool.h>
 #include "keywheel_table.h"
-#include "pbc_sign.h"
 #include "config.h"
 #include "utils.h"
+#include "bn256.h"
+#include "bn256_ibe.h"
+#include "bn256_bls.h"
 
 struct client;
 struct friend_request;
@@ -23,7 +24,6 @@ struct client
 	uint8_t user_id[user_id_BYTES];
 	uint8_t lt_sig_sk[crypto_sign_SECRETKEYBYTES];
 	uint8_t lg_sig_pk[crypto_sign_PUBLICKEYBYTES];
-	pairing_s pairing;
 	uint64_t dialling_round;
 	keywheel_table_s keywheel;
 	uint8_t friend_request_id[user_id_BYTES];
@@ -32,20 +32,19 @@ struct client
 	uint32_t af_num_mailboxes;
 	uint8_t hashed_id[g2_elem_compressed_BYTES];
 	// Long term BLS pub keys, private counterpart signs auth messages in friend requests
-	element_s pkg_lt_sig_keys_combined;
+	twistpoint_fp2_t pkg_lt_sig_keys_combined;
 	uint8_t pkg_eph_pub_fragments_g1[num_pkg_servers][g2_elem_compressed_BYTES]; // Epheremal public IBE keys from PKG's
-	element_s pkg_eph_pub_combined_g1; // Combined epheremal master public IBE key_state
-	element_s bls_gen_element_g2;
-	element_s pkg_friend_elem; // Epheremal IBE key_state for friend request recipient
+	curvepoint_fp_t pkg_eph_pub_combined_g1; // Combined epheremal master public IBE key_state
+	// Epheremal IBE key_state for friend request recipient
 	// Buffers for client_s -> PKG authrequests, filled with DH public key_state and signature over PKG's
 	// broadcast messages to prove identity
 	uint8_t pkg_auth_requests[num_pkg_servers][net_header_BYTES + cli_pkg_single_auth_req_BYTES];
 	// Buffers that hold PKG authentication responses if authentication is successful
 	// Contains BLS signature fragment (verifies friend request for recipient), and IBE secret key_state fragment
 	uint8_t pkg_auth_responses[num_pkg_servers][net_header_BYTES + pkg_enc_auth_res_BYTES];
-	element_s pkg_multisig_combined_g1;
+	curvepoint_fp_t pkg_multisig_combined_g1;
 	// Epheremal IBE secret key_state - decrypts friend requests
-	element_s pkg_ibe_secret_combined_g2[2];
+	twistpoint_fp2_t pkg_ibe_secret_combined_g2[2];
 	int curr_ibe;
 	// Buffer for the fully encrypted add friend request
 	// Contains the plaintext request, encrypted through IBE, with a mailbox identifier prepended
@@ -59,7 +58,6 @@ struct client
 	uint8_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
 	uint8_t pkg_eph_ibe_sk_fragments_g2[num_pkg_servers][g2_elem_compressed_BYTES];
 	uint8_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES];
-	element_s ibe_gen_element_g1;
 	double bloom_p_val;
 	uint32_t num_intents;
 	friend_request_s *friend_requests;

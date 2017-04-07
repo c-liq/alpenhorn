@@ -1,11 +1,12 @@
 #include "pkg_net.h"
-#include "pkg.h"
+#include "pkg2.h"
 #include "net_common.h"
 #include <sys/epoll.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <memory.h>
 #include <errno.h>
+#include <bn256.h>
 
 typedef struct pkg_connection pkg_connection;
 
@@ -332,6 +333,7 @@ void net_pkg_server_loop(pkg_net_s *es, void(*on_read)(pkg_net_s *, pkg_connecti
 
 int main(int argc, char **argv)
 {
+	bn_init();
 	int sid;
 	if (argc < 2) {
 		fprintf(stderr, "No server id provided\n");

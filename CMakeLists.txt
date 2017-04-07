@@ -6,17 +6,21 @@ include_directories(${Alpenhorn_SOURCE_DIR}/include)
 include_directories(${Alpenhorn_SOURCE_DIR}/lib)
 file(GLOB OFILES lib/dclxci/*.o)
 
-set(DCLXCI_SOURCE_FILES lib/dclxci/curvepoint_fp.c lib/dclxci/fp2e.c lib/dclxci/final_expo.c lib/dclxci/fp6e.c lib/dclxci/fp12e.c lib/dclxci/fpe.c
-        lib/dclxci/twistpoint_fp2.c lib/dclxci/optate.c lib/dclxci/mydouble.c lib/dclxci/mul.c lib/dclxci/linefunction.c lib/dclxci/gmp_convert.c lib/dclxci/scalar.c lib/dclxci/curvepoint_fp_multiscalar.c
-        lib/dclxci/twistpoint_fp2_multiscalar.c lib/dclxci/scalar_sub_nored.s lib/dclxci/asfunctions.a lib/dclxci/index_heap.c lib/dclxci/heap_rootreplaced.s
+set(DCLXCI_SOURCE_FILES src/utils.c include/config.h src/bn256_ibe.c src/bn256.c lib/dclxci/fpe.c lib/dclxci/fp2e.c lib/dclxci/scalar.c
+        lib/dclxci/twistpoint_fp2.c lib/dclxci/mul.c lib/dclxci/mydouble.c lib/dclxci/curvepoint_fp.c
+        lib/dclxci/twistpoint_fp2_multiscalar.c lib/dclxci/heap_rootreplaced.s
+        lib/dclxci/index_heap.c lib/dclxci/scalar_sub_nored.s lib/dclxci/fp12e.c lib/dclxci/fpe.c lib/dclxci/fp2e.c lib/dclxci/fp6e.c
+        lib/dclxci/optate.c lib/dclxci/linefunction.c lib/dclxci/final_expo.c lib/dclxci/asfunctions.a lib/dclxci/gmp_convert.c lib/dclxci/asfunctions.a
         ${OFILES})
 
-set(SOURCE_FILES ${DCLXI_SOURCE_FILES} src/client2.c include/client.h include/client_net.h src/keywheel_table.c include/keywheel_table.h src/pkg.c src/client.c src/mix.c include/mix.h src/pbc_sign.c param_gen.c
+set(SOURCE_FILES ${DCLXI_SOURCE_FILES} tests/test_bench_pkg_server.c include/mix2.h src/mix2.c include/pkg2.h src/pkg2.c include/client2.h src/client2.c include/client.h include/client_net.h src/keywheel_table.c include/keywheel_table.h src/pkg.c src/client.c src/mix.c include/mix.h src/pbc_sign.c param_gen.c
         lib/dclxci/gmp_convert.c lib/dclxci/gmp_convert.h src/ibe.c src/ibe.h src/bloom.c src/prime_gen.c include/prime_gen.h include/pbc_sign.h include/pkg.h keygen.c src/alpenhorn_test.c
         src/utils.c include/utils.h include/config.h src/mixnet_server.c include/mixnet_server.h include/bloom.h src/client_net.c include/client_net.h src/pkg_net.c include/pkg_net.h src/net_common.c include/net_common.h
-        src/bn256_ibe.c include/bn256_ibe.h include/bn256.h src/bn256_bls.c include/bn256_bls.h)
+        src/bn256_ibe.c include/bn256_ibe.h include/bn256.h src/bn256_bls.c include/bn256_bls.h tests/test_bn256_ibe.c tests/test_bn256_bls.c src/bn256_keygen.c)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Werror -g")
-set(CLIENT_SOURCE_FILES include/config.h src/client.c src/client_net.c src/bloom.c src/pbc_sign.c src/ibe.c src/prime_gen.c src/keywheel_table.c src/net_common.c src/utils.c lib/xxhash/xxhash.c)
+set(CLIENT_SOURCE_FILES include/config.h src/client2.c src/client_net.c src/bloom.c src/pbc_sign.c src/ibe.c src/prime_gen.c src/keywheel_table.c src/net_common.c src/utils.c lib/xxhash/xxhash.c)
+set(CLIENT_BN256_SOURCE_FILES ${DCLXI_SOURCE_FILES} include/config.h src/client2.c src/client_net.c
+        src/bloom.c src/bn256.c src/bn256_bls.c src/bn256_ibe.c src/prime_gen.c src/keywheel_table.c src/net_common.c src/utils.c lib/xxhash/xxhash.c)
 set(MIX_SOURCE_FILES src/mixnet_server.c src/mix.c src/utils.c src/prime_gen.c lib/xxhash/xxhash.c src/bloom.c src/net_common.c)
 set(PKG_SOURCE_FILES src/pkg.c src/pkg_net.c src/utils.c src/pbc_sign.c src/ibe.c lib/xxhash/xxhash.c src/net_common.c)
 set(ALPENHORN_TEST_FILES src/alpenhorn_test.c src/client.c src/pkg.c src/bloom.c src/prime_gen.c src/mix.c src/utils.c lib/xxhash/xxhash.c src/keywheel_table.c src/pbc_sign.c src/ibe.c)
@@ -28,12 +32,13 @@ set(CMAKE_C_FLAGS "-I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -l
 set(CMAKE_VERBOSE_MAKEFILE on)
 
 add_executable(client_net ${CLIENT_SOURCE_FILES})
+add_executable(client_net_bn256 ${CLIENT_BN256_SOURCE_FILES})
 add_executable(mixnet_server ${MIX_SOURCE_FILES})
 add_executable(pkg_server ${PKG_SOURCE_FILES})
 #add_executable(alpenhorn_test ${ALPENHORN_TEST_FILES})
 #add_executable(bloom_test ${BLOOM_TEST_FILES})
 #add_executable(test_bench_pkg_server ${TEST_PKG_FILES})
-add_executable(dummy ${SOURCE_FILES})
+add_executable(dummy ${SOURCE_FILES} tests/test_bn256_ibe.c)
 add_executable(test_dxcvi ${DCLXCI_SOURCE_FILES} src/bn256.c)
 #add_executable(ibe src/ibe.c include/config.h src/utils.c)
 #set_target_properties(dummy PROPERTIES EXCLUDE_FROM_ALL 1)

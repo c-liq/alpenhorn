@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <time.h>
 #include <signal.h>
+#include <bn256.h>
 #include "mixnet_server.h"
 
 
@@ -766,6 +767,7 @@ void net_srv_loop(net_server_s *es,
 
 int main(int argc, char **argv)
 {
+	bn_init();
 	if (*argv[1] == '0') {
 		net_server_s es;
 		mix_s mix;

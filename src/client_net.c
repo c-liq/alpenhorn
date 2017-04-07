@@ -1,6 +1,6 @@
 #include <sys/epoll.h>
 #include "client_net.h"
-#include "client.h"
+#include "client2.h"
 #include <unistd.h>
 #include <sys/socket.h>
 #include <string.h>
@@ -545,6 +545,7 @@ int main(int argc, char **argv)
 	else {
 		uid = atoi(argv[1]);
 	}
+	bn_init();
 	client_s *c = client_alloc(user_ids[uid], user_publickeys[uid], user_lt_secret_sig_keys[uid]);
 	client_net_s s;
 	net_client_init(&s, c);

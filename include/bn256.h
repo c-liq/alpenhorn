@@ -2,7 +2,7 @@
 #define ALPENHORN_BN_256_H
 
 #include <stdio.h>
-#include <dclxci/optate.h>
+#include "dclxci/optate.h"
 #include <stdint.h>
 #include <sodium.h>
 #include <stdbool.h>

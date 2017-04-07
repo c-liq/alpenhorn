@@ -1,6 +1,5 @@
 #include <netinet/in.h>
 #include <memory.h>
-#include <math.h>
 #include "utils.h"
 
 void printhex(char *msg, uint8_t *data, uint32_t len)
@@ -54,14 +53,12 @@ ssize_t crypto_secret_nonce_seal(uint8_t *out, uint8_t *m, size_t mlen, uint8_t 
 		return -1;
 	}
 	else {
-		//printf("CIPHERTEXT LEN: %lld\n", clen);
 		return (size_t) clen + crypto_NBYTES;
 	}
 }
 
 int crypto_secret_nonce_open(uint8_t *out, uint8_t *c, size_t clen, uint8_t *k)
 {
-	//printf("CIPHERTEXT LEN: %ld\n", clen - crypto_NBYTES);
 	return crypto_aead_chacha20poly1305_ietf_decrypt(out,
 	                                                 NULL,
 	                                                 NULL,

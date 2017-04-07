@@ -1,4 +1,4 @@
-#include <pkg.h>
+#include <pkg2.h>
 #include <sys/time.h>
 #include <net_common.h>
 #include "dclxci/optate.h"
@@ -13,6 +13,7 @@ double get_time()
 
 int main()
 {
+	bn_init();
 	pkg_server server;
 	pkg_server_init(&server, 0);
 	double start = get_time();
@@ -21,7 +22,9 @@ int main()
 	//printf("Benchmarking PKG key extration/client signing for %d clients: %f\n", server.num_clients, end - start);
 	pkg_new_ibe_keypair(&server);
 
-	randombytes_buf(server.eph_secret_dh_key, crypto_box_SECRETKEYBYTES);
+
+
+/*	randombytes_buf(server.eph_secret_dh_key, crypto_box_SECRETKEYBYTES);
 	crypto_scalarmult_base(server.broadcast_dh_pkey_ptr, server.eph_secret_dh_key);
 	// Increment round counter
 	server.current_round++;
@@ -33,9 +36,9 @@ int main()
 		pkg_extract_client_sk(&server, &server.clients[i]);
 	}
 	end = get_time();
-	fp2e_t x;
+	pkg_sign_for_client(&server, &server.clients[0]);
 
-	printf("Benchmarking PKG key extraction for %d clients: %f\n", server.num_clients, end - start);
+	printf("Benchmarking PKG key extraction for %d clients: %f\n", server.num_clients, end - start);*/
 
 }
 

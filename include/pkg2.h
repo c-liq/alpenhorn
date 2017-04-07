@@ -3,7 +3,9 @@
 
 #include "config.h"
 #include "utils.h"
-#include <pbc/pbc.h>
+#include "bn256.h"
+#include "bn256_bls.h"
+#include "bn256_ibe.h"
 struct pkg_server;
 struct pkg_client;
 
@@ -16,22 +18,17 @@ struct pkg_server
 	int srv_id;
 	uint32_t num_clients;
 	uint64_t current_round;
-	pairing_t pairing;
 	pkg_client *clients;
 	// Long term BLS signatures, used to sign messages aiding verifying friend requests by recipients
-	element_t lt_sig_pk_elem;
-	element_t lt_sig_sk_elem;
-	//uint8_t lt_public_sig_keybytes[bls_public_key_length]; // Public signing key_state serialized
+	bn256_bls_keypair lt_keypair;
 	// Epheremal IBE keypair - public key_state is broadcast to clients, secret key_state used to extract clients' secret keys
-	element_t eph_pub_key_elem_g1;
-	element_t eph_secret_key_elem_zr;
+	curvepoint_fp_t eph_pub_key_elem_g1;
+	scalar_t eph_secret_key_elem_zr;
 	uint8_t eph_secret_dh_key[crypto_box_SECRETKEYBYTES];
 	// Broadcast message buffer - contains fresh IBE public key_state + fresh DH key_state + signature
 	uint8_t eph_broadcast_message[net_header_BYTES + pkg_broadcast_msg_BYTES];
 	uint8_t *broadcast_dh_pkey_ptr;  // Pointer into message buffer where public dh key_state will be stored
 	// Generator element for pairings, used to derive public keys from secret keys
-	element_s bls_gen_elem_g2;
-	element_s ibe_gen_elem_g1;
 };
 
 struct pkg_client
@@ -50,10 +47,10 @@ struct pkg_client
 	uint8_t eph_client_data[net_header_BYTES + pkg_enc_auth_res_BYTES];
 	uint8_t *auth_response_ibe_key_ptr; // Pointer into response buffer where secret key_state will be placed
 	// IBE elements
-	element_t hashed_id_elem_g2; // Permanent
-	element_t eph_sig_elem_G1;
-	element_t eph_sig_hash_elem_g1;// Round-specific sig_lts of (user_id, lts-sig-key_state, round number)
-	element_t eph_sk_G2; // Round-specific IBE secret key_state for client_s
+	twistpoint_fp2_t hashed_id_elem_g2; // Permanent
+	curvepoint_fp_t eph_sig_elem_G1;
+	curvepoint_fp_t eph_sig_hash_elem_g1;// Round-specific sig_lts of (user_id, lts-sig-key_state, round number)
+	twistpoint_fp2_t eph_sk_G2; // Round-specific IBE secret key_state for client_s
 };
 
 void pkg_client_init(pkg_client *client, pkg_server *server, uint8_t *user_id, const uint8_t *lt_sig_key);
