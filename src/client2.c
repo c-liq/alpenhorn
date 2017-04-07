@@ -1,15 +1,9 @@
 #include <sodium.h>
 #include <string.h>
 #include "client2.h"
-
 #include "xxhash.h"
 #include "bloom.h"
 #include <math.h>
-
-struct pbc_params
-{
-
-};
 
 uint32_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id)
 {
@@ -138,27 +132,281 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint32_t num_
 	return num_calls;
 }
 
-struct friend_request_buf
+#if USE_PBC
+int af_create_pkg_auth_request(client_s *client)
 {
-	uint8_t buf_base[onionenc_friend_request_BYTES];
-	uint8_t *dial_round;
-	uint8_t *user_id;
-	uint8_t *dh_pk;
-	uint8_t *lt_sig_sk;
 	uint8_t *client_sig;
-	uint8_t *multisig;
-};
+	uint8_t *client_pk;
+	uint8_t *pkg_pub_key_ptr;
+	uint8_t *symmetric_key_ptr;
+	uint8_t *auth_request;
 
-void init_fr_buf(struct friend_request_buf *buf)
-{
-	uint8_t *base = buf->buf_base;
-	buf->dial_round = base + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES + crypto_NBYTES;
-	buf->user_id = buf->dial_round + round_BYTES;
-	buf->dh_pk = buf->user_id + user_id_BYTES;
-	buf->lt_sig_sk = buf->dh_pk + crypto_box_PUBLICKEYBYTES;
-	buf->client_sig = buf->lt_sig_sk + crypto_sign_PUBLICKEYBYTES;
-	buf->multisig = buf->client_sig + crypto_sign_BYTES;
+	for (int i = 0; i < num_pkg_servers; i++) {
+		auth_request = client->pkg_auth_requests[i];
+		serialize_uint32(auth_request, CLI_AUTH_REQ);
+		serialize_uint32(auth_request + net_msg_type_BYTES, cli_pkg_single_auth_req_BYTES);
+		serialize_uint64(auth_request + 8, client->af_round);
+		client_pk = auth_request + net_header_BYTES + user_id_BYTES + crypto_sign_BYTES;
+		client_sig = auth_request + net_header_BYTES + user_id_BYTES;
+
+		pkg_pub_key_ptr = client->pkg_broadcast_msgs[i] + g1_serialized_bytes;
+		symmetric_key_ptr = client->pkg_eph_symmetric_keys[i];
+
+		crypto_sign_detached(client_sig,
+		                     NULL,
+		                     client->pkg_broadcast_msgs[i],
+		                     pkg_broadcast_msg_BYTES,
+		                     client->lt_sig_sk);
+
+		uint8_t secret_key[crypto_box_SECRETKEYBYTES];
+		uint8_t scalar_mult[crypto_scalarmult_BYTES];
+		randombytes_buf(secret_key, crypto_box_SECRETKEYBYTES);
+		crypto_box_keypair(client_pk, secret_key);
+
+		if (crypto_scalarmult(scalar_mult, secret_key, pkg_pub_key_ptr)) {
+			fprintf(stderr, "Scalar mult error while creating PKG auth request\n");
+			return -1;
+		}
+
+		crypto_shared_secret(symmetric_key_ptr,
+		                     scalar_mult,
+		                     client_pk,
+		                     pkg_pub_key_ptr,
+		                     crypto_box_SECRETKEYBYTES);
+	}
+
+	pbc_sum_bytes_G1_compressed(&client->pkg_eph_pub_combined_g1,
+	                            client->pkg_broadcast_msgs[0],
+	                            pkg_broadcast_msg_BYTES,
+	                            num_pkg_servers,
+	                            &client->pairing);
+	return 0;
 }
+int af_process_auth_responses(client_s *c)
+{
+	element_set1(&c->pkg_ibe_secret_combined_g2[!c->curr_ibe]);
+	element_set1(&c->pkg_multisig_combined_g1);
+	element_t g1_tmp, g2_tmp;
+	element_init(g1_tmp, c->pairing.G1);
+	element_init(g2_tmp, c->pairing.G2);
+
+	uint8_t *auth_response;
+	uint8_t *nonce_ptr;
+
+	for (int i = 0; i < num_pkg_servers; i++) {
+		auth_response = c->pkg_auth_responses[i];
+		nonce_ptr = auth_response + pkg_auth_res_BYTES + crypto_MACBYTES;
+		int res = crypto_chacha_decrypt(auth_response, NULL, NULL, auth_response,
+		                                pkg_auth_res_BYTES + crypto_MACBYTES,
+		                                nonce_ptr, crypto_NBYTES,
+		                                nonce_ptr, c->pkg_eph_symmetric_keys[i]);
+		if (res) {
+			fprintf(stderr, "%s: decryption failed on auth response from pkg %d\n", c->user_id, i);
+			return -1;
+		}
+		element_from_bytes_compressed(g1_tmp, auth_response);
+		element_from_bytes_compressed(g2_tmp, auth_response + g1_serialized_bytes);
+		element_add(&c->pkg_multisig_combined_g1, &c->pkg_multisig_combined_g1, g1_tmp);
+		element_add(&c->pkg_ibe_secret_combined_g2[!c->curr_ibe], &c->pkg_ibe_secret_combined_g2[!c->curr_ibe], g2_tmp);
+	}
+	c->authed = true;
+	c->curr_ibe = !c->curr_ibe;
+	printf("[Client authed for round %lu]\n", c->af_round);
+	return 0;
+}
+int af_accept_request(client_s *c, const char *user_id)
+{
+	if (!user_id) {
+		fprintf(stderr, "no user id supplied to accept request\n");
+		return -1;
+	}
+	friend_request_s *req = NULL;
+	friend_request_s *tmp = c->friend_requests;
+	while (tmp) {
+		if (!(strncmp((char *) user_id, (char *) tmp->user_id, user_id_BYTES))) {
+			req = tmp;
+			break;
+		}
+		tmp = tmp->next;
+	}
+
+	if (!req) {
+		fprintf(stderr, "could not find pending friend request matching id\n");
+		return -1;
+	}
+
+	printf("Responding to friend request from %s\n", user_id);
+	serialize_uint32(c->friend_request_buf, CLIENT_AF_MSG);
+	serialize_uint32(c->friend_request_buf + 4, onionenc_friend_request_BYTES);
+	serialize_uint64(c->friend_request_buf + 8, c->af_round);
+
+	uint8_t *dr_ptr =
+		c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_serialized_bytes + crypto_ghash_BYTES
+			+ crypto_NBYTES;
+	uint8_t *user_id_ptr = dr_ptr + round_BYTES;
+	uint8_t *dh_pk_ptr = user_id_ptr + user_id_BYTES;
+	uint8_t *lt_sig_key_ptr = dh_pk_ptr + crypto_box_PUBLICKEYBYTES;
+	uint8_t *client_sig_ptr = lt_sig_key_ptr + crypto_sign_PUBLICKEYBYTES;
+	uint8_t *multisig_ptr = client_sig_ptr + crypto_sign_BYTES;
+
+	keywheel_s *new_kw = kw_from_request(&c->keywheel, req->user_id, dh_pk_ptr, req->dh_pk);
+	if (!new_kw) {
+		fprintf(stderr, "Client: Couldn't construct keywheel for new contact\n");
+		return -1;
+	}
+	if (req == c->friend_requests) {
+		c->friend_requests = req->next;
+	}
+
+	if (req->next) {
+		req->next->prev = req->prev;
+	}
+
+	if (req->prev) {
+		req->prev->next = req->next;
+	}
+	free(req);
+
+	memcpy(user_id_ptr, c->user_id, user_id_BYTES);
+	memcpy(lt_sig_key_ptr, c->lg_sig_pk, crypto_sign_PUBLICKEYBYTES);
+	serialize_uint64(dr_ptr, new_kw->dialling_round);
+
+	crypto_sign_detached(client_sig_ptr, NULL, dr_ptr,
+	                     round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES,
+	                     c->lt_sig_sk);
+	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
+	// Encrypt the request using IBE
+	ibe_pbc_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
+	                &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
+	                new_kw->user_id, user_id_BYTES, &c->pairing);
+	// Only information identifying the destination of a request, the mailbox no. of the recipient
+	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
+	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
+	// Encrypt the request in layers ready for the mixnet
+	af_onion_encrypt_request(c);
+	return 0;
+}
+
+void af_create_request(client_s *c)
+{
+	serialize_uint32(c->friend_request_buf, CLIENT_AF_MSG);
+	serialize_uint32(c->friend_request_buf + net_msg_type_BYTES, onionenc_friend_request_BYTES);
+	serialize_uint64(c->friend_request_buf + 8, c->af_round);
+
+	uint8_t *dr_ptr = c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_serialized_bytes + crypto_NBYTES;
+	uint8_t *user_id_ptr = dr_ptr + round_BYTES;
+	uint8_t *dh_pub_ptr = user_id_ptr + user_id_BYTES;
+	uint8_t *lt_sig_key_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
+	uint8_t *client_sig_ptr = lt_sig_key_ptr + crypto_sign_PUBLICKEYBYTES;
+	uint8_t *multisig_ptr = client_sig_ptr + crypto_sign_BYTES;
+	// Generate a DH keypair that forms the basis of the shared keywheel state with the friend being added
+	uint8_t dh_secret_key[crypto_box_SECRETKEYBYTES];
+	crypto_box_keypair(dh_pub_ptr, dh_secret_key);
+	// Both parties need to agree on the dialling round to synchronise their keywheel
+	uint64_t dialling_round = c->dialling_round + 2;
+
+	// Serialise userid/dial round/signature key
+	memcpy(user_id_ptr, c->user_id, user_id_BYTES);
+	serialize_uint64(dr_ptr, dialling_round);
+	memcpy(lt_sig_key_ptr, c->lg_sig_pk, crypto_sign_PUBLICKEYBYTES);
+	kw_new_keywheel(&c->keywheel, c->friend_request_id, dh_pub_ptr, dh_secret_key, c->dialling_round);
+	// Sign our information with our LT signing key
+	crypto_sign_detached(client_sig_ptr,
+	                     NULL,
+	                     dr_ptr,
+	                     round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES,
+	                     c->lt_sig_sk);
+	// Also include the multisignature from PKG servers, primary source of verification
+	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
+	// Encrypt the request using IBE
+	ssize_t res = ibe_pbc_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
+	                              &c->pkg_eph_pub_combined_g1, &c->ibe_gen_element_g1,
+	                              c->friend_request_id, user_id_BYTES, &c->pairing);
+	printf("Ciphertext size: %ld\n", res);
+	// Only information identifying the destination of a request, the mailbox no. of the recipient
+	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
+	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
+	// Encrypt the request in layers ready for the mixnet
+	af_onion_encrypt_request(c);
+}
+
+int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
+{
+	uint8_t request_buffer[af_request_BYTES];
+	ssize_t result = ibe_pbc_decrypt(request_buffer, request_buf, af_ibeenc_request_BYTES,
+	                                 &c->pkg_ibe_secret_combined_g2[!c->curr_ibe], c->hashed_id, &c->pairing);
+
+	if (result) {
+		//fprintf(stderr, "%s: ibe decryption failure\n", c->user_id);
+		return -1;
+	}
+
+	uint8_t *dialling_round_ptr = request_buffer;
+	uint8_t *user_id_ptr = dialling_round_ptr + round_BYTES;
+	uint8_t *dh_pub_ptr = user_id_ptr + user_id_BYTES;
+	uint8_t *lt_sig_key_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
+	uint8_t *personal_sig_ptr = lt_sig_key_ptr + crypto_sign_PUBLICKEYBYTES;
+	uint8_t *multisig_ptr = personal_sig_ptr + crypto_sign_BYTES;
+
+	// Reconstruct the message signed by the PKG's so we can verify the signature
+	uint8_t multisig_message[pkg_sig_message_BYTES];
+	serialize_uint64(multisig_message, round);
+	memcpy(multisig_message + round_BYTES, user_id_ptr, user_id_BYTES);
+	memcpy(multisig_message + round_BYTES + user_id_BYTES, lt_sig_key_ptr, crypto_sign_PUBLICKEYBYTES);
+
+	element_t sig_verify_elem, hash_elem;
+	element_init(sig_verify_elem, c->pairing.G1);
+	element_init(hash_elem, c->pairing.G1);
+	result = bls_verify_signature(sig_verify_elem,
+	                              hash_elem,
+	                              multisig_ptr,
+	                              multisig_message,
+	                              pkg_sig_message_BYTES,
+	                              &c->pkg_lt_sig_keys_combined,
+	                              &c->bls_gen_element_g2,
+	                              &c->pairing);
+
+	if (result) {
+		fprintf(stderr, "Multisig verification failed\n");
+		return -1;
+	}
+
+	result = crypto_sign_verify_detached(personal_sig_ptr, dialling_round_ptr,
+	                                     round_BYTES + user_id_BYTES + crypto_sign_PUBLICKEYBYTES,
+	                                     lt_sig_key_ptr);
+
+	if (result) {
+		printf("Personal sig verification failed\n");
+		return -1;
+	}
+	// Both signatures verified, copy the relevant information into a new structure
+	// Ultimately to be passed on to the higher level application
+	keywheel_unsynced *entry = kw_unsynced_lookup(&c->keywheel, user_id_ptr);
+	if (entry) {
+		int res = kw_complete_keywheel(&c->keywheel, user_id_ptr, dh_pub_ptr, deserialize_uint64(dialling_round_ptr));
+		if (res) {
+			fprintf(stderr, "Failure occurred when trying to complete keywheel for %s\n", user_id_ptr);
+			return -1;
+		}
+		else {
+			printf("[Client: friend request accepted by %s, keywheel completed]\n", user_id_ptr);
+			return 0;
+		}
+
+	}
+	friend_request_s *new_req = calloc(1, sizeof(friend_request_s));
+	memcpy(new_req->user_id, user_id_ptr, user_id_BYTES);
+	memcpy(new_req->dh_pk, dh_pub_ptr, crypto_box_PUBLICKEYBYTES);
+	memcpy(new_req->lt_sig_key, lt_sig_key_ptr, crypto_sign_PUBLICKEYBYTES);
+
+	new_req->dialling_round = deserialize_uint64(dialling_round_ptr);
+	new_req->next = c->friend_requests;
+	c->friend_requests = new_req;
+	printf("[Client: friend request received]\n");
+	print_friend_request(c->friend_requests);
+	return 0;
+}
+#else
 
 int af_accept_request(client_s *c, const char *user_id)
 {
@@ -218,13 +466,13 @@ int af_accept_request(client_s *c, const char *user_id)
 	serialize_uint64(dr_ptr, new_kw->dialling_round);
 
 	crypto_sign_detached(client_sig_ptr, NULL, dr_ptr,
-	                     round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES,
-	                     c->lt_sig_sk);
+						 round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES,
+						 c->lt_sig_sk);
 	bn256_serialize_g1(multisig_ptr, c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
 	bn256_ibe_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
-	                  c->pkg_eph_pub_combined_g1,
-	                  new_kw->user_id, user_id_BYTES);
+					  c->pkg_eph_pub_combined_g1,
+					  new_kw->user_id, user_id_BYTES);
 	// Only information identifying the destination of a request, the mailbox no. of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
 	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
@@ -258,16 +506,16 @@ void af_create_request(client_s *c)
 	kw_new_keywheel(&c->keywheel, c->friend_request_id, dh_pub_ptr, dh_secret_key, c->dialling_round);
 	// Sign our information with our LT signing key
 	crypto_sign_detached(client_sig_ptr,
-	                     NULL,
-	                     dr_ptr,
-	                     round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES,
-	                     c->lt_sig_sk);
+						 NULL,
+						 dr_ptr,
+						 round_BYTES + user_id_BYTES + crypto_box_PUBLICKEYBYTES,
+						 c->lt_sig_sk);
 	// Also include the multisignature from PKG servers, primary source of verification
 	bn256_serialize_g1(multisig_ptr, c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
 	ssize_t res = bn256_ibe_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr, af_request_BYTES,
-	                                c->pkg_eph_pub_combined_g1,
-	                                c->friend_request_id, user_id_BYTES);
+									c->pkg_eph_pub_combined_g1,
+									c->friend_request_id, user_id_BYTES);
 	printf("Ciphertext size: %ld\n", res);
 	// Only information identifying the destination of a request, the mailbox no. of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
@@ -280,7 +528,7 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 {
 	uint8_t request_buffer[af_request_BYTES];
 	ssize_t result = bn256_ibe_decrypt(request_buffer, request_buf, af_ibeenc_request_BYTES,
-	                                   c->hashed_id, c->pkg_ibe_secret_combined_g2[!c->curr_ibe]);
+									   c->hashed_id, c->pkg_ibe_secret_combined_g2[!c->curr_ibe]);
 
 	if (result) {
 		//fprintf(stderr, "%s: ibe decryption failure\n", c->user_id);
@@ -309,8 +557,8 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 	}
 
 	result = crypto_sign_verify_detached(personal_sig_ptr, dialling_round_ptr,
-	                                     round_BYTES + user_id_BYTES + crypto_sign_PUBLICKEYBYTES,
-	                                     lt_sig_key_ptr);
+										 round_BYTES + user_id_BYTES + crypto_sign_PUBLICKEYBYTES,
+										 lt_sig_key_ptr);
 
 	if (result) {
 		printf("Personal sig verification failed\n");
@@ -371,10 +619,10 @@ int af_create_pkg_auth_request(client_s *client)
 		symmetric_key_ptr = client->pkg_eph_symmetric_keys[i];
 
 		crypto_sign_detached(client_sig,
-		                     NULL,
-		                     client->pkg_broadcast_msgs[i],
-		                     pkg_broadcast_msg_BYTES,
-		                     client->lt_sig_sk);
+							 NULL,
+							 client->pkg_broadcast_msgs[i],
+							 pkg_broadcast_msg_BYTES,
+							 client->lt_sig_sk);
 
 		uint8_t secret_key[crypto_box_SECRETKEYBYTES];
 		uint8_t scalar_mult[crypto_scalarmult_BYTES];
@@ -387,10 +635,10 @@ int af_create_pkg_auth_request(client_s *client)
 		}
 
 		crypto_shared_secret(symmetric_key_ptr,
-		                     scalar_mult,
-		                     client_pk,
-		                     pkg_pub_key_ptr,
-		                     crypto_box_SECRETKEYBYTES);
+							 scalar_mult,
+							 client_pk,
+							 pkg_pub_key_ptr,
+							 crypto_box_SECRETKEYBYTES);
 	}
 
 	//bn256_deserialize_and_sum_g1(client->pkg_eph_pub_combined_g1, client->pkg_broadcast_msgs[0], num_pkg_servers);
@@ -414,9 +662,9 @@ int af_process_auth_responses(client_s *c)
 		auth_response = c->pkg_auth_responses[i];
 		nonce_ptr = auth_response + pkg_auth_res_BYTES + crypto_MACBYTES;
 		int res = crypto_chacha_decrypt(auth_response, NULL, NULL, auth_response,
-		                                pkg_auth_res_BYTES + crypto_MACBYTES,
-		                                nonce_ptr, crypto_NBYTES,
-		                                nonce_ptr, c->pkg_eph_symmetric_keys[i]);
+										pkg_auth_res_BYTES + crypto_MACBYTES,
+										nonce_ptr, crypto_NBYTES,
+										nonce_ptr, c->pkg_eph_symmetric_keys[i]);
 		if (res) {
 			fprintf(stderr, "%s: decryption failed on auth response from pkg %d\n", c->user_id, i);
 			return -1;
@@ -425,8 +673,8 @@ int af_process_auth_responses(client_s *c)
 		bn256_deserialize_g2(g2_tmp, auth_response + g1_elem_compressed_BYTES);
 		curvepoint_fp_add_vartime(c->pkg_multisig_combined_g1, c->pkg_multisig_combined_g1, g1_tmp);
 		twistpoint_fp2_add_vartime(c->pkg_ibe_secret_combined_g2[!c->curr_ibe],
-		                           c->pkg_ibe_secret_combined_g2[!c->curr_ibe],
-		                           g2_tmp);
+								   c->pkg_ibe_secret_combined_g2[!c->curr_ibe],
+								   g2_tmp);
 	}
 	c->authed = true;
 	c->curr_ibe = !c->curr_ibe;
@@ -435,6 +683,7 @@ int af_process_auth_responses(client_s *c)
 	fp2e_out_str(stdout, c->pkg_ibe_secret_combined_g2[!c->curr_ibe]->m_y);
 	return 0;
 }
+#endif
 
 int onion_encrypt_message(client_s *client, uint8_t *msg, uint32_t base_msg_length)
 {
@@ -493,13 +742,10 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 	c->dialling_round = 1;
 	c->af_round = 1;
 	c->friend_requests = NULL;
-
 	memcpy(c->user_id, user_id, user_id_BYTES);
 	for (int i = 0; i < num_pkg_servers; i++) {
 		memcpy(c->pkg_auth_requests[i] + net_header_BYTES, user_id, user_id_BYTES);
 	}
-
-
 	c->curr_ibe = 0;
 	c->af_round = 1;
 	sodium_hex2bin(c->lg_sig_pk,
@@ -509,7 +755,6 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 	               NULL,
 	               NULL,
 	               NULL);
-
 	sodium_hex2bin(c->lt_sig_sk, crypto_sign_SECRETKEYBYTES, (char *) lt_sk_hex, 128, NULL,
 	               NULL,
 	               NULL);
@@ -517,11 +762,43 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 	kw_table_init(&c->keywheel, c->dialling_round, NULL);
 	c->num_intents = 1;
 	c->bloom_p_val = pow(10.0, -10.0);
+	#if USE_PBC
+	pairing_init_set_str(&c->pairing, pbc_params);
+	element_init(&c->pkg_multisig_combined_g1, c->pairing.G1);
+	element_init(&c->pkg_ibe_secret_combined_g2[0], c->pairing.G2);
+	element_init(&c->pkg_ibe_secret_combined_g2[1], c->pairing.G2);
+	element_init(&c->pkg_eph_pub_combined_g1, c->pairing.G1);
+	element_init(&c->pkg_friend_elem, c->pairing.G2);
+	element_init(&c->ibe_gen_element_g1, c->pairing.G1);
+	element_init(&c->bls_gen_element_g2, c->pairing.G2);
+	element_init(&c->pkg_lt_sig_keys_combined, c->pairing.G2);
+	element_set_str(&c->ibe_gen_element_g1, ibe_generator, 10);
+	element_set_str(&c->bls_gen_element_g2, bls_generator, 10);
 
+	element_s pkg_sig_keys[num_pkg_servers];
+	uint8_t pkg_sig_key_bytes[num_pkg_servers][g2_serialized_bytes];
+	for (int i = 0; i < num_pkg_servers; i++) {
+		element_init(&pkg_sig_keys[i], c->pairing.G2);
+		element_set_str(&pkg_sig_keys[i], pk[i], 10);
+		element_to_bytes_compressed(pkg_sig_key_bytes[i], &pkg_sig_keys[i]);
+	}
+
+	pbc_sum_bytes_G2_compressed(&c->pkg_lt_sig_keys_combined,
+	                            pkg_sig_key_bytes[0], g2_serialized_bytes,
+	                            num_pkg_servers,
+	                            &c->pairing);
+	uint8_t id_hash[crypto_ghash_BYTES];
+	crypto_generichash(id_hash, crypto_ghash_BYTES, c->user_id, user_id_BYTES, NULL, 0);
+	element_s q_id;
+	element_init(&q_id, c->pairing.G2);
+	element_from_hash(&q_id, id_hash, crypto_ghash_BYTES);
+	element_to_bytes_compressed(c->hashed_id, &q_id);
+	#else
 	twistpoint_fp2_t userid_hash;
 	bn256_hash_g2(userid_hash, user_id, user_id_BYTES, NULL);
 	bn256_serialize_g2(c->hashed_id, userid_hash->m_x, userid_hash->m_y);
 	bn256_sum_g2(c->pkg_lt_sig_keys_combined, pkg_lt_pks, 2);
+	#endif
 }
 
 client_s *client_alloc(const uint8_t *user_id, const uint8_t *ltp_key, const uint8_t *lts_key)

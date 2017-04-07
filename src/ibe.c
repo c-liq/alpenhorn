@@ -98,7 +98,7 @@ ssize_t ibe_pbc_encrypt(uint8_t *out, uint8_t *msg, uint32_t msg_len, element_s 
 		fprintf(stderr, "[IBE encrypt] failure during symmetric encyrption\n");
 	}
 	sodium_memzero(secret_key, sizeof secret_key);
-	return res + g1_elem_compressed_BYTES;
+	return res + g1_serialized_bytes;
 }
 
 ssize_t
@@ -128,14 +128,14 @@ ibe_pbc_decrypt(uint8_t *out,
 	uint8_t secret_key[crypto_ghash_BYTES];
 	ibe_pbc_sk_from_hashes(secret_key,
 	                       public_key,
-	                       g2_elem_compressed_BYTES,
+	                       g2_serialized_bytes,
 	                       c,
 	                       (size_t) read,
 	                       u_priv_pairing,
 	                       u_priv_pairing_size);
 	printhex("sk dec", secret_key, crypto_ghash_BYTES);
 	ssize_t
-		res = crypto_secret_nonce_open(out, c + g1_elem_compressed_BYTES, clen - g1_elem_compressed_BYTES, secret_key);
+		res = crypto_secret_nonce_open(out, c + g1_serialized_bytes, clen - g1_serialized_bytes, secret_key);
 	sodium_memzero(secret_key, sizeof secret_key);
 
 	if (res < 0) {

@@ -134,28 +134,6 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint32_t num_
 	return num_calls;
 }
 
-struct friend_request_buf
-{
-	uint8_t buf_base[onionenc_friend_request_BYTES];
-	uint8_t *dial_round;
-	uint8_t *user_id;
-	uint8_t *dh_pk;
-	uint8_t *lt_sig_sk;
-	uint8_t *client_sig;
-	uint8_t *multisig;
-};
-
-void init_fr_buf(struct friend_request_buf *buf)
-{
-	uint8_t *base = buf->buf_base;
-	buf->dial_round = base + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES + crypto_NBYTES;
-	buf->user_id = buf->dial_round + round_BYTES;
-	buf->dh_pk = buf->user_id + user_id_BYTES;
-	buf->lt_sig_sk = buf->dh_pk + crypto_box_PUBLICKEYBYTES;
-	buf->client_sig = buf->lt_sig_sk + crypto_sign_PUBLICKEYBYTES;
-	buf->multisig = buf->client_sig + crypto_sign_BYTES;
-}
-
 int af_accept_request(client_s *c, const char *user_id)
 {
 	if (!user_id) {
@@ -183,7 +161,7 @@ int af_accept_request(client_s *c, const char *user_id)
 	serialize_uint64(c->friend_request_buf + 8, c->af_round);
 
 	uint8_t *dr_ptr =
-		c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_elem_compressed_BYTES + crypto_ghash_BYTES
+		c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_serialized_bytes + crypto_ghash_BYTES
 			+ crypto_NBYTES;
 	uint8_t *user_id_ptr = dr_ptr + round_BYTES;
 	uint8_t *dh_pk_ptr = user_id_ptr + user_id_BYTES;
@@ -235,7 +213,7 @@ void af_create_request(client_s *c)
 	serialize_uint32(c->friend_request_buf + net_msg_type_BYTES, onionenc_friend_request_BYTES);
 	serialize_uint64(c->friend_request_buf + 8, c->af_round);
 
-	uint8_t *dr_ptr = c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_elem_compressed_BYTES + crypto_NBYTES;
+	uint8_t *dr_ptr = c->friend_request_buf + net_header_BYTES + mb_BYTES + g1_serialized_bytes + crypto_NBYTES;
 	uint8_t *user_id_ptr = dr_ptr + round_BYTES;
 	uint8_t *dh_pub_ptr = user_id_ptr + user_id_BYTES;
 	uint8_t *lt_sig_key_ptr = dh_pub_ptr + crypto_box_PUBLICKEYBYTES;
@@ -365,7 +343,7 @@ int af_create_pkg_auth_request(client_s *client)
 		client_pk = auth_request + net_header_BYTES + user_id_BYTES + crypto_sign_BYTES;
 		client_sig = auth_request + net_header_BYTES + user_id_BYTES;
 
-		pkg_pub_key_ptr = client->pkg_broadcast_msgs[i] + g1_elem_compressed_BYTES;
+		pkg_pub_key_ptr = client->pkg_broadcast_msgs[i] + g1_serialized_bytes;
 		symmetric_key_ptr = client->pkg_eph_symmetric_keys[i];
 
 		crypto_sign_detached(client_sig,
@@ -422,7 +400,7 @@ int af_process_auth_responses(client_s *c)
 			return -1;
 		}
 		element_from_bytes_compressed(g1_tmp, auth_response);
-		element_from_bytes_compressed(g2_tmp, auth_response + g1_elem_compressed_BYTES);
+		element_from_bytes_compressed(g2_tmp, auth_response + g1_serialized_bytes);
 		element_add(&c->pkg_multisig_combined_g1, &c->pkg_multisig_combined_g1, g1_tmp);
 		element_add(&c->pkg_ibe_secret_combined_g2[!c->curr_ibe], &c->pkg_ibe_secret_combined_g2[!c->curr_ibe], g2_tmp);
 	}
@@ -509,7 +487,7 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 	element_set_str(&c->bls_gen_element_g2, bls_generator, 10);
 
 	element_s pkg_sig_keys[num_pkg_servers];
-	uint8_t pkg_sig_key_bytes[num_pkg_servers][g2_elem_compressed_BYTES];
+	uint8_t pkg_sig_key_bytes[num_pkg_servers][g2_serialized_bytes];
 	for (int i = 0; i < num_pkg_servers; i++) {
 		element_init(&pkg_sig_keys[i], c->pairing.G2);
 		element_set_str(&pkg_sig_keys[i], pk[i], 10);
@@ -517,7 +495,7 @@ void client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, 
 	}
 
 	pbc_sum_bytes_G2_compressed(&c->pkg_lt_sig_keys_combined,
-	                            pkg_sig_key_bytes[0], g2_elem_compressed_BYTES,
+	                            pkg_sig_key_bytes[0], g2_serialized_bytes,
 	                            num_pkg_servers,
 	                            &c->pairing);
 	c->af_round = 1;

@@ -324,8 +324,8 @@ void mix_af_add_noise(mix_s *mix)
 			element_pow_zn(&mix->af_noise_G1_elem, &mix->ibe_gen_elem, &mix->af_noise_Zr_elem);
 			element_to_bytes_compressed(curr_ptr + mb_BYTES, &mix->af_noise_G1_elem);
 			// After the group element, fill out the rest of the request with random data
-			randombytes_buf(curr_ptr + mb_BYTES + g1_elem_compressed_BYTES,
-			                af_ibeenc_request_BYTES - g1_elem_compressed_BYTES);
+			randombytes_buf(curr_ptr + mb_BYTES + g1_serialized_bytes,
+			                af_ibeenc_request_BYTES - g1_serialized_bytes);
 			//printhex("gen af", curr_ptr, mix->af_data.out_buf.msg_len_bytes);
 			mix_onion_encrypt_msg(mix, curr_ptr, af_ibeenc_request_BYTES + mb_BYTES);
 			mix->af_data.num_out_msgs++;

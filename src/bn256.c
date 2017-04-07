@@ -327,7 +327,7 @@ int xbn256_hash_g2(twistpoint_fp2_t rop, uint8_t *msg, ssize_t msg_len, mpz_t mp
 	return 0;
 }
 
-int bn256_hash_g2(twistpoint_fp2_struct_t *out, uint8_t *msg, ssize_t msg_len, mpz_t mpz_val)
+int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg, const ssize_t msg_len, mpz_t mpz_val)
 {
 	fpe_t t_single;
 	mpz_t hmmmm;
@@ -518,7 +518,7 @@ void bn256_sum_g1(curvepoint_fp_t out, curvepoint_fp_t *in, size_t count)
 	}
 }
 
-void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t *in, size_t count)
+void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t const *in, const size_t count)
 {
 	if (!in || count <= 0) return;
 

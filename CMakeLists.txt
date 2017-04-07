@@ -14,7 +14,7 @@ set(DCLXCI_SOURCE_FILES src/utils.c include/config.h src/bn256_ibe.c src/bn256.c
         ${OFILES})
 
 set(SOURCE_FILES ${DCLXI_SOURCE_FILES} tests/test_bench_pkg_server.c include/mix2.h src/mix2.c include/pkg2.h src/pkg2.c include/client2.h src/client2.c include/client.h include/client_net.h src/keywheel_table.c include/keywheel_table.h src/pkg.c src/client.c src/mix.c include/mix.h src/pbc_sign.c param_gen.c
-        lib/dclxci/gmp_convert.c lib/dclxci/gmp_convert.h src/ibe.c src/ibe.h src/bloom.c src/prime_gen.c include/prime_gen.h include/pbc_sign.h include/pkg.h keygen.c src/alpenhorn_test.c
+        lib/dclxci/gmp_convert.c lib/dclxci/gmp_convert.h src/ibe.c include/ibe.h src/bloom.c src/prime_gen.c include/prime_gen.h include/pbc_sign.h include/pkg.h keygen.c src/alpenhorn_test.c
         src/utils.c include/utils.h include/config.h src/mixnet_server.c include/mixnet_server.h include/bloom.h src/client_net.c include/client_net.h src/pkg_net.c include/pkg_net.h src/net_common.c include/net_common.h
         src/bn256_ibe.c include/bn256_ibe.h include/bn256.h src/bn256_bls.c include/bn256_bls.h tests/test_bn256_ibe.c tests/test_bn256_bls.c src/bn256_keygen.c)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Werror -g")

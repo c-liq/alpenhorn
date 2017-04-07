@@ -16,20 +16,15 @@ struct pkg_server
 	int srv_id;
 	uint32_t num_clients;
 	uint64_t current_round;
-	pairing_t pairing;
 	pkg_client *clients;
-	// Long term BLS signatures, used to sign messages aiding verifying friend requests by recipients
+	uint8_t eph_broadcast_message[net_header_BYTES + pkg_broadcast_msg_BYTES];
+	uint8_t eph_secret_dh_key[crypto_box_SECRETKEYBYTES];
+	uint8_t *broadcast_dh_pkey_ptr;
+	pairing_t pairing;
 	element_t lt_sig_pk_elem;
 	element_t lt_sig_sk_elem;
-	//uint8_t lt_public_sig_keybytes[bls_public_key_length]; // Public signing key_state serialized
-	// Epheremal IBE keypair - public key_state is broadcast to clients, secret key_state used to extract clients' secret keys
 	element_t eph_pub_key_elem_g1;
 	element_t eph_secret_key_elem_zr;
-	uint8_t eph_secret_dh_key[crypto_box_SECRETKEYBYTES];
-	// Broadcast message buffer - contains fresh IBE public key_state + fresh DH key_state + signature
-	uint8_t eph_broadcast_message[net_header_BYTES + pkg_broadcast_msg_BYTES];
-	uint8_t *broadcast_dh_pkey_ptr;  // Pointer into message buffer where public dh key_state will be stored
-	// Generator element for pairings, used to derive public keys from secret keys
 	element_s bls_gen_elem_g2;
 	element_s ibe_gen_elem_g1;
 };
@@ -56,7 +51,7 @@ struct pkg_client
 	element_t eph_sk_G2; // Round-specific IBE secret key_state for client_s
 };
 
-void pkg_client_init(pkg_client *client, pkg_server *server, uint8_t *user_id, const uint8_t *lt_sig_key);
+void pkg_client_init(pkg_client *client, pkg_server *server, const uint8_t *user_id, const uint8_t *lt_sig_key);
 void pkg_new_ibe_keypair(pkg_server *server);
 int pkg_server_init(pkg_server *server, uint32_t id);
 void pkg_new_ibe_keypair(pkg_server *server);

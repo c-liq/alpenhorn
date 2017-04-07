@@ -127,8 +127,17 @@ void mix_dial_add_inc_msg(mix_s *mix, uint8_t *msg)
 int mix_init(mix_s *mix, uint32_t server_id)
 {
 	int result;
-
-
+	#if USE_PBC
+	pairing_init_set_str(&mix->pairing, pbc_params);
+	element_init_Zr(&mix->af_noise_Zr_elem, &mix->pairing);
+	element_init_G1(&mix->ibe_gen_elem, &mix->pairing);
+	element_init_G1(&mix->af_noise_G1_elem, &mix->pairing);
+	result = element_set_str(&mix->ibe_gen_elem, ibe_generator, 10);
+	if (result == 0) {
+		fprintf(stderr, "Invalid string for ibe generation element\n");
+		return -1;
+	}
+	#endif
 	mix->num_servers = num_mix_servers;
 	mix->server_id = server_id;
 	mix->is_last = num_mix_servers - mix->server_id == 1;
@@ -181,7 +190,6 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	}
 
 	crypto_box_keypair(mix->mix_dh_pks[0], mix->eph_sk);
-	//printhex("mix pk", mix->mix_dh_pks[0], crypto_box_PUBLICKEYBYTES);
 	return 0;
 }
 
@@ -305,19 +313,27 @@ void mix_dial_add_noise(mix_s *mix)
 
 void mix_af_add_noise(mix_s *mix)
 {
+	#if !USE_PBC
 	scalar_t random;
 	curvepoint_fp_t tmp;
+	#endif
 	for (uint32_t i = 0; i < mix->af_data.num_mailboxes; i++) {
 		uint32_t noise = laplace_rand(&mix->af_data.laplace);
 		for (int j = 0; j < noise; j++) {
 			uint8_t *curr_ptr = mix->af_data.out_buf.pos;
 			serialize_uint32(curr_ptr, i);
+			#if USE_PBC
+			element_random(&mix->af_noise_Zr_elem);
+			element_pow_zn(&mix->af_noise_G1_elem, &mix->ibe_gen_elem, &mix->af_noise_Zr_elem);
+			element_to_bytes_compressed(curr_ptr + mb_BYTES, &mix->af_noise_G1_elem);
+			#else
 			bn256_scalar_random(random);
 			bn256_scalarmult_bg1(tmp, random);
 			bn256_serialize_g1(curr_ptr + mb_BYTES, tmp);
+			#endif
 			// After the group element, fill out the rest of the request with random data
-			randombytes_buf(curr_ptr + mb_BYTES + g1_elem_compressed_BYTES,
-			                af_ibeenc_request_BYTES - g1_elem_compressed_BYTES);
+			randombytes_buf(curr_ptr + mb_BYTES + g1_serialized_bytes,
+			                af_ibeenc_request_BYTES - g1_serialized_bytes);
 			//printhex("gen af", curr_ptr, mix->af_data.out_buf.msg_len_bytes);
 			mix_onion_encrypt_msg(mix, curr_ptr, af_ibeenc_request_BYTES + mb_BYTES);
 			mix->af_data.num_out_msgs++;

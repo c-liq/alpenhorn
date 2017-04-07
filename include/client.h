@@ -27,13 +27,12 @@ struct client
 	uint64_t af_round;
 	uint32_t dial_num_mailboxes;
 	uint32_t af_num_mailboxes;
-	uint8_t hashed_id[g2_elem_compressed_BYTES];
+	uint8_t hashed_id[g2_serialized_bytes];
 	// Long term BLS pub keys, private counterpart signs auth messages in friend requests
 	element_s pkg_lt_sig_keys_combined;
-	uint8_t pkg_eph_pub_fragments_g1[num_pkg_servers][g2_elem_compressed_BYTES]; // Epheremal public IBE keys from PKG's
-	element_s pkg_eph_pub_combined_g1; // Combined epheremal master public IBE key_state
+	element_s pkg_eph_pub_combined_g1;
 	element_s bls_gen_element_g2;
-	element_s pkg_friend_elem; // Epheremal IBE key_state for friend request recipient
+	element_s pkg_friend_elem;
 	// Buffers for client_s -> PKG authrequests, filled with DH public key_state and signature over PKG's
 	// broadcast messages to prove identity
 	uint8_t pkg_auth_requests[num_pkg_servers][net_header_BYTES + cli_pkg_single_auth_req_BYTES];
@@ -54,7 +53,7 @@ struct client
 	uint8_t mix_eph_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
 	// Epheremal client_s DH keys, mix_s combines with their secret DH key_state to remove layer of encryption
 	uint8_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
-	uint8_t pkg_eph_ibe_sk_fragments_g2[num_pkg_servers][g2_elem_compressed_BYTES];
+	uint8_t pkg_eph_ibe_sk_fragments_g2[num_pkg_servers][g2_serialized_bytes];
 	uint8_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES];
 	element_s ibe_gen_element_g1;
 	double bloom_p_val;

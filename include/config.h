@@ -1,10 +1,19 @@
 #ifndef ALPENHORN_CONFIG_H
 #define ALPENHORN_CONFIG_H
-#include <sodium.h>
 
+#define USE_PBC 1
+#include <sodium.h>
 #include <sys/types.h>
-#include <dclxci/scalar.h>
-#include <dclxci/twistpoint_fp2.h>
+
+#if USE_PBC
+#include <pbc/pbc.h>
+#define g1_serialized_bytes 33U
+#define g2_serialized_bytes 65U
+#else
+#include "bn256.h"
+#define g1_serialized_bytes 64U
+#define g2_serialized_bytes 128U
+#endif
 
 #define CLI_AUTH_REQ 50
 #define CLIENT_DIAL_MSG 27
@@ -17,8 +26,7 @@
 #define crypto_MACBYTES crypto_aead_chacha20poly1305_ietf_ABYTES
 #define crypto_NBYTES crypto_aead_chacha20poly1305_ietf_NPUBBYTES
 // PBC constants
-#define g1_elem_compressed_BYTES 64U
-#define g2_elem_compressed_BYTES 128U
+
 
 #define intent_BYTES 4U
 #define mb_BYTES 4U
@@ -31,21 +39,20 @@
 
 #define net_header_BYTES 24U
 #define net_client_connect_BYTES (num_mix_servers * crypto_box_PUBLICKEYBYTES)
-#define net_client_dial_mb_request (net_header_BYTES + user_id_BYTES)
 
-#define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES + round_BYTES)
-#define af_ibeenc_request_BYTES (af_request_BYTES + g1_elem_compressed_BYTES + crypto_MACBYTES + crypto_NBYTES)
+#define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_serialized_bytes + crypto_box_PUBLICKEYBYTES + round_BYTES)
+#define af_ibeenc_request_BYTES (af_request_BYTES + g1_serialized_bytes + crypto_MACBYTES + crypto_NBYTES)
 #define onion_layer_BYTES (crypto_NBYTES + crypto_box_PUBLICKEYBYTES + crypto_MACBYTES)
 #define onionenc_friend_request_BYTES (mb_BYTES + af_ibeenc_request_BYTES + (num_mix_servers * onion_layer_BYTES))
 #define onionenc_dial_token_BYTES (mb_BYTES + dialling_token_BYTES + (num_mix_servers * onion_layer_BYTES))
 #define cli_pkg_single_auth_req_BYTES (user_id_BYTES + crypto_sign_BYTES + crypto_box_PUBLICKEYBYTES)
 
-#define pkg_auth_res_BYTES (g1_elem_compressed_BYTES + g2_elem_compressed_BYTES)
+#define pkg_auth_res_BYTES (g1_serialized_bytes + g2_serialized_bytes)
 #define pkg_enc_auth_res_BYTES (pkg_auth_res_BYTES + crypto_MACBYTES + crypto_NBYTES)
-#define pkg_broadcast_msg_BYTES (g1_elem_compressed_BYTES + crypto_box_PUBLICKEYBYTES)
+#define pkg_broadcast_msg_BYTES (g1_serialized_bytes + crypto_box_PUBLICKEYBYTES)
 #define pkg_sig_message_BYTES (user_id_BYTES + crypto_box_PUBLICKEYBYTES + round_BYTES)
 #define mix_num_dial_mbs_stored 5
-#define initial_table_size 50U
+
 
 #define mix_num_buffer_elems 100000U
 
@@ -53,13 +60,13 @@
 #define DIAL_BATCH 9U
 #define NEW_DIAL_ROUND 3U
 #define NEW_AF_ROUND 4U
-#define NEW_KEY 4U
 #define DIAL_MB 40
 #define AF_MB 41
 #define MIX_SYNC 1337
 #define NEW_DMB_AVAIL 188
 #define NEW_AFMB_AVAIL 189
 
+#if USE_PBC
 static const char pbc_params[] = "type f\n"
 	"q 16283262548997601220198008118239886027035269286659395419233331082106632227801\n"
 	"r 16283262548997601220198008118239886026907663399064043451383740756301306087801\n"
@@ -88,6 +95,39 @@ static const char bls_generator[] = "[[15724257330924097062160683695880250933232
 static const char ibe_generator[] =
 	"[13445309910996477276498115007761070335613715482521447244233072900478772718670, 1756633159976726073430018948123414634726480138612936748031091597585345575016]";
 
+#else
+static scalar_t pkg_lt_sks[2] =
+	{{18278220357555044870ULL, 10178222900370061244ULL, 11444934429233922452ULL, 824085380572658870ULL},
+	 {979939089226258815ULL, 3053653148008306585ULL, 2835228076264966692ULL, 5843250564837170266ULL}};
+
+static twistpoint_fp2_t pkg_lt_pks[2] =
+	{{{{{{2982039.000000, -125313.000000, 477854.000000, -378582.000000, 590425.000000, 393584.000000, -2153536.000000,
+		  -41024.000000, 59630.000000, 45653.000000, -503286.000000, 406703.000000, 138945.000000, 224185.000000,
+		  -181334.000000,
+		  -390185.000000, -766688.000000, -421218.000000, 3399884.000000, -129290.000000, 220754.000000, 4658.000000,
+		  -405676.000000, 47059.000000}}},
+	   {{{2554957.000000, 867376.000000, 262494.000000, 147607.000000, -215232.000000, -192289.000000, 4201036.000000,
+		  696129.000000, -649118.000000,
+		  706251.000000, 524022.000000, -328583.000000, 2239101.000000, -425845.000000, 898815.000000, 841996.000000,
+		  -199275.000000, 728293.000000,
+		  -919133.000000, 120308.000000, 576615.000000, -361530.000000, -258671.000000, -329332.000000}}},
+	   {{{1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}}},
+	   {{{0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}}}}},
+
+	 {{{{{2238882.000000, 715150.000000, -472163.000000, -254613.000000, 380111.000000, -654750.000000, 1121353.000000,
+		  333599.000000, 562977.000000,
+		  -364970.000000, 208560.000000, -274321.000000, 4100552.000000, -318989.000000, 41503.000000, -925300.000000,
+		  -743004.000000, 901396.000000,
+		  4467926.000000, 164199.000000, -430601.000000, 317188.000000, -697022.000000, 454586.000000}}},
+	   {{{-3571032.000000, -485708.000000, 314485.000000, 885018.000000, -732198.000000, -11775.000000, -5561149.000000,
+		  355678.000000, -385941.000000,
+		  -190762.000000, 885342.000000, 454979.000000, 102678.000000, -113855.000000, 413209.000000, 312329.000000,
+		  36928.000000, 540936.000000,
+		  3211412.000000, 648399.000000, 279886.000000, -664455.000000, 153032.000000, 922704.000000}}},
+	   {{{1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}}},
+	   {{{0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}}}}}};
+#endif
+
 static const uint8_t
 	user_ids[10][user_id_BYTES] = {"chris", "alice", "bob", "eve", "charlie", "jim", "megan", "john", "jill", "steve"};
 
@@ -114,36 +154,7 @@ static const uint8_t user_lt_secret_sig_keys[10][128] =
 	 "48d5f089e848d75a5e8badee289b6be5895d15b0f8c418a8d6d4da7781fa05a7031ca754e5896d5e84eb21866439e1b631225193619734f364de90f228485f94",
 	 "a4b9ca4f8bf7679b297c6e6a230733868ac525b15c690ba008d742b001385d93b1fcd02a40da1e342f2c8404c7438e24d673666fe8160e5d23c7278244abc085"};
 
-static scalar_t pkg_lt_sks[2] =
-	{{18278220357555044870ULL, 10178222900370061244ULL, 11444934429233922452ULL, 824085380572658870ULL},
-	 {979939089226258815ULL, 3053653148008306585ULL, 2835228076264966692ULL, 5843250564837170266ULL}};
 
-static twistpoint_fp2_t pkg_lt_pks[2] =
-	{{{{{{2982039.000000, -125313.000000, 477854.000000, -378582.000000, 590425.000000, 393584.000000, -2153536.000000,
-	      -41024.000000, 59630.000000, 45653.000000, -503286.000000, 406703.000000, 138945.000000, 224185.000000,
-	      -181334.000000,
-	      -390185.000000, -766688.000000, -421218.000000, 3399884.000000, -129290.000000, 220754.000000, 4658.000000,
-	      -405676.000000, 47059.000000}}},
-	   {{{2554957.000000, 867376.000000, 262494.000000, 147607.000000, -215232.000000, -192289.000000, 4201036.000000,
-	      696129.000000, -649118.000000,
-	      706251.000000, 524022.000000, -328583.000000, 2239101.000000, -425845.000000, 898815.000000, 841996.000000,
-	      -199275.000000, 728293.000000,
-	      -919133.000000, 120308.000000, 576615.000000, -361530.000000, -258671.000000, -329332.000000}}},
-	   {{{1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}}},
-	   {{{0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}}}}},
-
-	 {{{{{2238882.000000, 715150.000000, -472163.000000, -254613.000000, 380111.000000, -654750.000000, 1121353.000000,
-	      333599.000000, 562977.000000,
-	      -364970.000000, 208560.000000, -274321.000000, 4100552.000000, -318989.000000, 41503.000000, -925300.000000,
-	      -743004.000000, 901396.000000,
-	      4467926.000000, 164199.000000, -430601.000000, 317188.000000, -697022.000000, 454586.000000}}},
-	   {{{-3571032.000000, -485708.000000, 314485.000000, 885018.000000, -732198.000000, -11775.000000, -5561149.000000,
-	      355678.000000, -385941.000000,
-	      -190762.000000, 885342.000000, 454979.000000, 102678.000000, -113855.000000, 413209.000000, 312329.000000,
-	      36928.000000, 540936.000000,
-	      3211412.000000, 648399.000000, 279886.000000, -664455.000000, 153032.000000, 922704.000000}}},
-	   {{{1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}}},
-	   {{{0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}}}}}};
 
 
 #endif //ALPENHORN_CONFIG_H

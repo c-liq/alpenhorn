@@ -14,15 +14,11 @@ struct pkg_thread_args
 	int thread_id;
 };
 
-
 int pkg_server_init(pkg_server *server, uint32_t server_id)
 {
 	server->current_round = 1;
 	server->num_clients = 1000000;
 	server->srv_id = server_id;
-	// Initialise gen_elem element + long term ibe public/secret signature keypair
-	// Initialise elements for epheremal IBE key_state generation and create an initial keypair
-	// Allocate and initialise clients
 	server->clients = calloc(server->num_clients, sizeof(pkg_client));
 	for (int i = 0; i < 5; i++) {
 		pkg_client_init(&server->clients[i], server, user_ids[i], user_publickeys[i]);
@@ -34,11 +30,25 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 		randombytes_buf(pk_buf, crypto_ghash_BYTES);
 		pkg_client_init(&server->clients[i], server, user_id, pk_buf);
 	}
+	server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_serialized_bytes;
 
-	server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_elem_compressed_BYTES;
-	fprintf(stderr, "p\n", (void *) server->broadcast_dh_pkey_ptr);
+	#ifdef USE_PBC
+	pairing_init_set_str(server->pairing, pbc_params);
+	pairing_ptr pairing = server->pairing;
+	element_init(&server->bls_gen_elem_g2, pairing->G2);
+	element_init(&server->ibe_gen_elem_g1, pairing->G1);
+	element_set_str(&server->ibe_gen_elem_g1, ibe_generator, 10);
+	element_set_str(&server->bls_gen_elem_g2, bls_generator, 10);
+	element_init(server->lt_sig_sk_elem, pairing->Zr);
+	element_set_str(server->lt_sig_sk_elem, sk[server_id], 10);
+	element_init(server->lt_sig_pk_elem, pairing->G2);
+	element_set_str(server->lt_sig_pk_elem, pk[server_id], 10);
+	element_init(server->eph_secret_key_elem_zr, pairing->Zr);
+	element_init(server->eph_pub_key_elem_g1, pairing->G1);
+	#else
 	twistpoint_fp2_set(server->lt_keypair.public_key, pkg_lt_pks[server_id]);
 	scalar_set_lluarray(server->lt_keypair.secret_key, pkg_lt_sks[server_id]);
+	#endif
 
 	pkg_new_ibe_keypair(server);
 	crypto_box_keypair(server->broadcast_dh_pkey_ptr, server->eph_secret_dh_key);
@@ -52,14 +62,12 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 
 void *pkg_client_auth_data(void *args)
 {
-
 	pkg_thread_args *th_args = (pkg_thread_args *) args;
 	pkg_server *srv = th_args->server;
 	printf("Thread %d processing clients from %d to %d\n", th_args->thread_id, th_args->begin, th_args->end);
-
 	for (int i = th_args->begin; i < th_args->end; i++) {
 		pkg_extract_client_sk(srv, &srv->clients[i]);
-		//pkg_sign_for_client(srv, &srv->clients[i]);
+		pkg_sign_for_client(srv, &srv->clients[i]);
 	}
 	return NULL;
 }
@@ -111,11 +119,11 @@ int pkg_client_lookup(pkg_server *server, uint8_t *user_id)
 	}
 	return index;
 }
-
-void pkg_client_init(pkg_client *client, pkg_server *server, uint8_t *user_id, const uint8_t *lt_sig_key)
+#if USE_PBC
+void pkg_client_init(pkg_client *client, pkg_server *server, const uint8_t *user_id, const uint8_t *lt_sig_key)
 {
 
-	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + g1_elem_compressed_BYTES;
+	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + g1_serialized_bytes;
 	serialize_uint32(client->eph_client_data, PKG_AUTH_RES_MSG);
 	memcpy(client->user_id, user_id, user_id_BYTES);
 	sodium_hex2bin(client->lt_sig_pk,
@@ -129,10 +137,37 @@ void pkg_client_init(pkg_client *client, pkg_server *server, uint8_t *user_id, c
 	memcpy(client->rnd_sig_msg + round_BYTES + user_id_BYTES,
 	       client->lt_sig_pk, crypto_sign_PUBLICKEYBYTES);
 
+	element_init(client->eph_sk_G2, server->pairing->G2);
+	element_init(client->eph_sig_elem_G1, server->pairing->G1);
+	element_init(client->eph_sig_hash_elem_g1, server->pairing->G1);
+	element_init(client->hashed_id_elem_g2, server->pairing->G2);
+
+	uint8_t id_hash[crypto_ghash_BYTES];
+	crypto_generichash(id_hash, crypto_ghash_BYTES, client->user_id, user_id_BYTES, NULL, 0);
+	element_from_hash(client->hashed_id_elem_g2, id_hash, crypto_ghash_BYTES);
+}
+#else
+void pkg_client_init(pkg_client *client, pkg_server *server, const uint8_t *user_id, const uint8_t *lt_sig_key)
+{
+
+	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + g1_elem_compressed_BYTES;
+	serialize_uint32(client->eph_client_data, PKG_AUTH_RES_MSG);
+	memcpy(client->user_id, user_id, user_id_BYTES);
+	sodium_hex2bin(client->lt_sig_pk,
+				   crypto_sign_PUBLICKEYBYTES,
+				   (char *) lt_sig_key,
+				   crypto_sign_PUBLICKEYBYTES * 2,
+				   NULL,
+				   NULL,
+				   NULL);
+	memcpy(client->rnd_sig_msg + round_BYTES, client->user_id, user_id_BYTES);
+	memcpy(client->rnd_sig_msg + round_BYTES + user_id_BYTES,
+		   client->lt_sig_pk, crypto_sign_PUBLICKEYBYTES);
+
 
 	bn256_hash_g2(client->hashed_id_elem_g2, user_id, user_id_BYTES, NULL);
 }
-
+#endif
 void pkg_server_shutdown(pkg_server *server)
 {
 
@@ -147,7 +182,7 @@ void pkg_new_round(pkg_server *server)
 {
 	// Generate epheremal IBE + DH keypairs, place public keys into broadcast message buffer
 	if (!server->broadcast_dh_pkey_ptr) {
-		server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_elem_compressed_BYTES;
+		server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_serialized_bytes;
 		printf("%p\n", (void *) server->broadcast_dh_pkey_ptr);
 	}
 	pkg_new_ibe_keypair(server);
@@ -195,7 +230,7 @@ void pkg_encrypt_client_response(pkg_server *server, pkg_client *client)
 	serialize_uint32(client->eph_client_data + net_msg_type_BYTES, pkg_enc_auth_res_BYTES);
 	serialize_uint64(client->eph_client_data + 8, server->current_round);
 	uint8_t
-		*nonce_ptr = client->eph_client_data + net_header_BYTES + g1_elem_compressed_BYTES + g2_elem_compressed_BYTES
+		*nonce_ptr = client->eph_client_data + net_header_BYTES + g1_serialized_bytes + g2_serialized_bytes
 		+ crypto_MACBYTES;
 	randombytes_buf(nonce_ptr, crypto_aead_chacha20poly1305_IETF_NPUBBYTES);
 	crypto_aead_chacha20poly1305_ietf_encrypt(client->eph_client_data + net_header_BYTES,
@@ -209,6 +244,30 @@ void pkg_encrypt_client_response(pkg_server *server, pkg_client *client)
 	                                          client->eph_symmetric_key);
 }
 
+#if USE_PBC
+void pkg_new_ibe_keypair(pkg_server *server)
+{
+	element_random(server->eph_secret_key_elem_zr);
+	element_pow_zn(server->eph_pub_key_elem_g1, &server->ibe_gen_elem_g1, server->eph_secret_key_elem_zr);
+	element_to_bytes_compressed(server->eph_broadcast_message + net_header_BYTES, server->eph_pub_key_elem_g1);
+
+}
+
+void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
+{
+	element_pow_zn(client->eph_sk_G2, client->hashed_id_elem_g2, server->eph_secret_key_elem_zr);
+	element_to_bytes_compressed(client->auth_response_ibe_key_ptr, client->eph_sk_G2);
+}
+
+void pkg_sign_for_client(pkg_server *server, pkg_client *client)
+{
+	serialize_uint64(client->rnd_sig_msg, server->current_round + 1);
+	bls_sign_message(client->eph_client_data + net_header_BYTES, client->eph_sig_elem_G1,
+	                 client->eph_sig_hash_elem_g1, client->rnd_sig_msg,
+	                 pkg_sig_message_BYTES, server->lt_sig_sk_elem);
+}
+
+#else
 void pkg_new_ibe_keypair(pkg_server *server)
 {
 	bn256_scalar_random(server->eph_secret_key_elem_zr);
@@ -228,7 +287,6 @@ void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
 	bn256_serialize_g2(client->auth_response_ibe_key_ptr, client->eph_sk_G2->m_x, client->eph_sk_G2->m_y);
 	//fp2e_out_str(stdout,client->eph_sk_G2->m_x);
 //	fp2e_out_str(stdout,client->eph_sk_G2->m_y);
-
 }
 
 void pkg_sign_for_client(pkg_server *server, pkg_client *client)
@@ -239,5 +297,5 @@ void pkg_sign_for_client(pkg_server *server, pkg_client *client)
 	                       pkg_sig_message_BYTES,
 	                       server->lt_keypair.secret_key);
 }
-
+#endif
 

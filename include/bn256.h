@@ -20,7 +20,7 @@ void bn256_scalarmult_bg1(curvepoint_fp_t out, scalar_t scl);
 void bn256_scalarmult_bg2(twistpoint_fp2_t out, scalar_t scl);
 bool bn_init();
 int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len);
-int bn256_hash_g2(twistpoint_fp2_struct_t *out, uint8_t *msg, ssize_t msg_len, mpz_t mpz_val);
+int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg, const ssize_t msg_len, mpz_t mpz_val);
 void bn256_deserialize_g1(curvepoint_fp_t out, void *in);
 void bn256_deserialize_g2(twistpoint_fp2_t out, void *in);
 void bn256_deserialize_gt(fp12e_t out, void *in);
@@ -29,7 +29,7 @@ size_t bn256_serialize_g2(void *out, fp2e_t op1, fp2e_t op2);
 size_t bn256_serialize_gt(void *out, fp12e_t gt_elem);
 void bn256_pair(fp12e_t rop, twistpoint_fp2_t op1, curvepoint_fp_t op2);
 void bn256_sum_g1(curvepoint_fp_t out, curvepoint_fp_t *in, size_t count);
-void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t *in, size_t count);
+void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t const *in, const size_t count);
 void bn256_deserialize_and_sum_g1(curvepoint_fp_t out, void *in, size_t count);
 void bn256_deserialize_and_sum_g2(twistpoint_fp2_t out, void *in, size_t count);
 

@@ -22,7 +22,7 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 	element_set_str(server->lt_sig_sk_elem, sk[server_id], 10);
 	element_init(server->lt_sig_pk_elem, pairing->G2);
 	element_set_str(server->lt_sig_pk_elem, pk[server_id], 10);
-	server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_elem_compressed_BYTES;
+	server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_serialized_bytes;
 	// Initialise elements for epheremal IBE key_state generation and create an initial keypair
 	element_init(server->eph_secret_key_elem_zr, pairing->Zr);
 	element_init(server->eph_pub_key_elem_g1, pairing->G1);
@@ -66,10 +66,10 @@ int pkg_client_lookup(pkg_server *server, uint8_t *user_id)
 	return index;
 }
 
-void pkg_client_init(pkg_client *client, pkg_server *server, uint8_t *user_id, const uint8_t *lt_sig_key)
+void pkg_client_init(pkg_client *client, pkg_server *server, const uint8_t *user_id, const uint8_t *lt_sig_key)
 {
 
-	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + g1_elem_compressed_BYTES;
+	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + g1_serialized_bytes;
 	serialize_uint32(client->eph_client_data, PKG_AUTH_RES_MSG);
 	memcpy(client->user_id, user_id, user_id_BYTES);
 	sodium_hex2bin(client->lt_sig_pk,
@@ -166,7 +166,7 @@ void pkg_encrypt_client_response(pkg_server *server, pkg_client *client)
 	serialize_uint32(client->eph_client_data + net_msg_type_BYTES, pkg_enc_auth_res_BYTES);
 	serialize_uint64(client->eph_client_data + 8, server->current_round);
 	uint8_t
-		*nonce_ptr = client->eph_client_data + net_header_BYTES + g1_elem_compressed_BYTES + g2_elem_compressed_BYTES
+		*nonce_ptr = client->eph_client_data + net_header_BYTES + g1_serialized_bytes + g2_serialized_bytes
 		+ crypto_MACBYTES;
 	randombytes_buf(nonce_ptr, crypto_aead_chacha20poly1305_IETF_NPUBBYTES);
 	crypto_aead_chacha20poly1305_ietf_encrypt(client->eph_client_data + net_header_BYTES,
