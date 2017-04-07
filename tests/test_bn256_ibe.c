@@ -152,12 +152,8 @@ int main()
 	serialize_uint32(server.eph_broadcast_message + net_msg_type_BYTES, pkg_broadcast_msg_BYTES);
 	serialize_uint64(server.eph_broadcast_message + 8, server.current_round);
 	start = get_time();
-	for (int i = 0; i < server.num_clients; i++) {
-		pkg_sign_for_client(&server, &server.clients[i]);
-		//pkg_extract_client_sk(&server, &server.clients[i]);
-	}
+	pkg_parallel_extract(&server);
 	end = get_time();
-	pkg_sign_for_client(&server, &server.clients[0]);
 
 	printf("Benchmarking PKG key extraction for %d clients: %f\n", server.num_clients, end - start);
 

@@ -1,12 +1,24 @@
 #include <sodium.h>
 #include <string.h>
+#include <pthread.h>
 #include "pkg2.h"
 #include "net_common.h"
+
+typedef struct pkg_thread_args pkg_thread_args;
+
+struct pkg_thread_args
+{
+	pkg_server *server;
+	int begin;
+	int end;
+	int thread_id;
+};
+
 
 int pkg_server_init(pkg_server *server, uint32_t server_id)
 {
 	server->current_round = 1;
-	server->num_clients = 10000;
+	server->num_clients = 1000000;
 	server->srv_id = server_id;
 	// Initialise gen_elem element + long term ibe public/secret signature keypair
 	// Initialise elements for epheremal IBE key_state generation and create an initial keypair
@@ -34,10 +46,57 @@ int pkg_server_init(pkg_server *server, uint32_t server_id)
 	serialize_uint32(server->eph_broadcast_message + net_msg_type_BYTES, pkg_broadcast_msg_BYTES);
 	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
 	// Extract secret keys and generate signatures for each client_s
-	for (int i = 0; i < server->num_clients; i++) {
-		pkg_extract_client_sk(server, &server->clients[i]);
-		pkg_sign_for_client(server, &server->clients[i]);
+	pkg_parallel_extract(server);
+	return 0;
+}
+
+void *pkg_client_auth_data(void *args)
+{
+
+	pkg_thread_args *th_args = (pkg_thread_args *) args;
+	pkg_server *srv = th_args->server;
+	printf("Thread %d processing clients from %d to %d\n", th_args->thread_id, th_args->begin, th_args->end);
+
+	for (int i = th_args->begin; i < th_args->end; i++) {
+		pkg_extract_client_sk(srv, &srv->clients[i]);
+		//pkg_sign_for_client(srv, &srv->clients[i]);
 	}
+	return NULL;
+}
+
+int pkg_parallel_extract(pkg_server *server)
+{
+	int num_threads = 32;
+	pthread_t threads[num_threads];
+	pkg_thread_args args[num_threads];
+	int num_per_thread = server->num_clients / num_threads;
+	int curindex = 0;
+	for (int i = 0; i < num_threads - 1; i++) {
+		args[i].server = server;
+		args[i].begin = curindex;
+		args[i].end = curindex + num_per_thread;
+		curindex += num_per_thread;
+		args[i].thread_id = i;
+
+	}
+
+	args[num_threads - 1].server = server;
+	args[num_threads - 1].begin = curindex;
+	args[num_threads - 1].end = server->num_clients;
+	args[num_threads - 1].thread_id = num_threads;
+
+	for (int i = 0; i < num_threads; i++) {
+		int res = pthread_create(&threads[i], NULL, pkg_client_auth_data, &args[i]);
+		if (res) {
+			fprintf(stderr, "fatal pthread creation error\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	for (int i = 0; i < num_threads; i++) {
+		pthread_join(threads[i], NULL);
+	}
+
 	return 0;
 }
 
@@ -100,10 +159,7 @@ void pkg_new_round(pkg_server *server)
 	serialize_uint32(server->eph_broadcast_message + net_msg_type_BYTES, pkg_broadcast_msg_BYTES);
 	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
 	// Extract secret keys and generate signatures for each client_s
-	for (int i = 0; i < server->num_clients; i++) {
-		pkg_extract_client_sk(server, &server->clients[i]);
-		pkg_sign_for_client(server, &server->clients[i]);
-	}
+	pkg_parallel_extract(server);
 }
 
 int pkg_auth_client(pkg_server *server, pkg_client *client)

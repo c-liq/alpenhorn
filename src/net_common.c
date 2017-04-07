@@ -1,14 +1,13 @@
-#include "../include/mix.h"
+#include "mix2.h"
 #include <string.h>
-#include "../include/mixnet_server.h"
-#include "../include/net_common.h"
+#include "mixnet_server.h"
+#include "net_common.h"
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
-#include <sys/types.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <errno.h>
+
 
 int net_accept(int listen_sfd, int set_nb)
 {

@@ -1,7 +1,7 @@
 CPP=g++
 CPPFLAGS=-g -Werror -DCHECK
 CC=gcc
-CFLAGS=-std=gnu99 -O3 -fomit-frame-pointer -g -I lib -I include/ -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -l pbc -pthread -Wl,-rpath /usr/local/lib
+CFLAGS=-std=gnu99 -O3 -fomit-frame-pointer -g -I lib -I include/ -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -l -pthread -Wl,-rpath /usr/local/lib
 LFLAGS=-lm
 
 all: test_client test_ibe test_bls test_mix test_pkg

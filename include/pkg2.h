@@ -12,7 +12,6 @@ struct pkg_client;
 typedef struct pkg_server pkg_server;
 
 typedef struct pkg_client pkg_client;
-
 struct pkg_server
 {
 	int srv_id;
@@ -65,4 +64,6 @@ void pkg_new_round(pkg_server *server);
 int pkg_auth_client(pkg_server *server, pkg_client *client);
 void pkg_encrypt_client_response(pkg_server *server, pkg_client *client);
 int pkg_client_lookup(pkg_server *server, uint8_t *user_id);
+int pkg_parallel_extract(pkg_server *server);
+
 #endif //ALPENHORN_PKG_H

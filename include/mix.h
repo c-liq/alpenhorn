@@ -1,7 +1,7 @@
 #ifndef ALPENHORN_MIX_H
 #define ALPENHORN_MIX_H
 #include <pbc/pbc.h>
-#include <unistring/stdbool.h>
+#include <stdbool.h>
 #include "config.h"
 #include "utils.h"
 #include "bloom.h"

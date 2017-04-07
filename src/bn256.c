@@ -344,6 +344,8 @@ int bn256_hash_g2(twistpoint_fp2_struct_t *out, uint8_t *msg, ssize_t msg_len, m
 		mpz2fp(t_single, hmmmm);
 	}
 
+	mpz_clear(hmmmm);
+
 	fp2e_t t;
 	_2fpe_to_fp2e(t, t_single, t_single);
 
