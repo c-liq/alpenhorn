@@ -3,7 +3,7 @@
 #define ALPENHORN_NET_COMMON_H
 
 #include <sys/epoll.h>
-#include "mix.h"
+#include "mix2.h"
 
 typedef struct connection connection;
 
