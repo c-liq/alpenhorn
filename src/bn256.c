@@ -401,7 +401,8 @@ size_t serialize_fpe(void *out, fpe_t op)
 	mpz_t x;
 	mpz_init(x);
 	fp2mpz2(x, op);
-	size_t count;
+	- +
+		size_t count;
 	mpz_export(out, &count, 1, fpe_bytes, 1, 0, x);
 	mpz_clear(x);
 	return count;
