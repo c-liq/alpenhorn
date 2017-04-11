@@ -71,24 +71,5 @@ int main()
 	       1000 * (end - start),
 	       (end - start));
 	printf("%d calls\n", num_calls);
-	/*size_t test_size = 125000;
-	uint8_t *positive_tests = calloc(test_size, crypto_box_SECRETKEYBYTES);
-	uint8_t *false_tests = calloc(test_size, crypto_box_SECRETKEYBYTES);
-	for (int i = 0; i < test_size; i++) {
-		randombytes_buf(positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-		randombytes_buf(false_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-		bloom_add_elem(bloom, positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-	}
-	int pos_hits = 0, false_hits = 0;
-	for (int i = 0; i < test_size; i++) {
-		pos_hits += bloom_lookup(bloom, positive_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-		false_hits += bloom_lookup(bloom, false_tests + (i * crypto_box_SECRETKEYBYTES), crypto_box_SECRETKEYBYTES);
-	}
-	printf("pos: %d\n", pos_hits);
-	printf("false hits: %d\n", false_hits);
-	bloom_free(bloom);
-	free(positive_tests);
-	free(false_tests);*/
-
 };
 

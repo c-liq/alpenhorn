@@ -4,19 +4,15 @@
  * Public Domain
  */
 
-#include <math.h>
 #include <stdio.h>
 #include <gmp.h>
 #include "fpe.h"
 #include "fp2e.h"
 #include "fp6e.h"
 #include "fp12e.h"
-//#include "parameters.h"
 
 extern const double bn_v;
-
 extern const double bn_v6;
-
 extern const char *bn_pstr;
 
 #ifndef CHECK

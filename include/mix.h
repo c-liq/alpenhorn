@@ -1,10 +1,11 @@
 #ifndef ALPENHORN_MIX_H
 #define ALPENHORN_MIX_H
-#include <pbc/pbc.h>
+
 #include <stdbool.h>
 #include "config.h"
 #include "utils.h"
 #include "bloom.h"
+
 
 struct mix_s;
 typedef struct mix_s mix_s;
@@ -98,10 +99,12 @@ struct mix_s
 	uint32_t dial_cont_stack_head;
 	mix_af_s af_data;
 	mix_dial_s dial_data;
+	#if USE_PBC
 	pairing_s pairing;
 	element_s ibe_gen_elem;
 	element_s af_noise_Zr_elem;
 	element_s af_noise_G1_elem;
+	#endif
 };
 
 int mix_init(mix_s *mix, uint32_t server_id);

@@ -3,7 +3,7 @@
 
 #include "config.h"
 #include "utils.h"
-#include "client2.h"
+#include "client.h"
 
 struct keywheel;
 struct keywheel_table;

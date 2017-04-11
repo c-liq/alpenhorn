@@ -1,7 +1,7 @@
 #include <bn256_bls.h>
 void main()
 {
-	bn_init();
+	bn256_init();
 	bn256_bls_keypair kp;
 	bn256_bls_keygen(&kp);
 

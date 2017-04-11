@@ -4,7 +4,8 @@
 #include <stdio.h>
 #include <sodium.h>
 #include "config.h"
-
+#include <unistd.h>
+#include <sys/time.h>
 
 typedef struct element_s element_s;
 
@@ -41,7 +42,7 @@ void crypto_shared_secret(uint8_t *shared_secret,
                           uint32_t output_size);
 ssize_t crypto_secret_nonce_seal(uint8_t *out, uint8_t *c, size_t clen, uint8_t *k);
 int crypto_secret_nonce_open(uint8_t *out, uint8_t *c, size_t clen, uint8_t *k);
-void printhex(char *msg, uint8_t *data, uint32_t len);
+void printhex(char *msg, uint8_t *data, ssize_t len);
 uint64_t deserialize_uint64(uint8_t *in);
 void serialize_uint64(uint8_t *out, const uint64_t input);
 uint32_t deserialize_uint32(uint8_t *in);
@@ -66,6 +67,8 @@ void byte_buffer_clear(byte_buffer_s *buf);
 int byte_buffer_put(byte_buffer_s *buf, uint8_t *data, size_t size);
 int byte_buffer_put_virtual(byte_buffer_s *buf, size_t size);
 uint32_t laplace_rand(laplace_s *l);
+
+double get_time();
 
 
 #endif //ALPENHORN_UTILS_H

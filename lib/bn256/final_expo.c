@@ -4,9 +4,7 @@
  * Public Domain
  */
 
-#include <stdio.h>
 #include "final_expo.h"
-#include "fpe.h"
 
 extern const scalar_t bn_u;
 

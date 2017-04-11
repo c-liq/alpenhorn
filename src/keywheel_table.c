@@ -1,6 +1,6 @@
 #include <sodium.h>
 #include <memory.h>
-#include "client2.h"
+#include "client.h"
 
 static const uint8_t saltbytes_0[16] = {0};
 static const uint8_t saltbytes_1[16] = {1};

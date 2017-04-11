@@ -1,8 +1,5 @@
-#include <pkg2.h>
+#include <pkg.h>
 #include <sys/time.h>
-#include <net_common.h>
-#include "dclxci/optate.h"
-#include "dclxci/gmp_convert.h"
 double get_time()
 {
 	struct timeval t;
@@ -13,9 +10,9 @@ double get_time()
 
 int main()
 {
-	bn_init();
+	bn256_init();
 	pkg_server server;
-	pkg_server_init(&server, 0);
+	pkg_server_init(&server, 0, 0, 0);
 	double start = get_time();
 	//pkg_new_round(&server);
 	double end = get_time();

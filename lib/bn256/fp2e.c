@@ -5,14 +5,10 @@
  */
 
 #include <stdio.h>
-#include <assert.h>
 #include <math.h>
 
-#include "cpucycles.h"
 #include "fp2e.h"
-#include "fpe.h"
 #include "mul.h"
-#include "scalar.h"
 
 extern const double bn_v;
 

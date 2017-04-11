@@ -5,7 +5,6 @@
  */
 
 #include <math.h>
-#include <assert.h>
 #include "scalar.h"
 #include "fpe.h"
 #include "mul.h"
@@ -160,8 +159,9 @@ int fpe_iszero(const fpe_t op)
 		tp = (unsigned long long *) &d;
 		tr |= (*tp ^ *zp);
 	}
-	for (i = 0; i < 8; i++)
+	for (i = 0; i < 8; i++) {
 		differentbits |= i[(unsigned char *) &tr];
+	}
 
 	return 1 & ((differentbits - 1) >> 8);
 }
@@ -265,7 +265,6 @@ int fpe_sqrt(fpe_t x, const fpe_t a)
 	fpe_mul(x, a1, a);
 	fpe_mul(a0, x, a1);
 	if (fpe_iseq(a0, fpe_negOne)) {
-		printf("---no sqrt\n");
 		return 0;
 	}
 	return 1;

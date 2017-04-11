@@ -1,10 +1,11 @@
 #include <netinet/in.h>
 #include <memory.h>
 #include "utils.h"
+#include <math.h>
 
-void printhex(char *msg, uint8_t *data, uint32_t len)
+void printhex(char *msg, uint8_t *data, ssize_t len)
 {
-	uint32_t hex_len = len * 2 + 1;
+	ssize_t hex_len = len * 2 + 1;
 	char hex_str[hex_len];
 	sodium_bin2hex(hex_str, hex_len, data, len);
 	printf("%s: %s\n", msg, hex_str);
@@ -165,6 +166,8 @@ byte_buffer_s *byte_buffer_alloc(uint32_t capacity, uint32_t prefix_size)
 
 int byte_buffer_init(byte_buffer_s *buf, uint32_t capacity, uint32_t prefix_size)
 {
+	if (!buf) return -1;
+
 	buf->prefix_size = prefix_size;
 	buf->capacity = capacity;
 	buf->base = calloc(1, prefix_size + buf->capacity);
@@ -182,23 +185,15 @@ int byte_buffer_init(byte_buffer_s *buf, uint32_t capacity, uint32_t prefix_size
 
 void byte_buffer_clear(byte_buffer_s *buf)
 {
+	if (!buf) return;
 	buf->pos = buf->data;
 	buf->used = 0;
 }
 
-uint32_t laplace_rand(laplace_s *l)
-{
-	uint32_t rand = randombytes_uniform(l->b * 2);
-	return l->mu + rand - l->b;
-
-}
-
-/*
 uint32_t laplace_rand(laplace_s *l) {
 	double rand = ((double)(randombytes_random() % 10000) / 10000) - 0.5;
 	int sign;
 	double abs;
-
 	if (rand < 0) {
 		abs = -rand;
 		sign = -1;
@@ -207,10 +202,21 @@ uint32_t laplace_rand(laplace_s *l) {
 		abs = rand;
 		sign = 1;
 	}
-	double x = l->mu - (l->b * sign * log(1 - (2 * abs)));
-	printf("rand: %f | abs: %f | x: %f\n", rand, abs,  x);
-	if (x <= 0) {
+	double lv = log(1 - (2 * abs));
+	lv *= sign;
+	lv *= l->b;
+	lv = l->mu - lv;
+	if (lv < 0) {
 		return laplace_rand(l);
 	}
-	return (uint32_t)x;
-}*/
+	return (uint32_t) lv;
+}
+
+double get_time()
+{
+	struct timeval t;
+	struct timezone tzp;
+	gettimeofday(&t, &tzp);
+	return t.tv_sec + t.tv_usec * 1e-6;
+}
+

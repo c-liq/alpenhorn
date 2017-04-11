@@ -40,7 +40,7 @@ int scalar_getbit(const scalar_t s, unsigned int pos)
 // Returns the position of the most significant set bit
 int scalar_scanb(const scalar_t s)
 {
-	int i;
+	unsigned int i;
 	unsigned int pos = 0;
 	for (i = 255; i > 0; i--)
 		if (scalar_getbit(s, i) && pos == 0) pos = i;

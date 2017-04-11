@@ -6,7 +6,6 @@
 
 #include <math.h>
 #include "mul.h"
-#include "mydouble.h"
 
 extern const double bn_v;
 

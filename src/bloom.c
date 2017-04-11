@@ -18,7 +18,7 @@ void bloom_calc_partitions(const int m_target,
 	int pdex = 0;
 	int l = 0;
 	int r = ptable_size - 1;
-	int mid;
+	int mid = 0;
 	uint32_t target_avg = m_target / num_partitions;
 	while (l <= r) {
 		mid = (l + r + 1) / 2;
@@ -100,7 +100,7 @@ int bloom_lookup(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
 
 bloomfilter_s *bloom_alloc(double p, uint32_t n, uint64_t hash_key, uint8_t *bloom_data, uint32_t prefix_len)
 {
-	if (p <= 0 | n <= 0 | prefix_len > MAX_PREFIX_SZ) {
+	if (p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
 		fprintf(stderr, "invalid parameters to bloom allocator\n");
 		return NULL;
 	}
@@ -121,7 +121,7 @@ int bloom_init(bloomfilter_s *bf, double p, uint32_t n, uint64_t hash_key, uint8
 {
 	// calculate number of partitions and approx filter size based on target false probability rate
 	// and number of elements to be placed in the filter
-	if (p <= 0 | n <= 0 | prefix_len > MAX_PREFIX_SZ) {
+	if (p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
 		fprintf(stderr, "invalid parameters to bloom allocator\n");
 		return -1;
 	}

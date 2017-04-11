@@ -1,10 +1,8 @@
-#include "mix2.h"
+
 #include "net_common.h"
-#include <unistd.h>
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <string.h>
 
 int net_accept(int listen_sfd, int set_nb)
 {

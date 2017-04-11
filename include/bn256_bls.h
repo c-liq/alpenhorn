@@ -14,7 +14,7 @@ struct bn256_bls_keypair
 	twistpoint_fp2_t public_key;
 };
 int bn256_bls_verify_multisig(twistpoint_fp2_t *public_keys,
-                              size_t num_keys,
+                              size_t num_participants,
                               uint8_t *signatures,
                               uint8_t *msg,
                               size_t msg_len);

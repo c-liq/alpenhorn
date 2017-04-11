@@ -1,6 +1,6 @@
 #include <stdint.h>
-#include <dclxci/curvepoint_fp.h>
-#include <dclxci/twistpoint_fp2.h>
+#include <bn256/curvepoint_fp.h>
+#include <bn256/twistpoint_fp2.h>
 #include <bn256_bls.h>
 
 twistpoint_fp2_t twistgen = {{{{{490313, 4260028, -821156, -818020, 106592, -171108, 757738, 545601, 597403,
@@ -55,19 +55,18 @@ int bn256_bls_verify_from_point(twistpoint_fp2_t public_key, curvepoint_fp_t sig
 	return fp12e_iseq(u, v);
 }
 
-
 int bn256_bls_verify_multisig(twistpoint_fp2_t *public_keys,
-                              size_t num_keys,
+                              size_t num_participants,
                               uint8_t *signatures,
                               uint8_t *msg,
                               size_t msg_len)
 {
 	twistpoint_fp2_t combined_key;
-	bn256_sum_g2(combined_key, public_keys, num_keys);
+	bn256_sum_g2(combined_key, public_keys, num_participants);
 	curvepoint_fp_t sig_from_msg;
 	bn256_hash_g1(sig_from_msg, msg, msg_len);
 	curvepoint_fp_t combined_sig;
-	bn256_deserialize_and_sum_g1(combined_sig, signatures, num_keys);
+	bn256_deserialize_and_sum_g1(combined_sig, signatures, num_participants);
 	fp12e_t u, v;
 	bn256_pair(u, twistgen, combined_sig);
 	bn256_pair(v, combined_key, sig_from_msg);

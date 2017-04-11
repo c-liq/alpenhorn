@@ -5,7 +5,6 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include "fpe.h"
 #include "curvepoint_fp.h"
 
@@ -315,7 +314,6 @@ void curvepoint_fp_scalarmult_vartime(curvepoint_fp_t rop, const curvepoint_fp_t
 // Negate a point, store in rop:
 void curvepoint_fp_neg(curvepoint_fp_t rop, const curvepoint_fp_t op)
 {
-	fpe_t tfpe1;
 	fpe_set(rop->m_x, op->m_x);
 	fpe_neg(rop->m_y, op->m_y);
 	fpe_set(rop->m_z, op->m_z);
@@ -324,6 +322,9 @@ void curvepoint_fp_neg(curvepoint_fp_t rop, const curvepoint_fp_t op)
 // Transform to Affine Coordinates (z=1)
 void curvepoint_fp_makeaffine(curvepoint_fp_t point)
 {
+	if (fpe_isone(point->m_z))
+		return;
+
 	fpe_t tfpe1;
 	fpe_invert(tfpe1, point->m_z);
 	fpe_mul(point->m_x, point->m_x, tfpe1);

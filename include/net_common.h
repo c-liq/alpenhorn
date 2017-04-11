@@ -1,40 +1,13 @@
-
 #ifndef ALPENHORN_NET_COMMON_H
 #define ALPENHORN_NET_COMMON_H
-
+#include "config.h"
+#include "utils.h"
 #include <sys/epoll.h>
-#include "mix2.h"
+
 
 typedef struct connection connection;
-
-static const char mix_client_listen[] = "7000";
-
-static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
-
-static const char *pkg_cl_listen_ports[] = {"7500", "7501", "7502"};
-
-#define PKG_BR_MSG 70
-#define PKG_AUTH_RES_MSG 80
-
-enum conn_type
-{
-	MIX, PKG, CLIENT
-};
-
-typedef enum conn_type conn_type;
-
-struct mailbox_request
-{
-	uint8_t *buffer;
-	uint32_t mailbox_size;
-	uint32_t bytes_read;
-};
-
-typedef struct mailbox_request mailbox_request;
-
 struct connection
 {
-	conn_type type;
 	uint32_t id;
 	int sock_fd;
 	uint8_t internal_read_buf[buf_size];
@@ -52,8 +25,6 @@ struct connection
 	void (*on_write)(void *owner, connection *conn, ssize_t count);
 	connection *next;
 	connection *prev;
-	uint32_t bc_bytes_remaining;
-	mailbox_request mb_request;
 	bool connected;
 };
 

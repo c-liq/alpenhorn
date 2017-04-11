@@ -6,7 +6,6 @@
 
 #include "mydouble.h"
 
-#ifndef CHECK
 #include <math.h>
 
 double remround(double a, double d)
@@ -15,4 +14,3 @@ double remround(double a, double d)
 	return a - carry * d;
 }
 
-#endif

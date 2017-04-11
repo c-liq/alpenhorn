@@ -1,5 +1,5 @@
 #include <sodium.h>
-#include <dclxci/twistpoint_fp2.h>
+#include <bn256/twistpoint_fp2.h>
 #include <bn256.h>
 #include "bn256_ibe.h"
 
@@ -22,18 +22,18 @@ bn256_ibe_decrypt(uint8_t *out,
                   twistpoint_fp2_t private_key)
 {
 	curvepoint_fp_t rp;
-	fp2e_out_str(stdout, private_key->m_x);
-	fp2e_out_str(stdout, private_key->m_y);
 	bn256_deserialize_g1(rp, c);
 	fp12e_t pair_val;
+	fp12e_setzero(pair_val);
 	bn256_pair(pair_val, private_key, rp);
 	uint8_t pair_val_serialized[gt_bytes];
+	memset(pair_val_serialized, 0, gt_bytes);
 	bn256_serialize_gt(pair_val_serialized, pair_val);
 	uint8_t secret_key[crypto_ghash_BYTES];
 	bn256_ibe_build_sk(secret_key, public_key, c, pair_val_serialized);
 	int res = crypto_secret_nonce_open(out, c + g1_bytes, clen - g1_bytes, secret_key);
 /*	printhex("secret key", secret_key, crypto_ghash_BYTES);
-	printhex("rp", c, g1_elem_compressed_BYTES);
+	printhex("rp", c, g1_serialized_bytes);
 	printhex("public key", public_key, crypto_ghash_BYTES);
 	printhex("pairing", pair_val_serialized, gt_bytes);*/
 	sodium_memzero(secret_key, crypto_ghash_BYTES);
@@ -49,12 +49,10 @@ ssize_t bn256_ibe_encrypt(uint8_t *out,
 {
 	twistpoint_fp2_t q_id;
 	twistpoint_fp2_setneutral(q_id);
-	fpe_out_str(stdout, master_pk->m_x);
-	fpe_out_str(stdout, master_pk->m_y);
-	bn256_hash_g2(q_id, recv_id, recv_id_len, NULL);
+	bn256_hash_g2(q_id, recv_id, recv_id_len);
 	uint8_t qid_serialized[fpe_bytes * 4];
 	memset(qid_serialized, 0, sizeof qid_serialized);
-	bn256_serialize_g2(qid_serialized, q_id->m_x, q_id->m_y);
+	bn256_serialize_g2(qid_serialized, q_id);
 	scalar_t r;
 	bn256_scalar_random(r);
 	curvepoint_fp_t rp;
@@ -71,7 +69,7 @@ ssize_t bn256_ibe_encrypt(uint8_t *out,
 	bn256_ibe_build_sk(secret_key, qid_serialized, out, pair_qid_ppub_serialized);
 	ssize_t res = crypto_secret_nonce_seal(out + g1_bytes, msg, msg_len, secret_key);
 /*	printhex("secret key", secret_key, crypto_ghash_BYTES);
-	printhex("rp", out, g1_elem_compressed_BYTES);
+	printhex("rp", out, g1_serialized_bytes);
 	printhex("public key", qid_serialized, crypto_ghash_BYTES);
 	printhex("pairing", pair_qid_ppub_serialized, gt_bytes);*/
 	sodium_memzero(secret_key, sizeof secret_key);
@@ -84,8 +82,8 @@ ssize_t bn256_ibe_encrypt(uint8_t *out,
 
 void bn256_ibe_keygen(struct ibe_identity *id, uint8_t *identity, uint8_t identity_length, scalar_t master_sk)
 {
-	bn256_hash_g2(id->private_key, identity, identity_length, NULL);
-	bn256_serialize_g2(id->serialized_public_key, id->private_key->m_x, id->private_key->m_y);
+	bn256_hash_g2(id->private_key, identity, identity_length);
+	bn256_serialize_g2(id->serialized_public_key, id->private_key);
 	twistpoint_fp2_scalarmult_vartime(id->private_key, id->private_key, master_sk);
 	twistpoint_fp2_makeaffine(id->private_key);
 }

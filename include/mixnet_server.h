@@ -5,12 +5,15 @@
 struct mixnet_server;
 typedef struct mixnet_server net_server_s;
 
+static const char mix_client_listen[] = "7000";
+static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
+
 int epoll_accept(net_server_s *es,
                  void on_accept(net_server_s *, connection *),
                  void on_read(void *, connection *, ssize_t));
 int epoll_read(net_server_s *c, connection *conn);
 void net_mix_entry_clientread(void *s, connection *conn, ssize_t count);
-void epoll_send (net_server_s *s, connection *conn);
+void epoll_send(net_server_s *s, connection *conn);
 void net_mix_af_forward(net_server_s *s);
 void net_mix_dial_forward(net_server_s *s);
 void net_mix_batch_forward(net_server_s *s, byte_buffer_s *buf);

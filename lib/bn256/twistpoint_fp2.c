@@ -5,10 +5,8 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include "fpe.h"
 #include "twistpoint_fp2.h"
-#include "gmp_convert.h"
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 //            Point initialization and deletion functions
@@ -345,6 +343,9 @@ void twistpoint_fp2_affineset_fp2e(twistpoint_fp2_t rop, const fp2e_t x, const f
 // Transform to Affine Coordinates (z=1)
 void twistpoint_fp2_makeaffine(twistpoint_fp2_t point)
 {
+	if (fp2e_isone(point->m_z))
+		return;
+
 	fp2e_t tfpe1;
 	fp2e_invert(tfpe1, point->m_z);
 	fp2e_mul(point->m_x, point->m_x, tfpe1);

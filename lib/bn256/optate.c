@@ -4,10 +4,7 @@
  * Public Domain
  */
 
-#include <stdio.h>
-
 #include "fp2e.h"
-#include "fp6e.h"
 #include "fp12e.h"
 #include "curvepoint_fp.h"
 #include "twistpoint_fp2.h"

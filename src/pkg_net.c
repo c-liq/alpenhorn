@@ -1,12 +1,9 @@
-#include "pkg_net.h"
-#include "pkg2.h"
+
+#include "pkg.h"
 #include "net_common.h"
-#include <sys/epoll.h>
 #include <unistd.h>
 #include <sys/socket.h>
-#include <memory.h>
 #include <errno.h>
-#include <bn256.h>
 
 typedef struct pkg_connection pkg_connection;
 
@@ -26,6 +23,7 @@ struct pkg_connection
 	void (*on_write)(void *owner, pkg_connection *conn, ssize_t count);
 	pkg_connection *next;
 	pkg_connection *prev;
+	pkg_client *client_state;
 };
 
 
@@ -45,17 +43,31 @@ typedef struct pkg_net pkg_net_s;
 
 void epoll_pkg_send(pkg_net_s *s, pkg_connection *conn);
 
-void net_pkg_auth_client(pkg_net_s *s, pkg_connection *conn, pkg_client *client)
+bool net_pkg_auth_client(pkg_net_s *s, pkg_connection *conn)
 {
-	int res = pkg_auth_client(s->pkg, client);
-	if (!res) {
+	if (!conn->client_state) {
+		int index = pkg_client_lookup(s->pkg, conn->read_buf->base + net_header_BYTES + round_BYTES);
+		if (index == -1) {
+			return false;
+		}
+		conn->client_state = &s->pkg->clients[index];
+	}
+
+	pkg_client *client = conn->client_state;
+	memcpy(conn->client_state->auth_msg_from_client,
+	       conn->read_buf->base + net_header_BYTES,
+	       cli_pkg_single_auth_req_BYTES);
+	int authed = pkg_auth_client(s->pkg, client);
+	if (!authed) {
 		memcpy(conn->write_buf + conn->bytes_written,
 		       client->eph_client_data,
 		       net_header_BYTES + pkg_enc_auth_res_BYTES);
 		conn->write_remaining += net_header_BYTES + pkg_enc_auth_res_BYTES;
 		epoll_pkg_send(s, conn);
 	}
+	return true;
 }
+
 void remove_client(pkg_net_s *s, pkg_connection *conn)
 {
 	epoll_ctl(s->epoll_inst, EPOLL_CTL_DEL, conn->sock_fd, &conn->event);
@@ -147,6 +159,14 @@ void pkg_client_read(void *srv, pkg_connection *conn, ssize_t count)
 			conn->msg_type = CLI_AUTH_REQ;
 			conn->curr_msg_len = cli_pkg_single_auth_req_BYTES;
 		}
+		else if (msg_type == CLIENT_REG_REQUEST) {
+			conn->msg_type = CLIENT_REG_REQUEST;
+			conn->curr_msg_len = cli_pkg_reg_request_BYTES;
+		}
+		else if (msg_type == CLIENT_REG_CONFIRM) {
+			conn->msg_type = CLIENT_REG_CONFIRM;
+			conn->curr_msg_len = cli_pkg_reg_confirm_BYTES;
+		}
 		else {
 			fprintf(stderr, "Invalid message\n");
 			close(conn->sock_fd);
@@ -159,26 +179,28 @@ void pkg_client_read(void *srv, pkg_connection *conn, ssize_t count)
 		return;
 	}
 	if (conn->msg_type == CLI_AUTH_REQ) {
-		int index = pkg_client_lookup(s->pkg, conn->read_buf->base + net_header_BYTES);
-		if (index != -1) {
-			pkg_client *cl = &s->pkg->clients[index];
-			printf("Received auth request from %s for round %ld\n",
-			       conn->read_buf->data + net_header_BYTES, deserialize_uint64(conn->read_buf->base + 8));
-			memcpy(cl->auth_msg_from_client,
-			       conn->read_buf->data + net_header_BYTES + user_id_BYTES,
-			       cli_pkg_single_auth_req_BYTES - user_id_BYTES);
-			net_pkg_auth_client(s, conn, cl);
+		printf("Authentication request received from %s\n", conn->read_buf->base + net_header_BYTES + round_BYTES);
+		int res = net_pkg_auth_client(s, conn);
+		if (!res) {
+			fprintf(stderr, "Authentication failed for %s\n", conn->read_buf->base + net_header_BYTES + round_BYTES);
+		}
+	}
+	else if (conn->msg_type == CLIENT_REG_REQUEST) {
+		pkg_registration_request(s->pkg,
+		                         conn->read_buf->data + net_header_BYTES,
+		                         conn->read_buf->data + net_header_BYTES + user_id_BYTES);
+	}
 
-		}
-		else {
-			fprintf(stderr, "User lookup failed for %s\n", conn->read_buf->base + net_header_BYTES);
-		}
+	else if (conn->msg_type == CLIENT_REG_CONFIRM) {
+		pkg_confirm_registration(s->pkg,
+		                         conn->read_buf->data + net_header_BYTES,
+		                         conn->read_buf->data + net_header_BYTES + user_id_BYTES);
 	}
 
 	conn->msg_type = 0;
 	conn->curr_msg_len = 0;
 	conn->bytes_read = 0;
-	
+
 }
 
 int net_cli_epread(pkg_net_s *s, pkg_connection *conn)
@@ -333,7 +355,10 @@ void net_pkg_server_loop(pkg_net_s *es, void(*on_read)(pkg_net_s *, pkg_connecti
 
 int main(int argc, char **argv)
 {
-	bn_init();
+	#if !USE_PBC
+	bn256_init();
+	#endif
+
 	int sid;
 	if (argc < 2) {
 		fprintf(stderr, "No server id provided\n");
@@ -347,12 +372,11 @@ int main(int argc, char **argv)
 	}
 
 	pkg_server s;
-	pkg_server_init(&s, (uint32_t) sid);
+	pkg_server_init(&s, (uint32_t) sid, 10, 4);
 	pkg_net_s pkg_s;
 	pkg_server_startup(&pkg_s, &s);
 	printf("[PKG %d successfully initialised]\n", s.srv_id);
 	net_pkg_server_loop(&pkg_s, NULL);
-
 }
 
 

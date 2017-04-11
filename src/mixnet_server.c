@@ -6,7 +6,6 @@
 #include <errno.h>
 #include <time.h>
 #include <signal.h>
-#include <bn256.h>
 #include "mixnet_server.h"
 
 
@@ -42,25 +41,6 @@ void net_mix_pkg_broadcast(net_server_s *s)
 	for (int i = 0; i < num_pkg_servers; i++) {
 		send(s->pkg_conns[i].sock_fd, buf, net_header_BYTES, 0);
 	}
-}
-
-void net_mix_new_dr(net_server_s *s)
-{
-	if (!s->mix->is_last) {
-		if (s->next_mix.write_buf) {
-			uint8_t *write_buf_end = s->next_mix.write_buf->pos + s->next_mix.write_remaining;
-			serialize_uint32(write_buf_end, NEW_DIAL_ROUND);
-			s->next_mix.write_buf->pos += sizeof(uint32_t);
-			s->next_mix.write_remaining += sizeof(uint32_t);
-			epoll_send(s, &s->next_mix);
-		}
-		else {
-			serialize_uint32(s->next_mix.internal_write_buf, NEW_DIAL_ROUND);
-			s->next_mix.write_remaining = sizeof(uint32_t);
-			epoll_send(s, &s->next_mix);
-		}
-	}
-	mix_dial_newround(s->mix);
 }
 
 void net_mix_last_read(void *server, connection *conn, ssize_t count)
@@ -376,7 +356,7 @@ void net_broadcast_new_dr(net_server_s *s)
 	serialize_uint32(bc_buf + net_msg_type_BYTES, 0);
 	serialize_uint64(bc_buf + 8, s->mix->dial_data.round);
 	while (conn) {
-		ssize_t count = send(conn->sock_fd, bc_buf, sizeof bc_buf, 0);
+		send(conn->sock_fd, bc_buf, sizeof bc_buf, 0);
 		//printf("Broadcast new DR round \n");
 		conn = conn->next;
 	}
@@ -449,7 +429,7 @@ int net_entry_sync(net_server_s *es)
 	}
 
 	// Start main listening socket for client connections
-	es->listen_socket = net_start_listen_socket("7000", 1);
+	es->listen_socket = net_start_listen_socket(mix_client_listen, 1);
 	if (es->listen_socket == -1) {
 		fprintf(stderr, "entry mix error when starting listensocket\n");
 		return -1;
@@ -767,7 +747,9 @@ void net_srv_loop(net_server_s *es,
 
 int main(int argc, char **argv)
 {
-	bn_init();
+	#if !USE_PBC
+	bn256_init();
+	#endif
 	if (*argv[1] == '0') {
 		net_server_s es;
 		mix_s mix;

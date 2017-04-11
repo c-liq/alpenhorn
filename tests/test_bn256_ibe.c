@@ -1,8 +1,7 @@
 #include <bn256.h>
 #include <bn256_ibe.h>
 #include <sys/time.h>
-#include "client2.h"
-#include "pkg2.h"
+#include "pkg.h"
 
 double get_time()
 {
@@ -14,7 +13,7 @@ double get_time()
 
 int main()
 {
-	bn_init();
+	bn256_init();
 	int rs = sodium_init();
 	if (rs) { exit(EXIT_FAILURE); };
 /*
@@ -136,7 +135,7 @@ int main()
 
 
 	pkg_server server;
-	pkg_server_init(&server, 0);
+	pkg_server_init(&server, 0, 0, 0);
 	double start = get_time();
 	//pkg_new_round(&server);
 	double end = get_time();

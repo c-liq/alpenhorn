@@ -1,8 +1,7 @@
 #include <string.h>
-#include "../include/mix.h"
+#include "mix.h"
 #include "xxhash.h"
 #include <math.h>
-
 
 
 int mix_buffers_init(mix_s *mix)
@@ -83,7 +82,7 @@ void mix_dial_distribute(mix_s *mix)
 		dial_mailbox_s *mb = &c->mailboxes[i];
 		mb->id = i;
 		mb->num_messages = mix->dial_data.mailbox_counts[i];
-		mb->num_messages = 1000;
+		//mb->num_messages = 1000;
 		bloom_init(&mb->bloom, mix->dial_data.bloom_p_val, mb->num_messages, 0, NULL, net_header_BYTES);
 		// Fill in network prefix data
 		serialize_uint32(mb->bloom.base_ptr, DIAL_MB);
@@ -128,6 +127,7 @@ void mix_dial_add_inc_msg(mix_s *mix, uint8_t *msg)
 int mix_init(mix_s *mix, uint32_t server_id)
 {
 	int result;
+	#if USE_PBC
 	pairing_init_set_str(&mix->pairing, pbc_params);
 	element_init_Zr(&mix->af_noise_Zr_elem, &mix->pairing);
 	element_init_G1(&mix->ibe_gen_elem, &mix->pairing);
@@ -137,11 +137,12 @@ int mix_init(mix_s *mix, uint32_t server_id)
 		fprintf(stderr, "Invalid string for ibe generation element\n");
 		return -1;
 	}
-
+	#endif
 	mix->num_servers = num_mix_servers;
 	mix->server_id = server_id;
 	mix->is_last = num_mix_servers - mix->server_id == 1;
-
+	mix->af_data.num_mailboxes = 1;
+	mix->dial_data.num_mailboxes = 1;
 	mix->num_inc_onion_layers = num_mix_servers - server_id;
 	mix->num_out_onion_layers = mix->num_inc_onion_layers - 1;
 
@@ -171,9 +172,9 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	mix->af_data.round_duration = 15;
 	mix->dial_data.round = 1;
 	mix->dial_data.round_duration = 10;
-	mix->af_data.laplace.mu = 1;
+	mix->af_data.laplace.mu = 5;
 	mix->af_data.laplace.b = 0;
-	mix->dial_data.laplace.mu = 2;
+	mix->dial_data.laplace.mu = 2000;
 	mix->dial_data.laplace.b = 0;
 	mix->af_data.num_mailboxes = 1;
 	mix->dial_data.num_mailboxes = 1;
@@ -190,10 +191,8 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	}
 
 	crypto_box_keypair(mix->mix_dh_pks[0], mix->eph_sk);
-	//printhex("mix pk", mix->mix_dh_pks[0], crypto_box_PUBLICKEYBYTES);
 	return 0;
 }
-
 
 void mix_af_newround(mix_s *mix)
 {
@@ -232,6 +231,7 @@ void mix_shuffle_messages(uint8_t *messages, uint32_t msg_count, uint32_t msg_le
 		fprintf(stderr, "Cannot shuffle a set of less than 2 messages\n");
 		return;
 	}
+	double start = get_time();
 	uint8_t tmp_message[msg_length];
 	for (uint32_t i = msg_count - 1; i >= 1; i--) {
 		uint32_t j = randombytes_uniform(i);
@@ -239,6 +239,8 @@ void mix_shuffle_messages(uint8_t *messages, uint32_t msg_count, uint32_t msg_le
 		memcpy(messages + (i * msg_length), messages + (j * msg_length), msg_length);
 		memcpy(messages + (j * msg_length), tmp_message, msg_length);
 	}
+	double end = get_time();
+	printf("Shuffled %d msgs of size %d total, time taken: %f\n", msg_count, msg_length, end - start);
 }
 
 void mix_af_shuffle(mix_s *mix)
@@ -295,6 +297,7 @@ int mix_onion_encrypt_msg(mix_s *mix, uint8_t *msg, uint32_t msg_len)
 
 void mix_dial_add_noise(mix_s *mix)
 {
+	double start = get_time();
 	for (uint32_t i = 0; i < mix->dial_data.num_mailboxes; i++) {
 		uint32_t noise = laplace_rand(&mix->dial_data.laplace);
 		for (int j = 0; j < noise; j++) {
@@ -311,18 +314,31 @@ void mix_dial_add_noise(mix_s *mix)
 			mix->dial_data.mailbox_counts[i] += noise;
 		}
 	}
+	double end = get_time();
+	printf("Added %d dial msgs total, time taken: %f\n", mix->dial_data.num_out_msgs, end - start);
 }
 
 void mix_af_add_noise(mix_s *mix)
 {
+	#if !USE_PBC
+	scalar_t random;
+	curvepoint_fp_t tmp;
+	#endif
+	double start = get_time();
 	for (uint32_t i = 0; i < mix->af_data.num_mailboxes; i++) {
 		uint32_t noise = laplace_rand(&mix->af_data.laplace);
 		for (int j = 0; j < noise; j++) {
 			uint8_t *curr_ptr = mix->af_data.out_buf.pos;
 			serialize_uint32(curr_ptr, i);
+			#if USE_PBC
 			element_random(&mix->af_noise_Zr_elem);
 			element_pow_zn(&mix->af_noise_G1_elem, &mix->ibe_gen_elem, &mix->af_noise_Zr_elem);
 			element_to_bytes_compressed(curr_ptr + mb_BYTES, &mix->af_noise_G1_elem);
+			#else
+			bn256_scalar_random(random);
+			bn256_scalarmult_bg1(tmp, random);
+			bn256_serialize_g1(curr_ptr + mb_BYTES, tmp);
+			#endif
 			// After the group element, fill out the rest of the request with random data
 			randombytes_buf(curr_ptr + mb_BYTES + g1_serialized_bytes,
 			                af_ibeenc_request_BYTES - g1_serialized_bytes);
@@ -336,6 +352,8 @@ void mix_af_add_noise(mix_s *mix)
 			mix->af_data.mb_counts[i] += noise;
 		}
 	}
+	double end = get_time();
+	printf("Added %d af msgs total, time taken: %f\n", mix->af_data.num_out_msgs, end - start);
 }
 
 int mix_remove_encryption_layer(mix_s *mix, uint8_t *out, uint8_t *c, uint32_t onionm_len)
@@ -396,7 +414,7 @@ int mix_decrypt_messages(mix_s *mix,
 	uint8_t *curr_in_ptr = in_ptr;
 	uint8_t *curr_out_ptr = out_ptr;
 	uint32_t decrypted_msg_count = 0;
-
+	double start = get_time();
 	for (int i = 0; i < msg_count; i++) {
 		int result = mix_remove_encryption_layer(mix, curr_out_ptr, curr_in_ptr, in_msg_len);
 		curr_in_ptr += in_msg_len;
@@ -416,6 +434,8 @@ int mix_decrypt_messages(mix_s *mix,
 			}
 		}
 	}
+	double end = get_time();
+	printf("Decrypted %d msgs total of size %d, time taken: %f\n", decrypted_msg_count, in_msg_len, end - start);
 	return decrypted_msg_count;
 }
 

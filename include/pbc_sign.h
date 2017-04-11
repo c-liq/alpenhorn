@@ -7,20 +7,21 @@
 
 struct bls_instance;
 
-struct bls_instance {
-  pairing_s pairing;
-  element_s gen_elem;
-  element_s sig_elem;
-  element_s verify_elem;
-  element_s sig_hash_elem;
-  element_s g1_elem_sum;
-  element_s g2_elem_sum;
-  element_s u_tmp;
-  element_s v_tmp;
-  int g1_elem_length;
-  int g2_elem_length;
-  element_s g1_tmp;
-  element_s g2_tmp;
+struct bls_instance
+{
+	pairing_s pairing;
+	element_s gen_elem;
+	element_s sig_elem;
+	element_s verify_elem;
+	element_s sig_hash_elem;
+	element_s g1_elem_sum;
+	element_s g2_elem_sum;
+	element_s u_tmp;
+	element_s v_tmp;
+	int g1_elem_length;
+	int g2_elem_length;
+	element_s g1_tmp;
+	element_s g2_tmp;
 };
 typedef struct bls_instance bls_instance;
 

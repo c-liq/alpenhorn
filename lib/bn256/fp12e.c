@@ -5,7 +5,6 @@
  */
 
 #include <stdio.h>
-#include <assert.h>
 
 #include "fp6e.h"
 #include "fp12e.h"
