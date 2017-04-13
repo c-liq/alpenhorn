@@ -23,13 +23,13 @@ set(BN256_SOURCE_FILES ${OFILES} lib/bn256/fpe.c lib/bn256/fp2e.c lib/bn256/scal
 set(CLIENT_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/bn256_ibe.c src/bn256_bls.c
         include/config.h src/client.c src/bloom.c src/prime_gen.c src/keywheel_table.c src/net_common.c src/utils.c lib/xxhash/xxhash.c include/client_config.h)
 
-set(MIX_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/mixnet_server.c src/mix.c src/utils.c src/prime_gen.c lib/xxhash/xxhash.c src/bloom.c src/net_common.c)
-set(PKG_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/bn256_ibe.c src/bn256_bls.c src/pkg.c src/pkg_net.c src/utils.c src/pbc_sign.c src/ibe.c lib/xxhash/xxhash.c src/net_common.c)
+set(MIX_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/mix.c src/utils.c src/prime_gen.c lib/xxhash/xxhash.c src/bloom.c src/net_common.c)
+set(PKG_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/bn256_ibe.c src/bn256_bls.c src/pkg.c src/utils.c src/pbc_sign.c src/ibe.c lib/xxhash/xxhash.c src/net_common.c)
 
 
 set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath /usr/local/lib")
 set(CMAKE_EXE_LINKER_FLAGS "-Wl,-rpath /usr/local/lib")
-set(CMAKE_C_FLAGS "-I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -lcurl -l pbc -pthread -Wall -DQHASM")
+set(CMAKE_C_FLAGS "-I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -lcurl -l pbc -pthread -Wpedantic -Wall -Werror -DQHASM")
 set(CMAKE_VERBOSE_MAKEFILE on)
 
 

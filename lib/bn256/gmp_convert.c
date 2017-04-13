@@ -129,7 +129,6 @@ void fp2mpz(mpz_t rop, const fpe_t op)
 
 void mpz2fp2(fpe_t rop, const mpz_t op)
 {
-	//gmp_printf("MPZ INT DESERIALIZED: %Zd\n", op);
 	mpz_t v, vp, acc, tmp;
 	mpz_init(tmp);
 	mpz_init(vp);
@@ -167,7 +166,7 @@ void mpz2fp2(fpe_t rop, const mpz_t op)
 void mpz2fp(fpe_t rop, const mpz_t op)
 {
 //	gmp_printf("MPZ INT DESERIALIZED: %Zd\n", op);
-	mpz_t t = {}, r = {};
+	mpz_t t, r;
 	mpz_init(r);
 	mpz_init_set(t, op);
 	mpz_tdiv_qr_ui(t, r, t, (unsigned long) bn_v6);

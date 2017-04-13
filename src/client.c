@@ -6,8 +6,6 @@
 #include <errno.h>
 #include "client_config.h"
 
-
-
 uint32_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id)
 {
 	uint64_t hash = XXH64(user_id, user_id_BYTES, 0);
@@ -862,7 +860,7 @@ int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg
 		fprintf(stderr, "chacha20 encryption erro\n");
 	}
 	return res;
-};
+}
 
 int client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, const uint8_t *lt_sk_hex)
 {
@@ -956,7 +954,7 @@ client_s *client_alloc(const uint8_t *user_id, const uint8_t *ltp_key, const uin
 		return NULL;
 	}
 	return client;
-};
+}
 
 int print_friend_request(friend_request_s *req)
 {
@@ -1026,34 +1024,11 @@ int action_stack_push(client_s *c, action *new_action)
 	return 0;
 }
 
-int client_connection_init(client_connection *conn)
-{
-	if (!conn) return -1;
-
-	conn->bytes_read = 0;
-	conn->msg_type = 0;
-	conn->bytes_written = 0;
-	conn->write_remaining = 0;
-	conn->sock_fd = -1;
-	conn->event.data.ptr = conn;
-	conn->curr_msg_len = 0;
-	conn->process = NULL;
-	conn->event.events = 0;
-	conn->read_buf = calloc(1, sizeof *conn->read_buf);
-	if (!conn->read_buf) {
-		fprintf(stderr, "malloc failure in connection init\n");
-		return -1;
-	}
-
-	byte_buffer_init(conn->read_buf, 16384, 0);
-	return 0;
-}
-
-int net_send_message(client_s *s, struct client_connection *conn, uint8_t *msg, uint32_t msg_size_bytes)
+int net_send_message(client_s *s, connection *conn, uint8_t *msg, uint32_t msg_size_bytes)
 {
 	if (!s || !conn || !msg) return -1;
 
-	memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining, msg, msg_size_bytes);
+	memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining, msg, msg_size_bytes);
 	conn->write_remaining += msg_size_bytes;
 
 	return ep_socket_send(s, conn);
@@ -1074,17 +1049,17 @@ int client_net_init(client_s *c)
 	}
 	net_state->num_auth_responses = 0;
 	net_state->num_broadcast_responses = 0;
-	int res = client_connection_init(&net_state->mix_entry);
+	int res = connection_init(&net_state->mix_entry);
 	if (res) {
 		return -1;
 	}
-	client_connection_init(&net_state->mix_last);
+	res = connection_init(&net_state->mix_last);
 	if (res) {
 		return -1;
 	}
 
 	for (int i = 0; i < num_pkg_servers; i++) {
-		res = client_connection_init(&net_state->pkg_client_connections[i]);
+		res = connection_init(&net_state->pkg_connections[i]);
 		if (res) {
 			fprintf(stderr, "client connection initialisation failed\n");
 			return -1;
@@ -1093,14 +1068,14 @@ int client_net_init(client_s *c)
 	return 0;
 }
 
-int ep_socket_send(client_s *c, client_connection *conn)
+int ep_socket_send(client_s *c, connection *conn)
 {
 	if (!c || !conn) return -1;
 
 	int close = 0;
 	client_net *net_state = &c->net_state;
 	while (conn->write_remaining > 0) {
-		ssize_t count = send(conn->sock_fd, conn->write_buf + conn->bytes_written, conn->write_remaining, 0);
+		ssize_t count = send(conn->sock_fd, conn->write_buf.data + conn->bytes_written, conn->write_remaining, 0);
 		if (count == -1) {
 			if (errno != EAGAIN) {
 				fprintf(stderr, "socket send error %d on %d\n", errno, conn->sock_fd);
@@ -1141,34 +1116,36 @@ int ep_socket_send(client_s *c, client_connection *conn)
 	return 0;
 }
 
-int mix_entry_process_msg(client_s *client, client_connection *conn)
+int mix_entry_process_msg(void *client_ptr, connection *conn)
 {
-	if (!client || !conn) {
+	if (!client_ptr || !conn) {
 		return -1;
 	}
 
+	client_s *client = (client_s *) client_ptr;
 	client_net *net_state = &client->net_state;
+
 	switch (conn->msg_type) {
 	case NEW_AF_ROUND:
 		net_send_message(client, conn, client->friend_request_buf, net_header_BYTES + onionenc_friend_request_BYTES);
 		client->authed = false;
 		net_state->num_broadcast_responses = 0;
 		net_state->num_auth_responses = 0;
-		client->af_round = deserialize_uint64(conn->read_buf->data + 8);
+		client->af_round = deserialize_uint64(conn->read_buf.data + 8);
 		client->mb_processed = false;
 		printf("AF round %ld started\n", client->af_round);
 		af_fake_request(client);
 		break;
 	case NEW_DIAL_ROUND:
 		net_send_message(client, conn, client->dial_request_buf, net_header_BYTES + onionenc_dial_token_BYTES);
-		client->dialling_round = deserialize_uint64(conn->read_buf->data + 8);
+		client->dialling_round = deserialize_uint64(conn->read_buf.data + 8);
 		printf("Dial round %ld started\n", client->dialling_round);
 		dial_fake_request(client);
 		break;
 	case MIX_SYNC:
-		client->af_round = deserialize_uint64(conn->read_buf->data + 8);
-		client->dialling_round = deserialize_uint64(conn->read_buf->data + 16);
-		memcpy(client->mix_eph_pub_keys, conn->read_buf->data + net_header_BYTES, net_client_connect_BYTES);
+		client->af_round = deserialize_uint64(conn->read_buf.data + 8);
+		client->dialling_round = deserialize_uint64(conn->read_buf.data + 16);
+		memcpy(client->mix_eph_pub_keys, conn->read_buf.data + net_header_BYTES, net_client_connect_BYTES);
 		break;
 	default:
 		fprintf(stderr, "Invalid message from Mix Entry\n");
@@ -1182,7 +1159,7 @@ int client_net_pkg_auth(client_s *cn)
 	if (!cn) return -1;
 
 	for (int i = 0; i < num_pkg_servers; i++) {
-		client_connection *conn = &cn->net_state.pkg_client_connections[i];
+		connection *conn = &cn->net_state.pkg_connections[i];
 		int res =
 			net_send_message(cn, conn, cn->pkg_auth_requests[i], net_header_BYTES + cli_pkg_single_auth_req_BYTES);
 		if (res) {
@@ -1198,22 +1175,24 @@ int client_net_pkg_register(client_s *cn)
 {
 	if (!cn) return -1;
 	for (int i = 0; i < num_pkg_servers; i++) {
-		client_connection *conn = &cn->net_state.pkg_client_connections[i];
+		connection *conn = &cn->net_state.pkg_connections[i];
 		int res = net_send_message(cn, conn, cn->register_buf, net_header_BYTES + cli_pkg_reg_request_BYTES);
 		if (res) return -1;
 	}
 	return 0;
 }
 
-int pkg_process_message(client_s *c, client_connection *conn)
+int client_net_process_pks_msg(void *client_ptr, connection *conn)
 {
-	if (!c || !conn) return -1;
+	if (!client_ptr || !conn) return -1;
 
+	client_s *c = (client_s *) client_ptr;
 	client_net *net_state = &c->net_state;
+
 	switch (conn->msg_type) {
 	case PKG_BR_MSG:
 		memcpy(c->pkg_broadcast_msgs[conn->id],
-		       conn->read_buf->data + net_header_BYTES,
+		       conn->read_buf.data + net_header_BYTES,
 		       pkg_broadcast_msg_BYTES);
 		net_state->num_broadcast_responses++;
 		if (net_state->num_broadcast_responses == num_pkg_servers) {
@@ -1225,9 +1204,9 @@ int pkg_process_message(client_s *c, client_connection *conn)
 
 	case PKG_AUTH_RES_MSG:
 		memcpy(c->pkg_auth_responses[conn->id],
-		       conn->read_buf->base + net_header_BYTES,
+		       conn->read_buf.data + net_header_BYTES,
 		       pkg_enc_auth_res_BYTES);
-		//printhex("auth response", conn->read_buf->base + net_header_BYTES, pkg_enc_auth_res_BYTES);
+		//printhex("auth response", conn->read_buf.data + net_header_BYTES, pkg_enc_auth_res_BYTES);
 		net_state->num_auth_responses++;
 		if (net_state->num_auth_responses == num_pkg_servers && c->mb_processed) {
 			//printf("All auth responses received, MB processed already so replace IBE keys\n");
@@ -1242,24 +1221,25 @@ int pkg_process_message(client_s *c, client_connection *conn)
 	return 0;
 }
 
-int mix_last_process_msg(client_s *client, client_connection *conn)
+int mix_last_process_msg(void *client_ptr, connection *conn)
 {
-	if (!client || !conn) return -1;
+	if (!client_ptr || !conn) return -1;
 
+	client_s *client = (client_s *) client_ptr;
 	client_net *net_state = &client->net_state;
 	switch (conn->msg_type) {
 	case DIAL_MB:
 		dial_process_mb(client,
-		                conn->read_buf->data + net_header_BYTES,
-		                deserialize_uint64(conn->read_buf->data + 8),
-		                deserialize_uint32(conn->read_buf->data + 16));
+		                conn->read_buf.data + net_header_BYTES,
+		                deserialize_uint64(conn->read_buf.data + 8),
+		                deserialize_uint32(conn->read_buf.data + 16));
 		kw_advance_table(&client->keywheel);
 		break;
 	case AF_MB:
 		af_process_mb(client,
-		              conn->read_buf->data + net_header_BYTES,
-		              deserialize_uint32(conn->read_buf->data + 16),
-		              deserialize_uint64(conn->read_buf->data + 8));
+		              conn->read_buf.data + net_header_BYTES,
+		              deserialize_uint32(conn->read_buf.data + 16),
+		              deserialize_uint64(conn->read_buf.data + 8));
 		client->mb_processed = true;
 		if (net_state->num_auth_responses == num_pkg_servers && !client->authed) {
 			af_process_auth_responses(client);
@@ -1267,24 +1247,24 @@ int mix_last_process_msg(client_s *client, client_connection *conn)
 		};
 		break;
 	case NEW_AFMB_AVAIL:
-		serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining, CLIENT_AF_MB_REQUEST);
-		serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining + 4, user_id_BYTES);
-		memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + 8,
-		       conn->read_buf->data + 8,
+		serialize_uint32(conn->write_buf.data + conn->bytes_written + conn->write_remaining, CLIENT_AF_MB_REQUEST);
+		serialize_uint32(conn->write_buf.data + conn->bytes_written + conn->write_remaining + 4, user_id_BYTES);
+		memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining + 8,
+		       conn->read_buf.data + 8,
 		       round_BYTES);
-		memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + net_header_BYTES,
+		memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining + net_header_BYTES,
 		       client->user_id,
 		       user_id_BYTES);
 		conn->write_remaining += net_header_BYTES + user_id_BYTES;
 		ep_socket_send(client, conn);
 		break;
 	case NEW_DMB_AVAIL:
-		serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining, CLIENT_DIAL_MB_REQUEST);
-		serialize_uint32(conn->write_buf + conn->bytes_written + conn->write_remaining + 4, user_id_BYTES);
-		memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + 8,
-		       conn->read_buf->base + 8,
+		serialize_uint32(conn->write_buf.data + conn->bytes_written + conn->write_remaining, CLIENT_DIAL_MB_REQUEST);
+		serialize_uint32(conn->write_buf.data + conn->bytes_written + conn->write_remaining + 4, user_id_BYTES);
+		memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining + 8,
+		       conn->read_buf.data + 8,
 		       round_BYTES);
-		memcpy(conn->write_buf + conn->bytes_written + conn->write_remaining + net_header_BYTES,
+		memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining + net_header_BYTES,
 		       client->user_id,
 		       user_id_BYTES);
 		conn->write_remaining += net_header_BYTES + user_id_BYTES;
@@ -1297,77 +1277,38 @@ int mix_last_process_msg(client_s *client, client_connection *conn)
 	return 0;
 }
 
-void net_process_read(client_s *s, client_connection *conn, ssize_t count)
+int ep_socket_read(client_s *c, connection *conn)
 {
-	conn->bytes_read += count;
-	conn->read_buf->pos += count;
-	conn->read_buf->used += count;
-
-	while (conn->bytes_read > 0) {
-		if (conn->curr_msg_len == 0) {
-			if ((count < net_header_BYTES)) {
-				return;
-			}
-
-			conn->msg_type = deserialize_uint32(conn->read_buf->data);
-			conn->curr_msg_len = deserialize_uint32(conn->read_buf->data + net_msg_type_BYTES);
-		}
-		// Message hasn't been fully received
-		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
-			return;
-		}
-
-		conn->process(s, conn);
-
-		size_t read_remaining = (conn->bytes_read - conn->curr_msg_len - net_header_BYTES);
-
-		if (read_remaining > 0) {
-			memcpy(conn->read_buf->data,
-			       conn->read_buf->data + net_header_BYTES + conn->curr_msg_len,
-			       read_remaining);
-		}
-
-		conn->curr_msg_len = 0;
-		conn->msg_type = 0;
-		conn->bytes_read = read_remaining;
-		conn->read_buf->used = read_remaining;
-		conn->read_buf->pos = conn->read_buf->data + read_remaining;
-	}
-}
-
-int ep_socket_read(client_s *c, client_connection *conn)
-{
-	int close_client_connection = 0;
+	int close_connection = 0;
 	for (;;) {
 		ssize_t count;
-		byte_buffer_s *read_buf = conn->read_buf;
-		ssize_t buf_space = read_buf->capacity - read_buf->used;
-
+		byte_buffer_s *read_buf = &conn->read_buf;
+		size_t buf_space = read_buf->capacity - read_buf->used;
 		if (buf_space <= 0) {
 			byte_buffer_resize(read_buf, conn->curr_msg_len * 2);
 			buf_space = read_buf->capacity - conn->bytes_read;
 		}
 
-		count = read(conn->sock_fd, read_buf->pos, (size_t) buf_space);
+		count = read(conn->sock_fd, read_buf->pos, buf_space);
 
 		if (count == -1) {
 			if (errno != EAGAIN) {
 				perror("read");
-				close_client_connection = 1;
+				close_connection = 1;
 			}
 			break;
 		}
 		else if (count == 0) {
 			printf("(%c) Sock read 0 in epoll read, sock %d\n", conn->conn_type, conn->sock_fd);
-			close_client_connection = 1;
+			close_connection = 1;
 			break;
 		}
 
 		net_process_read(c, conn, count);
 	}
 
-	if (close_client_connection) {
-		fprintf(stderr, "Epoll read: closing client_connection on sock %d..\n", conn->sock_fd);
+	if (close_connection) {
+		fprintf(stderr, "Epoll read: closing connection on sock %d..\n", conn->sock_fd);
 		return -1;
 	}
 	return 0;
@@ -1400,14 +1341,14 @@ int client_run(client_s *client)
 	net_state->mix_entry.process = mix_entry_process_msg;
 	net_state->mix_entry.conn_type = 'E';
 
-	int res = net_read_nb(mix_sfd, net_state->mix_entry.read_buf->base, net_header_BYTES + net_client_connect_BYTES);
+	int res = net_read_nonblock(mix_sfd, net_state->mix_entry.read_buf.data, net_header_BYTES + net_client_connect_BYTES);
 	if (res == -1) {
 		perror("client read");
 		return -1;
 	}
 
-	client->af_round = deserialize_uint64(net_state->mix_entry.read_buf->data + 8);
-	client->dialling_round = deserialize_uint64(net_state->mix_entry.read_buf->base + 16);
+	client->af_round = deserialize_uint64(net_state->mix_entry.read_buf.data + 8);
+	client->dialling_round = deserialize_uint64(net_state->mix_entry.read_buf.data + 16);
 	client->keywheel.table_round = client->dialling_round;
 	client->mb_processed = 1;
 	printf("[Connected as %s: Dial round: %ld | Add friend round: %ld]\n",
@@ -1415,7 +1356,7 @@ int client_run(client_s *client)
 	       client->dialling_round,
 	       client->af_round);
 
-	uint8_t *dh_ptr = net_state->mix_entry.read_buf->base + net_header_BYTES;
+	uint8_t *dh_ptr = net_state->mix_entry.read_buf.data + net_header_BYTES;
 	for (uint32_t i = 0; i < num_mix_servers; i++) {
 		memcpy(client->mix_eph_pub_keys[i], dh_ptr, crypto_box_PUBLICKEYBYTES);
 		dh_ptr += crypto_box_PUBLICKEYBYTES;
@@ -1423,7 +1364,7 @@ int client_run(client_s *client)
 
 	af_fake_request(client);
 	dial_fake_request(client);
-	res = socket_set_nb(net_state->mix_entry.sock_fd);
+	res = socket_set_nonblocking(net_state->mix_entry.sock_fd);
 	if (res) {
 		fprintf(stderr, "socket setoption error\n");
 		return -1;
@@ -1434,9 +1375,9 @@ int client_run(client_s *client)
 	epoll_ctl(net_state->epoll_inst, EPOLL_CTL_ADD, net_state->mix_entry.sock_fd, &net_state->mix_entry.event);
 
 	for (uint32_t i = 0; i < num_pkg_servers; i++) {
-		client_connection *pkg_conn = &net_state->pkg_client_connections[i];
+		connection *pkg_conn = &net_state->pkg_connections[i];
 		pkg_conn->sock_fd = net_connect("127.0.0.1", pkg_cl_listen_ports[i], 1);
-		if (net_state->pkg_client_connections[i].sock_fd == -1) {
+		if (net_state->pkg_connections[i].sock_fd == -1) {
 			return -1;
 		}
 		pkg_conn->id = i;
@@ -1444,17 +1385,17 @@ int client_run(client_s *client)
 		pkg_conn->conn_type = 'P';
 		pkg_conn->write_remaining = 0;
 		pkg_conn->bytes_written = 0;
-		pkg_conn->process = pkg_process_message;
-		pkg_conn->event.data.ptr = &net_state->pkg_client_connections[i];
+		pkg_conn->process = client_net_process_pks_msg;
+		pkg_conn->event.data.ptr = &net_state->pkg_connections[i];
 		pkg_conn->event.events = EPOLLIN | EPOLLET;
-		epoll_ctl(net_state->epoll_inst, EPOLL_CTL_ADD, net_state->pkg_client_connections[i].sock_fd, &pkg_conn->event);
+		epoll_ctl(net_state->epoll_inst, EPOLL_CTL_ADD, net_state->pkg_connections[i].sock_fd, &pkg_conn->event);
 	}
 
 	struct epoll_event *events = net_state->events;
 
 	while (!client->authed) {
 		int n = epoll_wait(net_state->epoll_inst, net_state->events, 100, 5000);
-		client_connection *conn = NULL;
+		connection *conn = NULL;
 		// Error of some sort on the socket
 		for (int i = 0; i < n; i++) {
 			conn = events[i].data.ptr;
@@ -1496,7 +1437,7 @@ void *client_process_loop(void *clptr)
 			}
 		}
 
-		client_connection *conn = NULL;
+		connection *conn = NULL;
 		for (int i = 0; i < n; i++) {
 			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
 				conn = events[i].data.ptr;

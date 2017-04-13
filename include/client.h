@@ -11,7 +11,6 @@
 #include <pthread.h>
 #include "bloom.h"
 
-
 #if USE_PBC
 #include "ibe.h"
 #include "pbc_sign.h"
@@ -27,7 +26,6 @@ typedef struct client client_s;
 typedef struct friend_request friend_request_s;
 typedef struct incoming_call incoming_call_s;
 typedef struct client_net client_net;
-typedef struct client_connection client_connection;
 
 enum actions
 {
@@ -48,27 +46,13 @@ struct action
 	action *next;
 };
 
-struct client_connection
-{
-	uint32_t id;
-	int sock_fd;
-	byte_buffer_s *read_buf;
-	size_t curr_msg_len;
-	size_t bytes_read;
-	uint32_t msg_type;
-	uint8_t write_buf[buf_size];
-	size_t bytes_written;
-	size_t write_remaining;
-	struct epoll_event event;
-	int (*process)(client_s *owner, client_connection *conn);
-	unsigned char conn_type;
-};
+
 
 struct client_net
 {
-	client_connection mix_entry;
-	client_connection mix_last;
-	client_connection pkg_client_connections[num_pkg_servers];
+	connection mix_entry;
+	connection mix_last;
+	connection pkg_connections[num_pkg_servers];
 	struct epoll_event *events;
 	int epoll_inst;
 	int num_broadcast_responses;
@@ -162,16 +146,14 @@ int dial_call_friend(client_s *c, const uint8_t *user_id, uint32_t intent);
 int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint32_t num_tokens);
 int dial_fake_request(client_s *c);
 int af_fake_request(client_s *c);
-int client_connection_init(client_connection *conn);
-int ep_socket_send(client_s *c, client_connection *conn);
+int ep_socket_send(client_s *c, connection *conn);
 int client_net_init(client_s *c);
-int net_send_message(client_s *s, struct client_connection *conn, uint8_t *msg, uint32_t msg_size_bytes);
-int mix_entry_process_msg(client_s *client, struct client_connection *conn);
+int net_send_message(client_s *s, struct connection *conn, uint8_t *msg, uint32_t msg_size_bytes);
+int mix_entry_process_msg(void *client, struct connection *conn);
 int client_net_pkg_auth(client_s *cn);
-int pkg_process_message(client_s *c, client_connection *conn);
-int mix_last_process_msg(client_s *client, struct client_connection *conn);
-void net_process_read(client_s *s, client_connection *conn, ssize_t count);
-int ep_socket_read(client_s *c, client_connection *conn);
+int client_net_process_pks_msg(void *c, connection *conn);
+int mix_last_process_msg(void *client, struct connection *conn);
+int ep_socket_read(client_s *c, connection *conn);
 int client_run(client_s *cn);
 void *client_process_loop(void *c);
 int action_stack_push(client_s *c, action *new_action);

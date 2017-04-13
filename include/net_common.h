@@ -4,35 +4,46 @@
 #include "utils.h"
 #include <sys/epoll.h>
 
+typedef struct send_item send_item;
+struct send_item
+{
+	uint8_t *buffer;
+	uint64_t msg_size;
+	uint64_t bytes_written;
+	uint64_t write_remaining;
+	send_item *next;
+};
 
 typedef struct connection connection;
 struct connection
 {
-	uint32_t id;
+	uint64_t id;
 	int sock_fd;
-	uint8_t internal_read_buf[buf_size];
-	byte_buffer_s *read_buf;
-	ssize_t read_remaining;
-	ssize_t curr_msg_len;
-	ssize_t bytes_read;
+	byte_buffer_s read_buf;
+	uint32_t curr_msg_len;
+	uint32_t bytes_read;
 	uint32_t msg_type;
-	uint8_t internal_write_buf[buf_size];
-	byte_buffer_s *write_buf;
-	ssize_t bytes_written;
-	ssize_t write_remaining;
+	byte_buffer_s write_buf;
+	uint32_t bytes_written;
+	uint32_t write_remaining;
 	struct epoll_event event;
-	void (*on_read)(void *owner, connection *conn, ssize_t count);
-	void (*on_write)(void *owner, connection *conn, ssize_t count);
+	int (*process)(void *owner, connection *conn);
 	connection *next;
 	connection *prev;
 	bool connected;
+	send_item *send_queue_head;
+	send_item *send_queue_tail;
+	pthread_mutex_t send_queue_lock;
+	unsigned char conn_type;
+	void *client_state;
 };
 
-int net_accept(int listen_fd, int set_nb);
-int net_read_nb(int sock_fd, uint8_t *buf, size_t n);
-int net_send_nb(int sock_fd, uint8_t *buf, size_t n);
+int net_epoll_accept(int listen_fd, int set_nb);
+int net_read_nonblock(int sock_fd, uint8_t *buf, size_t n);
+int net_send_nonblock(int sock_fd, uint8_t *buf, size_t n);
 int net_connect(const char *addr, const char *port, int set_nb);
-int socket_set_nb(int socket);
+int socket_set_nonblocking(int socket);
 int net_start_listen_socket(const char *port, int set_nb);
-void connection_init(connection *conn);
+int connection_init(connection *conn);
+void net_process_read(void *owner, connection *conn, ssize_t count);
 #endif //ALPENHORN_NET_COMMON_H

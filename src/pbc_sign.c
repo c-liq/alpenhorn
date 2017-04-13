@@ -93,7 +93,6 @@ void pbc_sum_bytes_G1_compressed(element_s *elem_sum,
 	element_init_G1(tmp, pairing);
 	element_clear(elem_sum);
 	element_init(elem_sum, pairing->G1);
-	int elem_length = element_length_in_bytes_compressed(tmp);
 	for (int i = 0; i < n; i++) {
 		element_from_bytes_compressed(tmp, elem_bytes_ar + (i * elem_size));
 		element_add(elem_sum, elem_sum, tmp);
@@ -109,7 +108,6 @@ void pbc_sum_bytes_G2_compressed(element_s *elem_sum,
 {
 	element_t tmp;
 	element_init_G2(tmp, pairing);
-	int elem_length = element_length_in_bytes_compressed(tmp);
 	for (int i = 0; i < n; i++) {
 		element_from_bytes_compressed(tmp, elem_bytes_ar + (i * elem_size));
 		element_add(elem_sum, elem_sum, tmp);

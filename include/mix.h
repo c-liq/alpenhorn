@@ -5,6 +5,7 @@
 #include "config.h"
 #include "utils.h"
 #include "bloom.h"
+#include "net_common.h"
 
 
 struct mix_s;
@@ -35,6 +36,29 @@ struct af_mailbox
 	uint8_t *next_msg_ptr;
 	uint32_t num_messages;
 	uint32_t size_bytes;
+};
+
+struct remove_conn_list
+{
+	connection *conn;
+	connection *next;
+};
+
+typedef struct mix_net mix_net;
+struct mix_net
+{
+	int epoll_inst;
+	int listen_socket;
+	struct epoll_event *events;
+	int running;
+	connection prev_mix;
+	connection next_mix;
+	time_t next_af_round;
+	time_t next_dial_round;
+	connection pkg_conns[num_pkg_servers];
+	byte_buffer_s bc_buf;
+	connection *clients;
+	struct remove_conn_list *remove_list;
 };
 
 typedef struct af_mailbox af_mailbox_s;
@@ -99,6 +123,7 @@ struct mix_s
 	uint32_t dial_cont_stack_head;
 	mix_af_s af_data;
 	mix_dial_s dial_data;
+	mix_net net_state;
 	#if USE_PBC
 	pairing_s pairing;
 	element_s ibe_gen_elem;
@@ -121,4 +146,17 @@ void mix_dial_add_inc_msg(mix_s *mix, uint8_t *msg);
 void mix_af_newround(mix_s *mix);
 void mix_dial_newround(mix_s *mix);
 dial_mailbox_s *mix_dial_get_mailbox_buffer(mix_s *mix, uint64_t round, uint8_t *user_id);
+
+static const char mix_client_listen[] = "7000";
+static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
+
+int epoll_accept(mix_s *es, void on_accept(mix_s *, connection *), int on_read(void *, connection *));
+int epoll_read(mix_s *c, connection *conn);
+void epoll_send(mix_s *s, connection *conn);
+void mix_entry_forward_af_batch(mix_s *mix);
+void mix_dial_forward(mix_s *s);
+void mix_batch_forward(mix_s *s, byte_buffer_s *buf);
+void mix_broadcast_new_dialmb(mix_s *s, uint64_t round);
+void mix_broadcast_new_afmb(mix_s *s, uint64_t round);
+int mix_net_init(mix_s *mix);
 #endif //ALPENHORN_MIX_H

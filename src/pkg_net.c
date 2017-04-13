@@ -1,12 +1,7 @@
 
-#include "pkg.h"
-#include "net_common.h"
-#include <unistd.h>
-#include <sys/socket.h>
-#include <errno.h>
 
 typedef struct pkg_connection pkg_connection;
-
+static const char *pkg_cl_listen_ports[] = {"7500", "7501", "7502"};
 struct pkg_connection
 {
 	uint32_t id;

@@ -61,7 +61,7 @@ int kw_load(keywheel_table_s *table, uint64_t dial_round, char *file_path)
 
 	kw_table_init(table, dial_round, file_path);
 
-	fscanf(in_file, "%ld %ld %ld\n", &table->table_round, &table->num_keywheels, &table->num_unsynced);
+	fscanf(in_file, "%lu %lu %lu\n", &table->table_round, &table->num_keywheels, &table->num_unsynced);
 
 	char pk_hex_buf[crypto_box_PUBLICKEYBYTES * 2 + 1];
 	char sk_hex_buf[crypto_box_SECRETKEYBYTES * 2 + 1];

@@ -8,11 +8,6 @@ struct ibe_params
 	element_s private_key;
 };
 
-struct bn_params
-{
-
-};
-
 typedef struct ibe_params ibe_params;
 
 ibe_params *ibe_alloc(char *pb_params, const char *gen)

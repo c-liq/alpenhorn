@@ -3,9 +3,9 @@
 #include "utils.h"
 #include <math.h>
 
-void printhex(char *msg, uint8_t *data, ssize_t len)
+void printhex(char *msg, uint8_t *data, size_t len)
 {
-	ssize_t hex_len = len * 2 + 1;
+	size_t hex_len = len * 2 + 1;
 	char hex_str[hex_len];
 	sodium_bin2hex(hex_str, hex_len, data, len);
 	printf("%s: %s\n", msg, hex_str);
@@ -23,13 +23,13 @@ void crypto_shared_secret(uint8_t *shared_secret,
 	crypto_generichash_update(&hash_state, client_pub, crypto_box_PUBLICKEYBYTES);
 	crypto_generichash_update(&hash_state, server_pub, crypto_box_PUBLICKEYBYTES);
 	crypto_generichash_final(&hash_state, shared_secret, output_size);
-};
+}
 
 void serialize_uint32(uint8_t *out, uint32_t in)
 {
 	uint32_t network_in = htonl(in);
 	memcpy(out, &network_in, sizeof network_in);
-};
+}
 
 uint32_t deserialize_uint32(uint8_t *in)
 {
@@ -101,23 +101,22 @@ int crypto_chacha_decrypt(uint8_t *m,
                           const uint8_t *k)
 {
 	return crypto_aead_chacha20poly1305_ietf_decrypt(m, mlen_p, nsec, c, clen, ad, adlen, npub, k);
-};
+}
 
-int byte_buffer_resize(byte_buffer_s *buf, ssize_t new_capacity)
+int byte_buffer_resize(byte_buffer_s *buf, uint64_t new_capacity)
 {
 	if (new_capacity <= buf->capacity) {
 		fprintf(stderr, "cannot shrink buffer\n");
 		return -1;
 	}
 
-	uint8_t *new_buf = realloc(buf->base, (size_t) new_capacity);
+	uint8_t *new_buf = realloc(buf->data, (size_t) new_capacity);
 	if (!new_buf) {
 		fprintf(stderr, "failed to resize byte buffer, realloc failure\n");
 		return -1;
 	}
 
-	buf->base = new_buf;
-	buf->data = new_buf + buf->prefix_size;
+	buf->data = new_buf;
 	buf->pos = buf->data + buf->used;
 	buf->capacity = new_capacity;
 	return 0;
@@ -149,14 +148,14 @@ int byte_buffer_put_virtual(byte_buffer_s *buf, size_t size)
 	return 0;
 }
 
-byte_buffer_s *byte_buffer_alloc(uint32_t capacity, uint32_t prefix_size)
+byte_buffer_s *byte_buffer_alloc(uint64_t capacity)
 {
 	byte_buffer_s *buffer = calloc(1, sizeof *buffer);
 	if (!buffer) {
 		return NULL;
 	}
 
-	int res = byte_buffer_init(buffer, capacity, prefix_size);
+	int res = byte_buffer_init(buffer, capacity);
 	if (res) {
 		free(buffer);
 		return NULL;
@@ -164,21 +163,19 @@ byte_buffer_s *byte_buffer_alloc(uint32_t capacity, uint32_t prefix_size)
 	return buffer;
 }
 
-int byte_buffer_init(byte_buffer_s *buf, uint32_t capacity, uint32_t prefix_size)
+int byte_buffer_init(byte_buffer_s *buf, uint64_t capacity)
 {
 	if (!buf) return -1;
 
-	buf->prefix_size = prefix_size;
 	buf->capacity = capacity;
-	buf->base = calloc(1, prefix_size + buf->capacity);
+	buf->data = calloc(1, buf->capacity);
+	buf->pos = buf->data;
 
-	if (!buf->base) {
+	if (!buf->data) {
 		fprintf(stderr, "calloc error in mix_buf_init\n");
 		return -1;
 	}
 
-	buf->data = buf->base + prefix_size;
-	buf->pos = buf->data;
 	buf->used = 0;
 	return 0;
 }

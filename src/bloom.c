@@ -208,7 +208,7 @@ void bloom_clear(bloomfilter_s *bf)
 		free(bf->partition_lengths_bits);
 	if (bf->base_ptr)
 		free(bf->base_ptr);
-};
+}
 
 void bloom_free(bloomfilter_s *bf)
 {
