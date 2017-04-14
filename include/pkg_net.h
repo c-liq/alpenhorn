@@ -1,6 +1,0 @@
-
-#ifndef ALPENHORN_PKG_NET_H
-#define ALPENHORN_PKG_NET_H
-
-#endif //ALPENHORN_PKG_NET_H
-

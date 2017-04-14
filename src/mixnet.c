@@ -299,7 +299,6 @@ int mix_onion_encrypt_msg(mix_s *mix, uint8_t *msg, uint32_t msg_len)
 
 void mix_dial_add_noise(mix_s *mix)
 {
-	double start = get_time();
 	byte_buffer_put_virtual(&mix->dial_data.out_buf, net_header_BYTES);
 	for (uint32_t i = 0; i < mix->dial_data.num_mailboxes; i++) {
 		uint32_t noise = laplace_rand(&mix->dial_data.laplace);
@@ -317,8 +316,6 @@ void mix_dial_add_noise(mix_s *mix)
 			mix->dial_data.mailbox_counts[i] += noise;
 		}
 	}
-	double end = get_time();
-	printf("Added %d dial msgs total, time taken: %f\n", mix->dial_data.num_out_msgs, end - start);
 }
 
 void mix_af_add_noise(mix_s *mix)
@@ -376,14 +373,8 @@ int mix_remove_encryption_layer(mix_s *mix, uint8_t *out, uint8_t *c, uint32_t o
 	crypto_shared_secret(shared_secret, scalar_mult, client_pub_dh_ptr, mix->mix_dh_pks[0], crypto_ghash_BYTES);
 
 	uint32_t ctextlen = onionm_len - (crypto_box_PUBLICKEYBYTES + crypto_NBYTES);
-	result = crypto_chacha_decrypt(out,
-	                               NULL,
-	                               NULL,
-	                               c,
-	                               ctextlen, client_pub_dh_ptr,
-	                               crypto_box_PUBLICKEYBYTES + crypto_NBYTES,
-	                               nonce_ptr,
-	                               shared_secret);
+	result = crypto_chacha_decrypt(out, NULL, NULL, c, ctextlen, client_pub_dh_ptr,
+	                               crypto_box_PUBLICKEYBYTES + crypto_NBYTES, nonce_ptr, shared_secret);
 	if (result) {
 		fprintf(stderr, "Mix: Decryption error\n");
 		return -1;
@@ -402,20 +393,13 @@ int mix_update_mailbox_counts(uint32_t n, uint32_t num_mailboxes, uint32_t *mail
 	return 0;
 }
 
-int mix_decrypt_messages(mix_s *mix,
-                         uint8_t *in_ptr,
-                         uint8_t *out_ptr,
-                         uint32_t in_msg_len,
-                         uint32_t out_msg_len,
-                         uint32_t msg_count,
-                         uint32_t num_mailboxes,
-                         uint32_t *mailbox_counts)
+int mix_decrypt_messages(mix_s *mix, uint8_t *in_ptr, uint8_t *out_ptr, uint32_t in_msg_len, uint32_t out_msg_len,
+                         uint32_t msg_count, uint32_t num_mailboxes, uint32_t *mailbox_counts)
 {
-
 	uint8_t *curr_in_ptr = in_ptr;
 	uint8_t *curr_out_ptr = out_ptr;
 	uint32_t decrypted_msg_count = 0;
-	double start = get_time();
+
 	for (int i = 0; i < msg_count; i++) {
 		int result = mix_remove_encryption_layer(mix, curr_out_ptr, curr_in_ptr, in_msg_len);
 		curr_in_ptr += in_msg_len;
@@ -424,19 +408,13 @@ int mix_decrypt_messages(mix_s *mix,
 			if (mix->is_last) {
 				uint32_t n = deserialize_uint32(curr_out_ptr);
 				result = mix_update_mailbox_counts(n, num_mailboxes, mailbox_counts);
-				if (result) {
-					//printf("Invalid mailbox %d -- cover traffic\n", n);
-				}
 			}
 			if (!result) {
 				curr_out_ptr += out_msg_len;
 				decrypted_msg_count++;
-
 			}
 		}
 	}
-	double end = get_time();
-	printf("Decrypted %d msgs total of size %d, time taken: %f\n", decrypted_msg_count, in_msg_len, end - start);
 	return decrypted_msg_count;
 }
 
@@ -445,20 +423,14 @@ void mix_dial_decrypt_messages(mix_s *mix)
 	uint8_t *in_ptr = mix->dial_data.in_buf.data;
 	uint8_t *out_ptr = mix->dial_data.out_buf.pos;
 	//printf("Num messages to decrypt: %d\n", mix->dial_data.in_buf.num_msgs);
-	int n = mix_decrypt_messages(mix,
-	                             in_ptr,
-	                             out_ptr,
-	                             mix->dial_data.inc_msg_length,
-	                             mix->dial_data.out_msg_length,
-	                             mix->dial_data.num_inc_msgs,
-	                             mix->dial_data.num_mailboxes,
-	                             mix->dial_data.mailbox_counts);
+	int n = mix_decrypt_messages(mix, in_ptr, out_ptr, mix->dial_data.inc_msg_length, mix->dial_data.out_msg_length,
+	                             mix->dial_data.num_inc_msgs, mix->dial_data.num_mailboxes, mix->dial_data.mailbox_counts);
 
 	mix->dial_data.num_out_msgs += n;
 	byte_buffer_put_virtual(&mix->dial_data.out_buf, n * mix->dial_data.out_msg_length);
 	mix_dial_shuffle(mix);
 	serialize_uint32(mix->dial_data.out_buf.data + net_msg_type_BYTES, mix->dial_data.num_out_msgs * mix->dial_data.out_msg_length);
-	serialize_uint32(mix->dial_data.out_buf.data, DIAL_BATCH);
+	serialize_uint32(mix->dial_data.out_buf.data, MIX_DIAL_BATCH);
 }
 
 void mix_af_decrypt_messages(mix_s *mix)
@@ -466,19 +438,13 @@ void mix_af_decrypt_messages(mix_s *mix)
 	uint8_t *in_ptr = mix->af_data.in_buf.data;
 	uint8_t *out_ptr = mix->af_data.out_buf.pos;
 
-	int n = mix_decrypt_messages(mix,
-	                             in_ptr,
-	                             out_ptr,
-	                             mix->af_data.inc_msg_length,
-	                             mix->af_data.out_msg_length,
-	                             mix->af_data.num_inc_msgs,
-	                             mix->af_data.num_mailboxes,
-	                             mix->af_data.mb_counts);
+	int n = mix_decrypt_messages(mix, in_ptr, out_ptr, mix->af_data.inc_msg_length, mix->af_data.out_msg_length,
+	                             mix->af_data.num_inc_msgs, mix->af_data.num_mailboxes, mix->af_data.mb_counts);
 
 	mix->af_data.num_out_msgs += n;
 	//printf("%d messages decrypted, now %d total\n",n, mix->af_data.out_buf.num_msgs);
 	byte_buffer_put_virtual(&mix->af_data.out_buf, n * mix->af_data.out_msg_length);
-	serialize_uint32(mix->af_data.out_buf.data, AF_BATCH);
+	serialize_uint32(mix->af_data.out_buf.data, MIX_AF_BATCH);
 	serialize_uint32(mix->af_data.out_buf.data + net_msg_type_BYTES, mix->af_data.num_out_msgs * mix->af_data.out_msg_length);
 }
 
@@ -493,17 +459,22 @@ void mix_pkg_broadcast(mix_s *s)
 	}
 }
 
-int net_add_send_item(void *owner, connection *conn, uint8_t *buffer, uint64_t data_size)
+int net_add_send_item(void *owner, connection *conn, uint8_t *buffer, uint32_t data_size)
 {
-	if (!owner || !conn) return -1;
+	if (!owner || !conn || !buffer) return -1;
 
 	send_item *new_item = calloc(1, sizeof *new_item);
+	if (!new_item) {
+		perror("malloc");
+		return -1;
+	}
 	new_item->buffer = buffer;
 	new_item->write_remaining = data_size;
 	new_item->bytes_written = 0;
+	new_item->next = NULL;
 
 	pthread_mutex_lock(&conn->send_queue_lock);
-	new_item->next = NULL;
+
 	if (conn->send_queue_tail) {
 		conn->send_queue_tail->next = new_item;
 	}
@@ -511,8 +482,9 @@ int net_add_send_item(void *owner, connection *conn, uint8_t *buffer, uint64_t d
 	if (!conn->send_queue_head) {
 		conn->send_queue_head = new_item;
 	}
+
 	pthread_mutex_unlock(&conn->send_queue_lock);
-	epoll_send(owner, conn);
+	net_epoll_send_queue(owner, conn);
 	return 0;
 }
 
@@ -544,7 +516,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 {
 	mix_s *mix = (mix_s *) m;
 
-	if (conn->msg_type == AF_BATCH) {
+	if (conn->msg_type == MIX_AF_BATCH) {
 		mix->af_data.num_inc_msgs = conn->curr_msg_len / mix->af_data.inc_msg_length;
 		byte_buffer_put(&mix->af_data.in_buf, conn->read_buf.data + net_header_BYTES, conn->curr_msg_len);
 		mix_af_decrypt_messages(mix);
@@ -562,7 +534,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 		mix_af_newround(mix);
 	}
 
-	else if (conn->msg_type == DIAL_BATCH) {
+	else if (conn->msg_type == MIX_DIAL_BATCH) {
 		mix->dial_data.num_inc_msgs = conn->curr_msg_len / mix->dial_data.inc_msg_length;
 		byte_buffer_put(&mix->dial_data.in_buf, conn->read_buf.data + net_header_BYTES, conn->curr_msg_len);
 		mix_dial_decrypt_messages(mix);
@@ -604,7 +576,7 @@ int mix_connect_neighbour(int srv_id)
 int mix_net_sync(mix_s *mix)
 {
 	uint32_t srv_id = mix->server_id;
-	mix_net *net_state = &mix->net_state;
+	net_server_state *net_state = &mix->net_state;
 	int res;
 	if (mix->is_last) {
 		int listen_socket = net_start_listen_socket(mix_listen_ports[srv_id], 1);
@@ -627,7 +599,7 @@ int mix_net_sync(mix_s *mix)
 	else {
 		int listen_socket = net_start_listen_socket(mix_listen_ports[srv_id], 0);
 		net_state->listen_socket = listen_socket;
-		int next_mix_sfd = net_epoll_accept(listen_socket, 0);
+		int next_mix_sfd = net_accept(listen_socket, 0);
 
 		if (next_mix_sfd == -1) {
 			fprintf(stderr, "fatal error on listening socket\n");
@@ -697,9 +669,10 @@ int mix_net_sync(mix_s *mix)
 	return 0;
 }
 
-void mix_client_onconnect(mix_s *s, connection *conn)
+void mix_client_onconnect(void *s, connection *conn)
 {
-	net_add_send_item(s, conn, s->net_state.bc_buf.data, net_header_BYTES + net_client_connect_BYTES);
+	mix_s *mix = (mix_s*) s;
+	net_add_send_item(s, conn, mix->net_state.bc_buf.data, net_header_BYTES + net_client_connect_BYTES);
 }
 
 void mix_remove_client(mix_s *s, connection *conn)
@@ -778,14 +751,14 @@ void mix_broadcast_new_afr(mix_s *s)
 
 int mix_entry_sync(mix_s *mix)
 {
-	mix_net *net_state = &mix->net_state;
+	net_server_state *net_state = &mix->net_state;
 	int res;
 	struct epoll_event event;
 	event.events = EPOLLIN | EPOLLET;
 	int listen_fd = net_start_listen_socket("3000", 0);
 	// Wait for PKG servers to connect
 	for (int i = 0; i < num_pkg_servers; i++) {
-		int fd = net_epoll_accept(listen_fd, 1);
+		int fd = net_accept(listen_fd, 1);
 		net_state->pkg_conns[i].sock_fd = fd;
 		event.data.ptr = &net_state->pkg_conns[i];
 		epoll_ctl(net_state->epoll_inst, EPOLL_CTL_ADD, fd, &event);
@@ -832,7 +805,8 @@ int mix_process_client_msg(void *server, connection *conn)
 
 int mix_net_init(mix_s *mix)
 {
-	mix_net *net_state = &mix->net_state;
+	net_server_state *net_state = &mix->net_state;
+	net_state->owner = mix;
 	net_state->epoll_inst = epoll_create1(0);
 
 	if (net_state->epoll_inst == -1) {
@@ -856,57 +830,7 @@ int mix_net_init(mix_s *mix)
 	return 0;
 }
 
-int epoll_accept(mix_s *mix,
-                 void on_accept(mix_s *, connection *),
-                 int on_read(void *, connection *))
-{
 
-	for (;;) {
-		struct epoll_event event;
-		int status;
-		int new_sock;
-		printf("Listening socket: %d\n", mix->net_state.listen_socket);
-		new_sock = net_epoll_accept(mix->net_state.listen_socket, 1);
-		if (new_sock == -1) {
-			// All new connections processed
-			if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
-				break;
-			}
-			// Something broke
-			//perror("client accept");
-			continue;
-		}
-
-		connection *new_conn = calloc(1, sizeof *new_conn);
-		if (!new_conn) {
-			perror("malloc");
-			return -1;
-		}
-		connection_init(new_conn);
-		new_conn->sock_fd = new_sock;
-		event.data.ptr = new_conn;
-		event.events = EPOLLIN | EPOLLET;
-		status = epoll_ctl(mix->net_state.epoll_inst, EPOLL_CTL_ADD, new_sock, &event);
-
-		if (status == -1) {
-			perror("epoll_ctl");
-			return -1;
-		}
-		if (mix->net_state.clients) {
-			mix->net_state.clients->prev = new_conn;
-		}
-		new_conn->next = mix->net_state.clients;
-		new_conn->prev = NULL;
-		mix->net_state.clients = new_conn;
-		new_conn->process = on_read;
-		printf("Connection accepted on %d, new sockfd: %d\n", mix->net_state.listen_socket, new_conn->sock_fd);
-		if (on_accept) {
-			on_accept((void *) mix, new_conn);
-		}
-
-	}
-	return 0;
-}
 
 void mix_batch_forward(mix_s *mix, byte_buffer_s *buf)
 {
@@ -943,7 +867,7 @@ void mix_dial_forward(mix_s *s)
 	mix_broadcast_dialround(s);
 }
 
-void epoll_send(mix_s *s, connection *conn)
+void net_epoll_send_queue(mix_s *s, connection *conn)
 {
 	int close_connection = 0;
 	send_item *current_item;
@@ -992,41 +916,7 @@ void epoll_send(mix_s *s, connection *conn)
 	}
 }
 
-int epoll_read(mix_s *es, connection *conn)
-{
-	int close_connection = 0;
-	for (;;) {
-		ssize_t count;
-		byte_buffer_s *read_buf = &conn->read_buf;
-		if (conn->read_buf.capacity == read_buf->used) {
-			byte_buffer_resize(read_buf, read_buf->capacity * 2);
-		}
-		count = read(conn->sock_fd, read_buf->pos, read_buf->capacity - read_buf->used);
-
-		if (count == -1) {
-			if (errno != EAGAIN) {
-				perror("read");
-				close_connection = 1;
-			}
-			break;
-		}
-
-		else if (count == 0) {
-			printf("Sock read 0 in epoll read, sock %d\n", conn->sock_fd);
-			close_connection = 1;
-			break;
-		}
-
-		net_process_read(es, conn, count);
-	}
-
-	if (close_connection) {
-		fprintf(stderr, "Epoll read: closing connection on sock %d..\n", conn->sock_fd);
-	}
-	return 0;
-}
-
-void check_time(mix_s *s)
+void mix_entry_check_timers(mix_s *s)
 {
 	time_t rem = s->net_state.next_dial_round - time(0);
 	if (rem <= 0) {
@@ -1044,17 +934,17 @@ void check_time(mix_s *s)
 }
 
 void mix_run(mix_s *mix,
-             void on_accept(mix_s *, connection *),
+             void on_accept(void *, connection *),
              int on_read(void *, connection *))
 {
-	mix_net *es = &mix->net_state;
+	net_server_state *es = &mix->net_state;
 	struct epoll_event *events = es->events;
 	es->running = 1;
 	es->next_af_round = time(0) + mix->af_data.round_duration;
 	es->next_dial_round = time(0) + mix->dial_data.round_duration;
 	while (es->running) {
 		if (mix->server_id == 0) {
-			check_time(mix);
+			mix_entry_check_timers(mix);
 		}
 		int num_events = epoll_wait(es->epoll_inst, es->events, 100, 5000);
 
@@ -1067,7 +957,7 @@ void mix_run(mix_s *mix,
 				continue;
 			}
 			else if (es->listen_socket == conn->sock_fd) {
-				int res = epoll_accept(mix, on_accept, on_read);
+				int res = net_epoll_client_accept(&mix->net_state, on_accept, on_read);
 				if (res) {
 					fprintf(stderr, "fatal server error\n");
 					es->running = 0;
@@ -1075,10 +965,10 @@ void mix_run(mix_s *mix,
 				}
 			}
 			else if (events[i].events & EPOLLIN) {
-				epoll_read(mix, conn);
+				net_epoll_read(mix, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
-				epoll_read(mix, conn);
+				net_epoll_read(mix, conn);
 
 			}
 		}
