@@ -1,9 +1,19 @@
 #ifndef ALPENHORN_CONFIG_H
 #define ALPENHORN_CONFIG_H
 
-#define USE_PBC 0
 #include <sodium.h>
 #include <sys/types.h>
+#include "constants.h"
+
+// Server parameters
+#define USE_PBC 0
+#define LOG 0
+#define num_pkg_servers 2U
+#define num_mix_servers 2U
+#define num_INTENTS 5
+#define mix_num_dial_mbs_stored 5
+#define read_buf_SIZE 16384
+#define write_buf_SIZE 16384
 
 #if USE_PBC
 #include <pbc/pbc.h>
@@ -15,36 +25,13 @@
 #define g2_serialized_bytes 128U
 #endif
 
-#define CLI_AUTH_REQ 50
-#define CLIENT_DIAL_MSG 27
-#define CLIENT_AF_MSG 28
-#define CLIENT_DIAL_MB_REQUEST 152
-#define CLIENT_AF_MB_REQUEST 153
-#define CLIENT_REG_REQUEST 666
-#define CLIENT_REG_CONFIRM 786
-#define PKG_BR_MSG 70
-#define PKG_AUTH_RES_MSG 80
-
-#define crypto_ghash_BYTES crypto_generichash_BYTES
-#define crypto_maxhash_BYTES crypto_generichash_BYTES_MAX
-#define crypto_MACBYTES crypto_aead_chacha20poly1305_ietf_ABYTES
-#define crypto_NBYTES crypto_aead_chacha20poly1305_ietf_NPUBBYTES
-// PBC constants
-
-
+#define user_id_BYTES 60U
 #define intent_BYTES 4U
 #define mb_BYTES 4U
 #define round_BYTES 8U
 #define dialling_token_BYTES 32U
-#define num_pkg_servers 2U
-#define num_mix_servers 2U
-#define num_INTENTS 5
-#define user_id_BYTES 60U
-#define net_msg_type_BYTES 4U
 
-#define net_header_BYTES 24U
 #define net_client_connect_BYTES (num_mix_servers * crypto_box_PUBLICKEYBYTES)
-
 #define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_serialized_bytes + crypto_box_PUBLICKEYBYTES + round_BYTES)
 #define af_ibeenc_request_BYTES (af_request_BYTES + g1_serialized_bytes + crypto_MACBYTES + crypto_NBYTES)
 #define onion_layer_BYTES (crypto_NBYTES + crypto_box_PUBLICKEYBYTES + crypto_MACBYTES)
@@ -58,24 +45,13 @@
 #define pkg_broadcast_msg_BYTES (g1_serialized_bytes + crypto_box_PUBLICKEYBYTES)
 #define pkg_sig_message_BYTES (user_id_BYTES + crypto_box_PUBLICKEYBYTES + round_BYTES)
 
-#define mix_num_dial_mbs_stored 5
-
+#if LOG
 #define start_timer(x) double x = get_time()
 #define end_timer_print(x, msg) double x_end = get_time(); printf("Time elapsed for %s: %f\n", msg, x_end - x)
-
-#define mix_num_buffer_elems 100000U
-
-#define AF_BATCH 1U
-#define DIAL_BATCH 9U
-#define NEW_DIAL_ROUND 3U
-#define NEW_AF_ROUND 4U
-#define DIAL_MB 40
-#define AF_MB 41
-#define MIX_SYNC 1337
-#define NEW_DMB_AVAIL 188
-#define NEW_AFMB_AVAIL 189
-
-
+#else
+#define start_timer(x)
+#define end_timer_print(x, msg)
+#endif
 
 static const uint8_t
 	user_ids[10][user_id_BYTES] = {"chris", "alice", "bob", "eve", "charlie", "jim", "megan", "john", "jill", "steve"};

@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <pthread.h>
 
-int net_epoll_accept(int listen_sfd, int set_nb)
+int net_accept(int listen_sfd, int set_nb)
 {
 	struct sockaddr_storage client_addr;
 	int new_sfd, status;
@@ -20,19 +20,69 @@ int net_epoll_accept(int listen_sfd, int set_nb)
 		status = socket_set_nonblocking(new_sfd);
 		if (status == -1) {
 			perror("setting non blocking option on socket");
+			close(new_sfd);
 			return -1;
 		}
 	}
 	return new_sfd;
 }
 
-int connection_init(connection *conn)
+int net_epoll_client_accept(net_server_state *srv_state,
+                            void on_accept(void *, connection *),
+                            int on_read(void *, connection *))
+{
+	for (;;) {
+		int new_sockfd = net_accept(srv_state->listen_socket, 1);
+		if (new_sockfd == -1) {
+			if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
+				break;
+			}
+			continue;
+		}
+
+		connection *new_conn = calloc(1, sizeof *new_conn);
+		if (!new_conn) {
+			perror("malloc");
+			return -1;
+		}
+
+		int status = connection_init(new_conn, read_buf_SIZE, write_buf_SIZE, on_read, srv_state->epoll_fd, new_sockfd);
+
+		if (status == -1) {
+			perror("epoll_ctl");
+			return -1;
+		}
+
+		if (srv_state->clients) {
+			srv_state->clients->prev = new_conn;
+		}
+
+		new_conn->next = srv_state->clients;
+		new_conn->prev = NULL;
+		srv_state->clients = new_conn;
+
+		printf("Connection accepted on %d, new sockfd: %d\n", srv_state->listen_socket, new_conn->sock_fd);
+		if (on_accept) {
+			on_accept(srv_state->owner, new_conn);
+		}
+	}
+	return 0;
+}
+
+int connection_init(connection *conn,
+                    uint64_t read_buf_size,
+                    uint64_t write_buf_size,
+                    int (*process)(void *, connection *),
+                    int epoll_fd,
+                    int socket_fd)
 {
 
-	int result = byte_buffer_init(&conn->read_buf, 16384);
+	if (!conn) return -1;
+
+	int result = byte_buffer_init(&conn->read_buf, read_buf_size);
 	if (result) return -1;
 
-	result = byte_buffer_init(&conn->write_buf, 16384);
+	result = byte_buffer_init(&conn->write_buf, write_buf_size);
 	if (result) return -1;
 
 	pthread_mutex_init(&conn->send_queue_lock, NULL);
@@ -40,11 +90,15 @@ int connection_init(connection *conn)
 	conn->msg_type = 0;
 	conn->bytes_written = 0;
 	conn->write_remaining = 0;
-	conn->sock_fd = -1;
+	conn->sock_fd = socket_fd;
 	conn->event.data.ptr = conn;
 	conn->curr_msg_len = 0;
-	conn->process = NULL;
-	conn->event.events = 0;
+	conn->process = process;
+	conn->event.events = EPOLLIN | EPOLLET;
+	if (epoll_fd > 0 && socket_fd > 0) {
+		if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, socket_fd, &conn->event))
+			return -1;
+	}
 	conn->connected = 1;
 	conn->send_queue_head = NULL;
 	conn->send_queue_tail = NULL;
@@ -65,7 +119,7 @@ int net_send_nonblock(int sock_fd, uint8_t *buf, size_t n)
 	return 0;
 }
 
-int net_read_nonblock(int sock_fd, uint8_t *buf, size_t n)
+int net_read_nonblock(const int sock_fd, uint8_t *buf, const size_t n)
 {
 	int bytes_read = 0;
 	while (bytes_read < n) {
@@ -80,7 +134,7 @@ int net_read_nonblock(int sock_fd, uint8_t *buf, size_t n)
 	return 0;
 }
 
-int net_connect(const char *addr, const char *port, int set_nb)
+int net_connect(const char *addr, const char *port, const int set_nb)
 {
 	struct addrinfo hints, *servinfo, *p;
 	int sock_fd;
@@ -154,18 +208,14 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 		}
 		// Message hasn't been fully received
 		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
-			printf("Full messagen not yet read: %u read, %d total\n", conn->bytes_read, conn->curr_msg_len + net_header_BYTES);
 			return;
 		}
 
 		conn->process(owner, conn);
-
 		uint32_t read_remaining = (conn->bytes_read - conn->curr_msg_len - net_header_BYTES);
 
 		if (read_remaining > 0) {
-			memcpy(conn->read_buf.data,
-			       conn->read_buf.data + net_header_BYTES + conn->curr_msg_len,
-			       read_remaining);
+			memcpy(conn->read_buf.data, conn->read_buf.data + net_header_BYTES + conn->curr_msg_len, read_remaining);
 		}
 
 		conn->curr_msg_len = 0;
@@ -182,14 +232,14 @@ int net_epoll_read(void *owner, connection *conn)
 	for (;;) {
 		ssize_t count;
 		byte_buffer_s *read_buf = &conn->read_buf;
-		ssize_t buf_space = read_buf->capacity - read_buf->used;
+		size_t buf_space = read_buf->capacity - read_buf->used;
 
 		if (buf_space <= 0) {
 			byte_buffer_resize(read_buf, conn->curr_msg_len * 2);
 			buf_space = read_buf->capacity - conn->bytes_read;
 		}
 
-		count = read(conn->sock_fd, read_buf->pos, (size_t) buf_space);
+		count = read(conn->sock_fd, read_buf->pos, buf_space);
 
 		if (count == -1) {
 			if (errno != EAGAIN) {
@@ -198,6 +248,7 @@ int net_epoll_read(void *owner, connection *conn)
 			}
 			break;
 		}
+
 		else if (count == 0) {
 			printf("Sock read 0 in epoll read, sock %d\n", conn->sock_fd);
 			close_client_connection = 1;
@@ -261,7 +312,7 @@ int net_epoll_send(void *c, connection *conn, int epoll_fd)
 	return 0;
 }
 
-int net_start_listen_socket(const char *port, int set_nb)
+int net_start_listen_socket(const char *port, const int set_nb)
 {
 	int listen_sfd;
 	struct addrinfo hints;
@@ -285,15 +336,17 @@ int net_start_listen_socket(const char *port, int set_nb)
 			break;
 	}
 
+	freeaddrinfo(serverinfo);
+
 	if (listen_sfd == -1) {
 		perror("couldn't establish socket");
-		freeaddrinfo(serverinfo);
 		return -1;
 	}
 
 	int y = 1;
 	if (setsockopt(listen_sfd, SOL_SOCKET, SO_REUSEADDR, &y, sizeof y) == -1) {
 		perror("setoption");
+		close(listen_sfd);
 		return -1;
 	}
 
@@ -308,15 +361,16 @@ int net_start_listen_socket(const char *port, int set_nb)
 	status = bind(listen_sfd, p->ai_addr, p->ai_addrlen);
 	if (status == -1) {
 		perror("bind failure");
+		close(listen_sfd);
 		return -1;
 	}
 
 	status = listen(listen_sfd, 5);
 	if (status == -1) {
 		perror("listen failure");
+		close(listen_sfd);
 		return -1;
 	}
 
-	freeaddrinfo(serverinfo);
 	return listen_sfd;
 }

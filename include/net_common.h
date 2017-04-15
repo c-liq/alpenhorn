@@ -8,17 +8,17 @@ typedef struct send_item send_item;
 struct send_item
 {
 	uint8_t *buffer;
-	uint64_t msg_size;
-	uint64_t bytes_written;
-	uint64_t write_remaining;
+	uint32_t bytes_written;
+	uint32_t write_remaining;
 	send_item *next;
+	bool copied;
 };
 
 typedef struct connection connection;
 struct connection
 {
-	uint64_t id;
 	int sock_fd;
+	int id;
 	byte_buffer_s read_buf;
 	uint32_t curr_msg_len;
 	uint32_t bytes_read;
@@ -34,16 +34,42 @@ struct connection
 	send_item *send_queue_head;
 	send_item *send_queue_tail;
 	pthread_mutex_t send_queue_lock;
-	unsigned char conn_type;
 	void *client_state;
 };
 
-int net_epoll_accept(int listen_fd, int set_nb);
-int net_read_nonblock(int sock_fd, uint8_t *buf, size_t n);
+typedef struct net_server_state net_server_state;
+
+struct net_server_state
+{
+	int epoll_fd;
+	int listen_socket;
+	struct epoll_event *events;
+	int running;
+	connection prev_mix;
+	connection next_mix;
+	time_t next_af_round;
+	time_t next_dial_round;
+	connection pkg_conns[num_pkg_servers];
+	byte_buffer_s bc_buf;
+	connection *clients;
+	struct remove_conn_list *remove_list;
+	void *owner;
+};
+
+int net_accept(int listen_fd, int set_nb);
+int net_epoll_send(void *c, connection *conn, int epoll_fd);
+int net_epoll_read(void *owner, connection *conn);
+int net_read_nonblock(const int sock_fd, uint8_t *buf, const size_t n);
 int net_send_nonblock(int sock_fd, uint8_t *buf, size_t n);
-int net_connect(const char *addr, const char *port, int set_nb);
+int net_connect(const char *addr, const char *port, const int set_nb);
 int socket_set_nonblocking(int socket);
-int net_start_listen_socket(const char *port, int set_nb);
-int connection_init(connection *conn);
+int net_start_listen_socket(const char *port, const int set_nb);
+int connection_init(connection *conn,
+                    uint64_t read_buf_size,
+                    uint64_t write_buf_size,
+                    int (*process)(void *, connection *),
+                    int epoll_fd,
+                    int socket_fd);
 void net_process_read(void *owner, connection *conn, ssize_t count);
+int net_epoll_client_accept(net_server_state *srv_state, void on_accept(void *, connection *), int on_read(void *, connection *));
 #endif //ALPENHORN_NET_COMMON_H

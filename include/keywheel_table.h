@@ -8,11 +8,8 @@
 struct keywheel;
 struct keywheel_table;
 struct keywheel_unsynced;
-
 typedef struct keywheel_table keywheel_table_s;
-
 typedef struct keywheel keywheel_s;
-
 typedef struct keywheel_unsynced keywheel_unsynced;
 
 struct keywheel_table
@@ -48,15 +45,8 @@ int kw_table_init(keywheel_table_s *table, uint64_t dial_round, char *table_file
 int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint32_t intent, bool is_outgoing);
 int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id, bool is_outgoing);
 void kw_advance_table(keywheel_table_s *table);
-int kw_new_keywheel(keywheel_table_s *table,
-                    const uint8_t *user_id,
-                    uint8_t *pk,
-                    uint8_t *sk,
-                    uint64_t round_sentt);
-int kw_complete_keywheel(keywheel_table_s *table,
-                         const uint8_t *user_id,
-                         uint8_t *friend_pk,
-                         const uint64_t round_sync);
+int kw_new_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *pk, uint8_t *sk, uint64_t round_sentt);
+int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *friend_pk, const uint64_t round_sync);
 keywheel_s *kw_from_request(keywheel_table_s *table, const uint8_t *user_id, uint8_t *dh_pk_out, uint8_t *friend_pk);
 int kw_save(keywheel_table_s *table);
 int kw_load(keywheel_table_s *table, uint64_t dial_round, char *file_path);

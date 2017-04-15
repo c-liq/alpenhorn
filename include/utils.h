@@ -7,11 +7,10 @@
 #include <unistd.h>
 #include <sys/time.h>
 
+#if USE_PBC
 typedef struct element_s element_s;
-
 typedef struct pairing_s pairing_s;
-
-#define buf_size 16348
+#endif
 
 struct byte_buffer
 {

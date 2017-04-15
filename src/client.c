@@ -3,7 +3,6 @@
 #include "client.h"
 #include "xxhash.h"
 #include <math.h>
-#include <errno.h>
 #include "client_config.h"
 
 uint32_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id)
@@ -266,7 +265,7 @@ int af_create_pkg_auth_request(client_s *client)
 
 	for (int i = 0; i < num_pkg_servers; i++) {
 		auth_request = client->pkg_auth_requests[i];
-		serialize_uint32(auth_request, CLI_AUTH_REQ);
+		serialize_uint32(auth_request, CLIENT_AUTH_REQUEST);
 		serialize_uint32(auth_request + net_msg_type_BYTES, cli_pkg_single_auth_req_BYTES);
 		serialize_uint64(auth_request + 8, client->af_round);
 		client_pk = auth_request + net_header_BYTES + user_id_BYTES + crypto_sign_BYTES;
@@ -731,7 +730,7 @@ int af_create_pkg_auth_request(client_s *c)
 		bn256_deserialize_g1(g1_tmp, c->pkg_broadcast_msgs[i]);
 		curvepoint_fp_add_vartime(c->pkg_eph_pub_combined_g1, c->pkg_eph_pub_combined_g1, g1_tmp);
 
-		serialize_uint32(auth_request, CLI_AUTH_REQ);
+		serialize_uint32(auth_request, CLIENT_AUTH_REQ);
 		serialize_uint32(auth_request + net_msg_type_BYTES, cli_pkg_single_auth_req_BYTES);
 		serialize_uint64(auth_request + 8, c->af_round);
 		serialize_uint64(auth_request + net_header_BYTES, c->af_round);
@@ -865,7 +864,6 @@ int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg
 int client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, const uint8_t *lt_sk_hex)
 {
 	if (!c || !user_id) return -1;
-
 	c->authed = false;
 	c->af_num_mailboxes = 1;
 	c->dial_num_mailboxes = 1;
@@ -1031,7 +1029,7 @@ int net_send_message(client_s *s, connection *conn, uint8_t *msg, uint32_t msg_s
 	memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining, msg, msg_size_bytes);
 	conn->write_remaining += msg_size_bytes;
 
-	return ep_socket_send(s, conn);
+	return net_epoll_send(s, conn, conn->sock_fd);
 }
 
 int client_net_init(client_s *c)
@@ -1041,7 +1039,7 @@ int client_net_init(client_s *c)
 	client_net *net_state = &c->net_state;
 	pthread_mutex_init(&net_state->aq_lock, NULL);
 	net_state->action_stack = NULL;
-	net_state->epoll_inst = epoll_create1(0);
+	net_state->epoll_fd = epoll_create1(0);
 	net_state->events = calloc(100, sizeof *net_state->events);
 	if (!net_state->events) {
 		fprintf(stderr, "fatal malloc error\n");
@@ -1049,70 +1047,6 @@ int client_net_init(client_s *c)
 	}
 	net_state->num_auth_responses = 0;
 	net_state->num_broadcast_responses = 0;
-	int res = connection_init(&net_state->mix_entry);
-	if (res) {
-		return -1;
-	}
-	res = connection_init(&net_state->mix_last);
-	if (res) {
-		return -1;
-	}
-
-	for (int i = 0; i < num_pkg_servers; i++) {
-		res = connection_init(&net_state->pkg_connections[i]);
-		if (res) {
-			fprintf(stderr, "client connection initialisation failed\n");
-			return -1;
-		}
-	}
-	return 0;
-}
-
-int ep_socket_send(client_s *c, connection *conn)
-{
-	if (!c || !conn) return -1;
-
-	int close = 0;
-	client_net *net_state = &c->net_state;
-	while (conn->write_remaining > 0) {
-		ssize_t count = send(conn->sock_fd, conn->write_buf.data + conn->bytes_written, conn->write_remaining, 0);
-		if (count == -1) {
-			if (errno != EAGAIN) {
-				fprintf(stderr, "socket send error %d on %d\n", errno, conn->sock_fd);
-				close = 1;
-			}
-			break;
-		}
-		else if (count == 0) {
-			fprintf(stderr, "Socket send 0 bytes on %d\n", conn->sock_fd);
-			close = 1;
-			break;
-		}
-		else {
-			conn->bytes_written += count;
-			conn->write_remaining -= count;
-
-			if (conn->write_remaining == 0) {
-				conn->bytes_written = 0;
-			}
-		}
-	}
-
-	if (close) {
-		fprintf(stderr, "Closing socket %d in epoll send\n", conn->sock_fd);
-		return -1;
-	}
-
-	// If we haven't finished writing, make sure EPOLLOUT is set
-	if (conn->write_remaining != 0 && !(conn->event.events & EPOLLOUT)) {
-		conn->event.events = EPOLLOUT | EPOLLET;
-		epoll_ctl(net_state->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
-	}
-		// If we have finished writing, make sure to unset EPOLLOUT
-	else if (conn->write_remaining == 0 && conn->event.events & EPOLLOUT) {
-		conn->event.events = EPOLLIN | EPOLLET;
-		epoll_ctl(net_state->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
-	}
 	return 0;
 }
 
@@ -1182,7 +1116,7 @@ int client_net_pkg_register(client_s *cn)
 	return 0;
 }
 
-int client_net_process_pks_msg(void *client_ptr, connection *conn)
+int client_net_process_pkg(void *client_ptr, connection *conn)
 {
 	if (!client_ptr || !conn) return -1;
 
@@ -1203,13 +1137,10 @@ int client_net_process_pks_msg(void *client_ptr, connection *conn)
 		break;
 
 	case PKG_AUTH_RES_MSG:
-		memcpy(c->pkg_auth_responses[conn->id],
-		       conn->read_buf.data + net_header_BYTES,
-		       pkg_enc_auth_res_BYTES);
+		memcpy(c->pkg_auth_responses[conn->id], conn->read_buf.data + net_header_BYTES, pkg_enc_auth_res_BYTES);
 		//printhex("auth response", conn->read_buf.data + net_header_BYTES, pkg_enc_auth_res_BYTES);
 		net_state->num_auth_responses++;
 		if (net_state->num_auth_responses == num_pkg_servers && c->mb_processed) {
-			//printf("All auth responses received, MB processed already so replace IBE keys\n");
 			af_process_auth_responses(c);
 			net_state->num_auth_responses = 0;
 		}
@@ -1244,7 +1175,8 @@ int mix_last_process_msg(void *client_ptr, connection *conn)
 		if (net_state->num_auth_responses == num_pkg_servers && !client->authed) {
 			af_process_auth_responses(client);
 			net_state->num_auth_responses = 0;
-		};
+		}
+
 		break;
 	case NEW_AFMB_AVAIL:
 		serialize_uint32(conn->write_buf.data + conn->bytes_written + conn->write_remaining, CLIENT_AF_MB_REQUEST);
@@ -1256,7 +1188,7 @@ int mix_last_process_msg(void *client_ptr, connection *conn)
 		       client->user_id,
 		       user_id_BYTES);
 		conn->write_remaining += net_header_BYTES + user_id_BYTES;
-		ep_socket_send(client, conn);
+		net_epoll_send(client, conn, conn->sock_fd);
 		break;
 	case NEW_DMB_AVAIL:
 		serialize_uint32(conn->write_buf.data + conn->bytes_written + conn->write_remaining, CLIENT_DIAL_MB_REQUEST);
@@ -1268,47 +1200,10 @@ int mix_last_process_msg(void *client_ptr, connection *conn)
 		       client->user_id,
 		       user_id_BYTES);
 		conn->write_remaining += net_header_BYTES + user_id_BYTES;
-		ep_socket_send(client, conn);
+		net_epoll_send(client, conn, conn->sock_fd);
 		break;
 	default:
 		fprintf(stderr, "Invalid message from Mix distribution server\n");
-		return -1;
-	}
-	return 0;
-}
-
-int ep_socket_read(client_s *c, connection *conn)
-{
-	int close_connection = 0;
-	for (;;) {
-		ssize_t count;
-		byte_buffer_s *read_buf = &conn->read_buf;
-		size_t buf_space = read_buf->capacity - read_buf->used;
-		if (buf_space <= 0) {
-			byte_buffer_resize(read_buf, conn->curr_msg_len * 2);
-			buf_space = read_buf->capacity - conn->bytes_read;
-		}
-
-		count = read(conn->sock_fd, read_buf->pos, buf_space);
-
-		if (count == -1) {
-			if (errno != EAGAIN) {
-				perror("read");
-				close_connection = 1;
-			}
-			break;
-		}
-		else if (count == 0) {
-			printf("(%c) Sock read 0 in epoll read, sock %d\n", conn->conn_type, conn->sock_fd);
-			close_connection = 1;
-			break;
-		}
-
-		net_process_read(c, conn, count);
-	}
-
-	if (close_connection) {
-		fprintf(stderr, "Epoll read: closing connection on sock %d..\n", conn->sock_fd);
 		return -1;
 	}
 	return 0;
@@ -1320,28 +1215,22 @@ int client_run(client_s *client)
 
 	client_net_init(client);
 	client_net *net_state = &client->net_state;
-	int mix_last_sfd = net_connect("127.0.0.1", mix_listen_ports[num_mix_servers - 1], 1);
-	if (mix_last_sfd == -1) {
+
+	int last_sockfd = net_connect("127.0.0.1", mix_listen_ports[num_mix_servers - 1], 1);
+	if (last_sockfd == -1) {
 		fprintf(stderr, "could not connect to mix distribution server\n");
 		return -1;
 	}
-	net_state->mix_last.conn_type = 'L';
-	net_state->mix_last.sock_fd = mix_last_sfd;
-	net_state->mix_last.process = mix_last_process_msg;
-	net_state->mix_last.event.events = EPOLLIN | EPOLLET;
-	net_state->mix_last.event.data.ptr = &net_state->mix_last;
-	epoll_ctl(net_state->epoll_inst, EPOLL_CTL_ADD, net_state->mix_last.sock_fd, &net_state->mix_last.event);
-	int mix_sfd = net_connect("127.0.0.1", mix_client_listen, 0);
-	if (mix_sfd == -1) {
+	connection_init(&net_state->mix_last, read_buf_SIZE, write_buf_SIZE, mix_last_process_msg, net_state->epoll_fd, last_sockfd);
+
+	int entry_sockfd = net_connect("127.0.0.1", mix_client_listen, 0);
+	if (entry_sockfd == -1) {
 		fprintf(stderr, "could not connect to mix entry server\n");
 		return -1;
 	}
+	connection_init(&net_state->mix_entry, read_buf_SIZE, write_buf_SIZE, mix_entry_process_msg, net_state->epoll_fd, entry_sockfd);
 
-	net_state->mix_entry.sock_fd = mix_sfd;
-	net_state->mix_entry.process = mix_entry_process_msg;
-	net_state->mix_entry.conn_type = 'E';
-
-	int res = net_read_nonblock(mix_sfd, net_state->mix_entry.read_buf.data, net_header_BYTES + net_client_connect_BYTES);
+	int res = net_read_nonblock(net_state->mix_entry.sock_fd, net_state->mix_entry.read_buf.data, net_header_BYTES + net_client_connect_BYTES);
 	if (res == -1) {
 		perror("client read");
 		return -1;
@@ -1351,10 +1240,7 @@ int client_run(client_s *client)
 	client->dialling_round = deserialize_uint64(net_state->mix_entry.read_buf.data + 16);
 	client->keywheel.table_round = client->dialling_round;
 	client->mb_processed = 1;
-	printf("[Connected as %s: Dial round: %ld | Add friend round: %ld]\n",
-	       client->user_id,
-	       client->dialling_round,
-	       client->af_round);
+	printf("[Connected as %s: Dial round: %ld | Add friend round: %ld]\n", client->user_id, client->dialling_round, client->af_round);
 
 	uint8_t *dh_ptr = net_state->mix_entry.read_buf.data + net_header_BYTES;
 	for (uint32_t i = 0; i < num_mix_servers; i++) {
@@ -1364,57 +1250,21 @@ int client_run(client_s *client)
 
 	af_fake_request(client);
 	dial_fake_request(client);
+
 	res = socket_set_nonblocking(net_state->mix_entry.sock_fd);
 	if (res) {
 		fprintf(stderr, "socket setoption error\n");
 		return -1;
 	}
 
-	net_state->mix_entry.event.data.ptr = &net_state->mix_entry;
-	net_state->mix_entry.event.events = EPOLLIN | EPOLLET;
-	epoll_ctl(net_state->epoll_inst, EPOLL_CTL_ADD, net_state->mix_entry.sock_fd, &net_state->mix_entry.event);
-
 	for (uint32_t i = 0; i < num_pkg_servers; i++) {
-		connection *pkg_conn = &net_state->pkg_connections[i];
-		pkg_conn->sock_fd = net_connect("127.0.0.1", pkg_cl_listen_ports[i], 1);
-		if (net_state->pkg_connections[i].sock_fd == -1) {
+		int new_pkg_sockfd = net_connect("127.0.0.1", pkg_cl_listen_ports[i], 1);
+		if (new_pkg_sockfd == -1) {
 			return -1;
 		}
-		pkg_conn->id = i;
-		pkg_conn->bytes_read = 0;
-		pkg_conn->conn_type = 'P';
-		pkg_conn->write_remaining = 0;
-		pkg_conn->bytes_written = 0;
-		pkg_conn->process = client_net_process_pks_msg;
-		pkg_conn->event.data.ptr = &net_state->pkg_connections[i];
-		pkg_conn->event.events = EPOLLIN | EPOLLET;
-		epoll_ctl(net_state->epoll_inst, EPOLL_CTL_ADD, net_state->pkg_connections[i].sock_fd, &pkg_conn->event);
+		connection_init(&net_state->pkg_connections[i], read_buf_SIZE, write_buf_SIZE, client_net_process_pkg, net_state->epoll_fd, new_pkg_sockfd);
+		net_state->pkg_connections[i].id = i;
 	}
-
-	struct epoll_event *events = net_state->events;
-
-	while (!client->authed) {
-		int n = epoll_wait(net_state->epoll_inst, net_state->events, 100, 5000);
-		connection *conn = NULL;
-		// Error of some sort on the socket
-		for (int i = 0; i < n; i++) {
-			conn = events[i].data.ptr;
-			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
-				close(conn->sock_fd);
-				free(events[i].data.ptr);
-				continue;
-			}
-				// Read from a socket
-			else if (events[i].events & EPOLLIN) {
-				ep_socket_read(client, conn);
-			}
-			else if (events[i].events & EPOLLOUT) {
-				ep_socket_send(client, conn);
-			}
-		}
-	}
-	net_state->num_auth_responses = 0;
-	net_state->num_broadcast_responses = 0;
 
 	pthread_t net_thread;
 	pthread_create(&net_thread, NULL, client_process_loop, client);
@@ -1427,8 +1277,9 @@ void *client_process_loop(void *clptr)
 	client_net *net_state = &client->net_state;
 	struct epoll_event *events = net_state->events;
 	client->running = true;
+
 	while (client->running) {
-		int n = epoll_wait(net_state->epoll_inst, net_state->events, 100, 100);
+		int n = epoll_wait(net_state->epoll_fd, net_state->events, 100, 5000);
 		if (client->authed) {
 			action *curr_action = action_stack_pop(client);
 			while (curr_action) {
@@ -1439,20 +1290,17 @@ void *client_process_loop(void *clptr)
 
 		connection *conn = NULL;
 		for (int i = 0; i < n; i++) {
+			conn = events[i].data.ptr;
 			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
-				conn = events[i].data.ptr;
-				fprintf(stderr, "Client: Socket error on connection type %c - Exiting\n", conn->conn_type);
+				fprintf(stderr, "Client: Socket error on socket %d - Exiting\n", conn->sock_fd);
 				client->running = false;
 				break;
 			}
-
 			else if (events[i].events & EPOLLIN) {
-				conn = events[i].data.ptr;
-				ep_socket_read(client, conn);
+				net_epoll_read(client, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
-				conn = events[i].data.ptr;
-				ep_socket_send(client, conn);
+				net_epoll_send(client, conn, client->net_state.epoll_fd);
 			}
 		}
 	}

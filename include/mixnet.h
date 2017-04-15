@@ -126,8 +126,8 @@ void mix_af_add_noise(mix_s *mix);
 void mix_dial_decrypt_messages(mix_s *mix);
 void mix_dial_distribute(mix_s *mix);
 void mix_af_distribute(mix_s *mix);
-void mix_af_add_inc_msg(mix_s *mix, uint8_t *buf);
-void mix_dial_add_inc_msg(mix_s *mix, uint8_t *msg);
+void mix_entry_add_af_message(mix_s *mix, uint8_t *buf);
+void mix_entry_add_dial_msg(mix_s *mix, uint8_t *msg);
 void mix_af_newround(mix_s *mix);
 void mix_dial_newround(mix_s *mix);
 dial_mailbox_s *mix_dial_get_mailbox_buffer(mix_s *mix, uint64_t round, uint8_t *user_id);
@@ -135,8 +135,8 @@ dial_mailbox_s *mix_dial_get_mailbox_buffer(mix_s *mix, uint64_t round, uint8_t 
 static const char mix_client_listen[] = "7000";
 static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
 
-void mix_entry_forward_af_batch(mix_s *mix);
-void mix_dial_forward(mix_s *s);
+void mix_entry_new_af_round(mix_s *mix);
+void mix_entry_new_dial_round(mix_s *mix);
 void mix_batch_forward(mix_s *s, byte_buffer_s *buf);
 void mix_broadcast_new_dialmb(mix_s *s, uint64_t round);
 void mix_broadcast_new_afmb(mix_s *s, uint64_t round);

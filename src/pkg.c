@@ -3,17 +3,16 @@
 #include <pthread.h>
 #include "pkg.h"
 #include "pkg_config.h"
-#include "net_common.h"
-#include <sys/socket.h>
-#include <errno.h>
-//#include <curl/curl.h>
+#include <curl/curl.h>
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "OCDFAInspection"
 typedef struct pkg_thread_args pkg_thread_args;
 
 static char payload_text[6][128] = {
 	"Date: Mon, 29 Nov 2010 21:54:29 +1100\r\n",
 	"To: alpenhorn.test@gmail.com\r\n",
-	"From: alpenhorn.test@gmail.comr\n",
+	"From: alpenhorn.test@gmail.com\n",
 	"Subject: Alpenhorn registration request\r\n\r\n",
 	"The body of the message starts here.\r\n",
 	"\0"};
@@ -56,14 +55,10 @@ static size_t payload_source(void *ptr, size_t size, size_t nmemb,
 
 int pkg_registration_request(pkg_server *server, const uint8_t *user_id, uint8_t *sig_key)
 {
-/*	CURL *curl;
-	CURLcode res;
-	struct curl_slist *recipients = NULL;
 	struct upload_status upload_ctx;
-
 	upload_ctx.lines_read = 0;
 
-	curl = curl_easy_init();
+	CURL *curl = curl_easy_init();
 	if (!curl) {
 		fprintf(stderr, "curl error\n");
 		return -1;
@@ -74,6 +69,7 @@ int pkg_registration_request(pkg_server *server, const uint8_t *user_id, uint8_t
 	curl_easy_setopt(curl, CURLOPT_URL, "smtp://smtp.gmail.com:587");
 	curl_easy_setopt(curl, CURLOPT_USE_SSL, (long) CURLUSESSL_ALL);
 	curl_easy_setopt(curl, CURLOPT_MAIL_FROM, "alpenhorn.test@gmail.com");
+	struct curl_slist *recipients = NULL;
 	recipients = curl_slist_append(recipients, (char *) user_id);
 	curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
 	curl_easy_setopt(curl, CURLOPT_READFUNCTION, payload_source);
@@ -91,10 +87,11 @@ int pkg_registration_request(pkg_server *server, const uint8_t *user_id, uint8_t
 
 	sprintf(payload_text[1], "To: %s\r\n", user_id);
 	sprintf(payload_text[4], "%s\r\n", pc->confirmation_key);
-	res = curl_easy_perform(curl);
+	CURLcode res = curl_easy_perform(curl);
 
 	curl_slist_free_all(recipients);
 	curl_easy_cleanup(curl);
+
 	if (res != CURLE_OK) {
 		fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
 		free(pc);
@@ -107,7 +104,7 @@ int pkg_registration_request(pkg_server *server, const uint8_t *user_id, uint8_t
 
 	if (pc->next) {
 		pc->next->prev = pc;
-	}*/
+	}
 
 	return 0;
 }
@@ -319,6 +316,7 @@ void pkg_server_shutdown(pkg_server *server)
 
 void pkg_client_free(pkg_client *client)
 {
+	sodium_memzero(client, sizeof(struct pkg_client));
 	free(client);
 }
 
@@ -424,10 +422,6 @@ void pkg_new_ibe_keypair(pkg_server *server)
 	bn256_scalarmult_bg1(server->eph_pub_key_elem_g1, server->eph_secret_key_elem_zr);
 	curvepoint_fp_makeaffine(server->eph_pub_key_elem_g1);
 	bn256_serialize_g1(server->eph_broadcast_message + net_header_BYTES, server->eph_pub_key_elem_g1);
-	/*fpe_out_str(stdout, server->eph_pub_key_elem_g1->m_x);
-	printf("\n");
-	fpe_out_str(stdout, server->eph_pub_key_elem_g1->m_y);*/
-	printf("\n");
 }
 
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
@@ -435,8 +429,7 @@ void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
 	twistpoint_fp2_scalarmult_vartime(client->eph_sk_G2, client->hashed_id_elem_g2, server->eph_secret_key_elem_zr);
 	twistpoint_fp2_makeaffine(client->eph_sk_G2);
 	bn256_serialize_g2(client->auth_response_ibe_key_ptr, client->eph_sk_G2);
-	//fp2e_out_str(stdout,client->eph_sk_G2->m_x);
-//	fp2e_out_str(stdout,client->eph_sk_G2->m_y);
+
 }
 
 void pkg_sign_for_client(pkg_server *server, pkg_client *client)
@@ -452,53 +445,38 @@ void pkg_sign_for_client(pkg_server *server, pkg_client *client)
 
 static const char *pkg_cl_listen_ports[] = {"7500", "7501", "7502"};
 
-#define CLI_AUTH_REQ 50
-
-struct pkg_net
-{
-	pkg_server *pkg;
-	struct epoll_event *events;
-	int epoll_inst;
-	connection mix_conn;
-	int listen_fd;
-	connection *clients;
-};
-
-typedef struct pkg_net pkg_net_s;
-
-void epoll_pkg_send(pkg_net_s *s, connection *conn);
-
-bool net_pkg_auth_client(pkg_net_s *s, connection *conn)
+bool pkg_net_auth_client(pkg_server *s, connection *conn)
 {
 	pkg_client *client_state = conn->client_state;
 	if (!client_state) {
-		int index = pkg_client_lookup(s->pkg, conn->read_buf.data + net_header_BYTES + round_BYTES);
+		int index = pkg_client_lookup(s, conn->read_buf.data + net_header_BYTES + round_BYTES);
 		if (index == -1) {
 			return false;
 		}
-		client_state = &s->pkg->clients[index];
+		client_state = &s->clients[index];
 	}
 
 	pkg_client *client = client_state;
 	memcpy(client_state->auth_msg_from_client,
 	       conn->read_buf.data + net_header_BYTES,
 	       cli_pkg_single_auth_req_BYTES);
-	int authed = pkg_auth_client(s->pkg, client);
+	int authed = pkg_auth_client(s, client);
 	if (!authed) {
 		memcpy(conn->write_buf.data + conn->bytes_written,
 		       client->eph_client_data,
 		       net_header_BYTES + pkg_enc_auth_res_BYTES);
 		conn->write_remaining += net_header_BYTES + pkg_enc_auth_res_BYTES;
-		epoll_pkg_send(s, conn);
+		net_epoll_send(s, conn, conn->sock_fd);
 	}
 	return true;
 }
 
-void remove_client(pkg_net_s *s, connection *conn)
+void remove_client(pkg_server *s, connection *conn)
 {
-	epoll_ctl(s->epoll_inst, EPOLL_CTL_DEL, conn->sock_fd, &conn->event);
-	if (conn == s->clients) {
-		s->clients = conn->next;
+	net_server_state *net_state = &s->net_state;
+	epoll_ctl(net_state->epoll_fd, EPOLL_CTL_DEL, conn->sock_fd, &conn->event);
+	if (conn == net_state->clients) {
+		net_state->clients = conn->next;
 	}
 	if (conn->next) {
 		conn->next->prev = conn->prev;
@@ -509,89 +487,48 @@ void remove_client(pkg_net_s *s, connection *conn)
 	free(conn);
 }
 
-void epoll_broadcast_msg(pkg_net_s *s, connection *conn)
+void pkg_net_broadcast(void *s, connection *conn)
 {
+	pkg_server *pkg_server = s;
 	memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining,
-	       s->pkg->eph_broadcast_message,
+	       pkg_server->eph_broadcast_message,
 	       net_header_BYTES + pkg_broadcast_msg_BYTES);
 	conn->write_remaining += net_header_BYTES + pkg_broadcast_msg_BYTES;
-	epoll_pkg_send(s, conn);
-}
-
-void epoll_pkg_send(pkg_net_s *s, connection *conn)
-{
-	int close_connection = 0;
-	while (conn->write_remaining > 0) {
-		ssize_t count = send(conn->sock_fd, conn->write_buf.data + conn->bytes_written, conn->write_remaining, 0);
-		if (count == -1) {
-			if (errno != EAGAIN) {
-				perror("send");
-				close_connection = 1;
-			}
-			break;
-		}
-		else if (count == 0) {
-			close_connection = 1;
-			break;
-		}
-		else {
-			conn->bytes_written += count;
-			conn->write_remaining -= count;
-		}
-	}
-	if (close_connection) {
-		//close(conn->sock_fd);
-		//free(conn);
-	}
-
-	if (conn->write_remaining == 0) {
-		conn->bytes_written = 0;
-	}
-
-	// If we haven't finished writing, make sure EPOLLOUT is set
-	if (conn->write_remaining != 0 && !(conn->event.events & EPOLLOUT)) {
-		conn->event.events = EPOLLOUT;
-		epoll_ctl(s->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
-	}
-		// If we have finished writing, make sure to unset EPOLLOUT
-	else if (conn->write_remaining == 0 && conn->event.events & EPOLLOUT) {
-		conn->event.events = EPOLLIN;
-		epoll_ctl(s->epoll_inst, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
-	}
+	net_epoll_send(s, conn, conn->sock_fd);
 }
 
 int pkg_mix_read(void *srv, connection *conn)
 {
-	pkg_net_s *s = (pkg_net_s *) srv;
-	pkg_new_round(s->pkg);
-	connection *curr = s->clients;
-	printf("PKG advanced to round %ld\n", s->pkg->current_round);
+	pkg_server *pkg = (pkg_server *) srv;
+	pkg_new_round(pkg);
+	connection *curr = pkg->net_state.clients;
+	printf("PKG advanced to round %ld\n", pkg->current_round);
 	while (curr) {
-		epoll_broadcast_msg(s, curr);
+		pkg_net_broadcast(pkg, curr);
 		curr = curr->next;
 	}
 	return 0;
 }
 
-int pkg_client_read(void *srv, connection *conn)
+int pkg_net_process_client_msg(void *srv, connection *conn)
 {
-	pkg_net_s *s = (pkg_net_s *) srv;
+	pkg_server *s = (pkg_server *) srv;
 
-	if (conn->msg_type == CLI_AUTH_REQ) {
+	if (conn->msg_type == CLIENT_AUTH_REQ) {
 		printf("Authentication request received from %s\n", conn->read_buf.data + net_header_BYTES + round_BYTES);
-		int res = net_pkg_auth_client(s, conn);
+		int res = pkg_net_auth_client(s, conn);
 		if (!res) {
 			fprintf(stderr, "Authentication failed for %s\n", conn->read_buf.data + net_header_BYTES + round_BYTES);
 		}
 	}
 	else if (conn->msg_type == CLIENT_REG_REQUEST) {
-		pkg_registration_request(s->pkg,
+		pkg_registration_request(s,
 		                         conn->read_buf.data + net_header_BYTES,
 		                         conn->read_buf.data + net_header_BYTES + user_id_BYTES);
 	}
 
 	else if (conn->msg_type == CLIENT_REG_CONFIRM) {
-		pkg_confirm_registration(s->pkg,
+		pkg_confirm_registration(s,
 		                         conn->read_buf.data + net_header_BYTES,
 		                         conn->read_buf.data + net_header_BYTES + user_id_BYTES);
 	}
@@ -599,150 +536,63 @@ int pkg_client_read(void *srv, connection *conn)
 	return 0;
 }
 
-int net_cli_epread(pkg_net_s *s, connection *conn)
+int pkg_server_startup(pkg_server *pkg)
 {
-	int close_connection = 0;
-	for (;;) {
-		ssize_t count;
-		count = read(conn->sock_fd,
-		             conn->read_buf.data + conn->bytes_read,
-		             conn->read_buf.capacity - conn->bytes_read);
-
-		if (count == -1) {
-			if (errno != EAGAIN) {
-				perror("read");
-				close_connection = 1;
-			}
-			break;
-		}
-		else if (count == 0) {
-			close_connection = 1;
-			break;
-		}
-		if (conn->process) {
-			conn->process(s, conn);
-		}
-	}
-
-	if (close_connection) {
-		close(conn->sock_fd);
-	}
-	return 0;
-}
-
-int pkg_server_startup(pkg_net_s *s, pkg_server *pkg)
-{
-	memset(&s->mix_conn, 0, sizeof s->mix_conn);
+	net_server_state *s = &pkg->net_state;
+	s->owner = pkg;
 	s->clients = NULL;
-	struct epoll_event event;
-	s->pkg = pkg;
-	s->epoll_inst = epoll_create1(0);
-	byte_buffer_init(&s->mix_conn.read_buf, 4096);
-	byte_buffer_init(&s->mix_conn.write_buf, 4096);
+	s->epoll_fd = epoll_create1(0);
 	s->events = calloc(1000, sizeof *s->events);
+
 	int mix_fd = net_connect("127.0.0.1", "3000", 1);
 	if (mix_fd == -1) {
 		printf("failed to connect to mix entry server\n");
 		return -1;
 	}
-	s->mix_conn.sock_fd = mix_fd;
-	s->mix_conn.process = pkg_mix_read;
-	event.data.ptr = &s->mix_conn;
-	event.events = EPOLLIN | EPOLLET;
-	epoll_ctl(s->epoll_inst, EPOLL_CTL_ADD, mix_fd, &event);
+	connection_init(&s->next_mix, read_buf_SIZE, write_buf_SIZE, pkg_mix_read, s->epoll_fd, mix_fd);
 
-	int listen_sfd = net_start_listen_socket(pkg_cl_listen_ports[s->pkg->srv_id], 1);
-	if (listen_sfd == -1) {
+	s->listen_socket = net_start_listen_socket(pkg_cl_listen_ports[pkg->srv_id], 1);
+	if (s->listen_socket == -1) {
 		fprintf(stderr, "failed to establish listening socket for pkg server\n");
 		return -1;
 	}
 
-	s->listen_fd = listen_sfd;
-
-	event.data.fd = listen_sfd;
+	struct epoll_event event;
+	event.data.fd = s->listen_socket;
 	event.events = EPOLLIN | EPOLLET;
-	epoll_ctl(s->epoll_inst, EPOLL_CTL_ADD, listen_sfd, &event);
+	epoll_ctl(s->epoll_fd, EPOLL_CTL_ADD, s->listen_socket, &event);
 
 	return 0;
 }
 
-int epoll_paccept(pkg_net_s *s)
+void pkg_server_run(pkg_server *s)
 {
-	for (;;) {
-
-		struct epoll_event event;
-		int status;
-		int new_sock;
-		new_sock = net_epoll_accept(s->listen_fd, 1);
-		if (new_sock == -1) {
-			// All new connections processed
-			if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
-				break;
-			}
-			// Something broke
-			perror("client accept");
-			continue;
-		}
-
-		connection *new_conn = calloc(1, sizeof(*new_conn));
-		if (!new_conn) {
-			perror("malloc");
-			return -1;
-		}
-		if (s->clients) {
-			s->clients->prev = new_conn;
-		}
-		new_conn->next = s->clients;
-		new_conn->prev = NULL;
-		byte_buffer_init(&new_conn->read_buf, 16384);
-		s->clients = new_conn;
-		new_conn->process = pkg_client_read;
-		new_conn->sock_fd = new_sock;
-		event.data.ptr = new_conn;
-		event.events = EPOLLIN | EPOLLET;
-		status = epoll_ctl(s->epoll_inst, EPOLL_CTL_ADD, new_sock, &event);
-
-		if (status == -1) {
-			perror("epoll_ctl");
-			return -1;
-		}
-
-		printf("Accepted connection on listening socket, %d\n", new_conn->sock_fd);
-		epoll_broadcast_msg(s, new_conn);
-	}
-	return 0;
-}
-
-void net_pkg_server_loop(pkg_net_s *es, int (*on_read)(pkg_net_s *, connection *, ssize_t))
-{
-
-	struct epoll_event *events = es->events;
+	net_server_state *net_state = &s->net_state;
+	struct epoll_event *events = net_state->events;
 
 	for (;;) {
-		int n = epoll_wait(es->epoll_inst, es->events, 100, 5000);
+		int n = epoll_wait(net_state->epoll_fd, net_state->events, 1000, 5000);
 		connection *conn = NULL;
 		// Error of some sort on the socket
 		for (int i = 0; i < n; i++) {
+			conn = (connection *) events[i].data.ptr;
 			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
-				conn = (connection *) events[i].data.ptr;
 				close(conn->sock_fd);
-				remove_client(es, conn);
+				remove_client(s, conn);
 				continue;
 			}
-			else if (es->listen_fd == events[i].data.fd) {
-				int res = epoll_paccept(es);
+			else if (net_state->listen_socket == events[i].data.fd) {
+				int res = net_epoll_client_accept(net_state, pkg_net_broadcast, pkg_net_process_client_msg);
 				if (res) {
 					fprintf(stderr, "fatal server error\n");
 					exit(1);
 				}
 			}
-				// Read from a socket
 			else if (events[i].events & EPOLLIN) {
-				conn = events[i].data.ptr;
-				net_cli_epread(es, conn);
+				net_epoll_read(s, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
-				epoll_pkg_send(es, conn);
+				net_epoll_send(s, conn, conn->sock_fd);
 			}
 		}
 	}
@@ -768,8 +618,9 @@ int main(int argc, char **argv)
 
 	pkg_server s;
 	pkg_server_init(&s, (uint32_t) sid, 10, 4);
-	pkg_net_s pkg_s;
-	pkg_server_startup(&pkg_s, &s);
+	pkg_server_startup(&s);
 	printf("[PKG %d successfully initialised]\n", s.srv_id);
-	net_pkg_server_loop(&pkg_s, NULL);
+	pkg_server_run(&s);
 }
+
+#pragma clang diagnostic pop

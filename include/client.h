@@ -54,7 +54,7 @@ struct client_net
 	connection mix_last;
 	connection pkg_connections[num_pkg_servers];
 	struct epoll_event *events;
-	int epoll_inst;
+	int epoll_fd;
 	int num_broadcast_responses;
 	int num_auth_responses;
 	action *action_stack;
@@ -146,14 +146,13 @@ int dial_call_friend(client_s *c, const uint8_t *user_id, uint32_t intent);
 int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint32_t num_tokens);
 int dial_fake_request(client_s *c);
 int af_fake_request(client_s *c);
-int ep_socket_send(client_s *c, connection *conn);
+
 int client_net_init(client_s *c);
 int net_send_message(client_s *s, struct connection *conn, uint8_t *msg, uint32_t msg_size_bytes);
 int mix_entry_process_msg(void *client, struct connection *conn);
 int client_net_pkg_auth(client_s *cn);
-int client_net_process_pks_msg(void *c, connection *conn);
+int client_net_process_pkg(void *c, connection *conn);
 int mix_last_process_msg(void *client, struct connection *conn);
-int ep_socket_read(client_s *c, connection *conn);
 int client_run(client_s *cn);
 void *client_process_loop(void *c);
 int action_stack_push(client_s *c, action *new_action);

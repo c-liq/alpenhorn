@@ -401,8 +401,8 @@ size_t bn256_serialize_gt(void *out, fp12e_t gt_elem)
 	fp2e_to_2fpe(fpe_elems[2], fpe_elems[3], gt_elem->m_a->m_b);
 	fp2e_to_2fpe(fpe_elems[4], fpe_elems[5], gt_elem->m_a->m_c);
 	fp2e_to_2fpe(fpe_elems[6], fpe_elems[7], gt_elem->m_b->m_a);
-	fp2e_to_2fpe(fpe_elems[8], fpe_elems[9], gt_elem->m_b->m_a);
-	fp2e_to_2fpe(fpe_elems[10], fpe_elems[11], gt_elem->m_b->m_a);
+	fp2e_to_2fpe(fpe_elems[8], fpe_elems[9], gt_elem->m_b->m_b);
+	fp2e_to_2fpe(fpe_elems[10], fpe_elems[11], gt_elem->m_b->m_c);
 	size_t total_count = 0;
 	size_t tmp_count = 0;
 	uint8_t *ptr = out;
