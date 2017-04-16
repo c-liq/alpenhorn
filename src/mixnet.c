@@ -439,7 +439,7 @@ void mix_af_decrypt_messages(mix_s *mix)
 	                             mix->af_data.num_inc_msgs, mix->af_data.num_mailboxes, mix->af_data.mb_counts);
 
 	mix->af_data.num_out_msgs += n;
-	//printf("%d messages decrypted, now %d total\n",n, mix->af_data.out_buf.num_msgs);
+	printf("%d messages decrypted, now %d total\n", n, mix->af_data.num_out_msgs);
 	byte_buffer_put_virtual(&mix->af_data.out_buf, n * mix->af_data.out_msg_length);
 	serialize_uint32(mix->af_data.out_buf.data, MIX_AF_BATCH);
 	serialize_uint32(mix->af_data.out_buf.data + net_msg_type_BYTES, mix->af_data.num_out_msgs * mix->af_data.out_msg_length);
@@ -858,7 +858,7 @@ void mix_entry_new_af_round(mix_s *mix)
 	mix->af_data.num_inc_msgs = 0;
 	mix->af_data.round++;
 
-	mix_af_calc_num_mbs(mix);
+	//mix_af_calc_num_mbs(mix);
 	mix_broadcast_new_afr(mix);
 	mix_pkg_broadcast(mix);
 	mix_batch_forward(mix, &mix->af_data.out_buf);
@@ -872,7 +872,6 @@ void mix_entry_new_af_round(mix_s *mix)
 	byte_buffer_clear(&mix->af_data.out_buf);
 	mix->af_data.num_out_msgs = 0;
 	mix_af_add_noise(mix);
-
 }
 
 void mix_entry_new_dial_round(mix_s *mix)
