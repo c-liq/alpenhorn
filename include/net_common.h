@@ -49,10 +49,14 @@ struct net_server_state
 	connection next_mix;
 	time_t next_af_round;
 	time_t next_dial_round;
+	time_t af_window_close;
+	time_t dial_window_close;
 	connection pkg_conns[num_pkg_servers];
 	byte_buffer_s bc_buf;
 	connection *clients;
 	struct remove_conn_list *remove_list;
+	byte_buffer_s af_client_broadcast;
+	byte_buffer_s dial_client_broadcast;
 	void *owner;
 };
 

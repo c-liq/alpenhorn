@@ -20,8 +20,8 @@ void crypto_shared_secret(uint8_t *shared_secret,
 	crypto_generichash_state hash_state;
 	crypto_generichash_init(&hash_state, NULL, 0U, output_size);
 	crypto_generichash_update(&hash_state, scalar_mult, crypto_scalarmult_BYTES);
-	crypto_generichash_update(&hash_state, client_pub, crypto_box_PUBLICKEYBYTES);
-	crypto_generichash_update(&hash_state, server_pub, crypto_box_PUBLICKEYBYTES);
+	crypto_generichash_update(&hash_state, client_pub, crypto_pk_BYTES);
+	crypto_generichash_update(&hash_state, server_pub, crypto_pk_BYTES);
 	crypto_generichash_final(&hash_state, shared_secret, output_size);
 }
 

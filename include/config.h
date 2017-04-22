@@ -4,6 +4,8 @@
 #include <sodium.h>
 #include <sys/types.h>
 #include "constants.h"
+#include <stdbool.h>
+#include <memory.h>
 
 // Server parameters
 #define USE_PBC 0
@@ -31,19 +33,19 @@
 #define round_BYTES 8U
 #define dialling_token_BYTES 32U
 
-#define net_client_connect_BYTES (num_mix_servers * crypto_box_PUBLICKEYBYTES)
-#define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_serialized_bytes + crypto_box_PUBLICKEYBYTES + round_BYTES)
+#define net_client_connect_BYTES (num_mix_servers * crypto_pk_BYTES)
+#define af_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + g1_serialized_bytes + crypto_pk_BYTES + round_BYTES)
 #define af_ibeenc_request_BYTES (af_request_BYTES + g1_serialized_bytes + crypto_MACBYTES + crypto_NBYTES)
-#define onion_layer_BYTES (crypto_NBYTES + crypto_box_PUBLICKEYBYTES + crypto_MACBYTES)
+#define onion_layer_BYTES (crypto_NBYTES + crypto_pk_BYTES + crypto_MACBYTES)
 #define onionenc_friend_request_BYTES (mb_BYTES + af_ibeenc_request_BYTES + (num_mix_servers * onion_layer_BYTES))
 #define onionenc_dial_token_BYTES (mb_BYTES + dialling_token_BYTES + (num_mix_servers * onion_layer_BYTES))
-#define cli_pkg_single_auth_req_BYTES (round_BYTES + user_id_BYTES + crypto_sign_BYTES + crypto_box_PUBLICKEYBYTES)
+#define cli_pkg_single_auth_req_BYTES (round_BYTES + user_id_BYTES + crypto_sign_BYTES + crypto_pk_BYTES)
 #define cli_pkg_reg_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES)
 #define cli_pkg_reg_confirm_BYTES (user_id_BYTES + crypto_sign_BYTES)
 #define pkg_auth_res_BYTES (g1_serialized_bytes + g2_serialized_bytes)
 #define pkg_enc_auth_res_BYTES (pkg_auth_res_BYTES + crypto_MACBYTES + crypto_NBYTES)
-#define pkg_broadcast_msg_BYTES (g1_serialized_bytes + crypto_box_PUBLICKEYBYTES)
-#define pkg_sig_message_BYTES (user_id_BYTES + crypto_box_PUBLICKEYBYTES + round_BYTES)
+#define pkg_broadcast_msg_BYTES (g1_serialized_bytes + crypto_pk_BYTES)
+#define pkg_sig_message_BYTES (user_id_BYTES + crypto_pk_BYTES + round_BYTES)
 
 #if LOG
 #define start_timer(x) double x = get_time()

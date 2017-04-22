@@ -42,13 +42,13 @@ void bn256_scalar_random(scalar_t out)
 	scalar_setrandom(out, bn_n);
 }
 
-void bn256_scalarmult_bg1(curvepoint_fp_t out, scalar_t scl)
+void bn256_scalarmult_base_g1(curvepoint_fp_t out, scalar_t scl)
 {
 	curvepoint_fp_scalarmult_vartime(out, bn_curvegen, scl);
 	curvepoint_fp_makeaffine(out);
 }
 
-void bn256_scalarmult_bg2(twistpoint_fp2_t out, scalar_t scl)
+void bn256_scalarmult_base_g2(twistpoint_fp2_t out, scalar_t scl)
 {
 	twistpoint_fp2_scalarmult_vartime(out, bn_twistgen, scl);
 	twistpoint_fp2_makeaffine(out);
@@ -394,7 +394,7 @@ size_t bn256_serialize_g1(uint8_t *out, curvepoint_fp_t g1_elem)
 	return total_count;
 }
 
-size_t bn256_serialize_gt(void *out, fp12e_t gt_elem)
+size_t bn256_serialize_gt(uint8_t *out, fp12e_t gt_elem)
 {
 	fpe_t fpe_elems[12];
 	fp2e_to_2fpe(fpe_elems[0], fpe_elems[1], gt_elem->m_a->m_a);
@@ -469,7 +469,7 @@ void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t in[], const size_t coun
 	}
 }
 
-size_t bn256_serialize_g2(void *out, twistpoint_fp2_t in)
+size_t bn256_serialize_g2(uint8_t *out, twistpoint_fp2_t in)
 {
 	fpe_t fpe_elems[4];
 	fp2e_to_2fpe(fpe_elems[0], fpe_elems[1], in->m_x);

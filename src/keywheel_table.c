@@ -15,12 +15,12 @@ int kw_save(keywheel_table_s *table)
 
 	fprintf(out_file, "%ld %ld %ld\n", table->table_round, table->num_keywheels, table->num_unsynced);
 
-	char pk_buf[crypto_box_PUBLICKEYBYTES * 2 + 1];
+	char pk_buf[crypto_pk_BYTES * 2 + 1];
 	char sk_buf[crypto_box_SECRETKEYBYTES * 2 + 1];
 	keywheel_unsynced *curr_kwu = table->unsynced_keywheels;
 
 	while (curr_kwu) {
-		sodium_bin2hex(pk_buf, sizeof pk_buf, curr_kwu->public_key, crypto_box_PUBLICKEYBYTES);
+		sodium_bin2hex(pk_buf, sizeof pk_buf, curr_kwu->public_key, crypto_pk_BYTES);
 		sodium_bin2hex(sk_buf, sizeof sk_buf, curr_kwu->secret_key, crypto_box_SECRETKEYBYTES);
 		fprintf(out_file, "%s %s %s %ld\n", curr_kwu->user_id, pk_buf, sk_buf, curr_kwu->round_sent);
 		curr_kwu = curr_kwu->next;
@@ -63,7 +63,7 @@ int kw_load(keywheel_table_s *table, uint64_t dial_round, char *file_path)
 
 	fscanf(in_file, "%lu %lu %lu\n", &table->table_round, &table->num_keywheels, &table->num_unsynced);
 
-	char pk_hex_buf[crypto_box_PUBLICKEYBYTES * 2 + 1];
+	char pk_hex_buf[crypto_pk_BYTES * 2 + 1];
 	char sk_hex_buf[crypto_box_SECRETKEYBYTES * 2 + 1];
 	keywheel_unsynced *prev = NULL;
 	for (int i = 0; i < table->num_unsynced; i++) {
@@ -83,7 +83,7 @@ int kw_load(keywheel_table_s *table, uint64_t dial_round, char *file_path)
 		prev = curr;
 
 		fscanf(in_file, "%s %s %s %lu\n", curr->user_id, pk_hex_buf, sk_hex_buf, &curr->round_sent);
-		sodium_hex2bin(curr->public_key, crypto_box_PUBLICKEYBYTES, pk_hex_buf, sizeof pk_hex_buf, NULL, NULL, NULL);
+		sodium_hex2bin(curr->public_key, crypto_pk_BYTES, pk_hex_buf, sizeof pk_hex_buf, NULL, NULL, NULL);
 		sodium_hex2bin(curr->secret_key, crypto_box_SECRETKEYBYTES, sk_hex_buf, sizeof sk_hex_buf, NULL, NULL, NULL);
 	}
 
@@ -233,7 +233,7 @@ int kw_new_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *pk
 		return -1;
 	}
 	memcpy(nu->user_id, user_id, user_id_BYTES);
-	memcpy(nu->public_key, pk, crypto_box_PUBLICKEYBYTES);
+	memcpy(nu->public_key, pk, crypto_pk_BYTES);
 	memcpy(nu->secret_key, sk, crypto_box_SECRETKEYBYTES);
 	nu->round_sent = round_sent;
 

@@ -34,7 +34,7 @@ struct keywheel
 struct keywheel_unsynced
 {
 	uint8_t user_id[user_id_BYTES];
-	uint8_t public_key[crypto_box_PUBLICKEYBYTES];
+	uint8_t public_key[crypto_pk_BYTES];
 	uint8_t secret_key[crypto_box_SECRETKEYBYTES];
 	uint64_t round_sent;
 	keywheel_unsynced *next;

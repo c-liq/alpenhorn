@@ -17,7 +17,7 @@ twistpoint_fp2_t twistgen = {{{{{490313, 4260028, -821156, -818020, 106592, -171
 void bn256_bls_keygen(bn256_bls_keypair *kp)
 {
 	bn256_scalar_random(kp->secret_key);
-	bn256_scalarmult_bg2(kp->public_key, kp->secret_key);
+	bn256_scalarmult_base_g2(kp->public_key, kp->secret_key);
 	twistpoint_fp2_makeaffine(kp->public_key);
 }
 

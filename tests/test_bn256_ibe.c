@@ -43,8 +43,8 @@ int main()
 		for (int j = 0; j < num_pkg_servers; j++) {
 			memcpy(&pkg_servers[j].clients[i].auth_msg_from_client,
 			       clients[i].pkg_auth_requests[j] + net_header_BYTES + user_id_BYTES,
-			       crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES);
-			//printhex("client aut", clients[i].pkg_auth_requests[j]+net_batch_prefix+user_id_BYTES, crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES);
+			       crypto_pk_BYTES + crypto_sign_BYTES);
+			//printhex("client aut", clients[i].pkg_auth_requests[j]+net_batch_prefix+user_id_BYTES, crypto_pk_BYTES + crypto_sign_BYTES);
 		}
 	}
 	// PKG auth responses
@@ -72,7 +72,7 @@ int main()
 	curvepoint_fp_t master_pk;
 
 	bn256_scalar_random(master_sk);
-	bn256_scalarmult_bg1(master_pk, master_sk);
+	bn256_scalarmult_base_g1(master_pk, master_sk);
 	curvepoint_fp_makeaffine(master_pk);
 	twistpoint_fp2_t q_id;
 	twistpoint_fp2_t user_sk;

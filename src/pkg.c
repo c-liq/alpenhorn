@@ -133,7 +133,7 @@ int pkg_confirm_registration(pkg_server *server, uint8_t *user_id, uint8_t *sig)
 
 	pkg_client *new_client = &server->clients[server->num_clients];
 	memcpy(new_client->user_id, pc->user_id, user_id_BYTES);
-	memcpy(new_client->lt_sig_pk, pc->sig_key, crypto_box_PUBLICKEYBYTES);
+	memcpy(new_client->lt_sig_pk, pc->sig_key, crypto_pk_BYTES);
 	pkg_extract_client_sk(server, new_client);
 	pkg_sign_for_client(server, new_client);
 
@@ -419,7 +419,7 @@ void pkg_sign_for_client(pkg_server *server, pkg_client *client)
 void pkg_new_ibe_keypair(pkg_server *server)
 {
 	bn256_scalar_random(server->eph_secret_key_elem_zr);
-	bn256_scalarmult_bg1(server->eph_pub_key_elem_g1, server->eph_secret_key_elem_zr);
+	bn256_scalarmult_base_g1(server->eph_pub_key_elem_g1, server->eph_secret_key_elem_zr);
 	curvepoint_fp_makeaffine(server->eph_pub_key_elem_g1);
 	bn256_serialize_g1(server->eph_broadcast_message + net_header_BYTES, server->eph_pub_key_elem_g1);
 }

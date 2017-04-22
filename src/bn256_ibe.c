@@ -14,12 +14,11 @@ void bn256_ibe_build_sk(uint8_t *sk_out, uint8_t *qid, uint8_t *rp, uint8_t *pai
 	crypto_generichash_final(&hash_state, sk_out, crypto_ghash_BYTES);
 }
 
-int
-bn256_ibe_decrypt(uint8_t *out,
-                  uint8_t *c,
-                  size_t clen,
-                  uint8_t *public_key,
-                  twistpoint_fp2_t private_key)
+int bn256_ibe_decrypt(uint8_t *out,
+                      uint8_t *c,
+                      size_t clen,
+                      uint8_t *public_key,
+                      twistpoint_fp2_t private_key)
 {
 	curvepoint_fp_t rp;
 	bn256_deserialize_g1(rp, c);
@@ -57,7 +56,7 @@ ssize_t bn256_ibe_encrypt(uint8_t *out,
 	bn256_scalar_random(r);
 	curvepoint_fp_t rp;
 	curvepoint_fp_setneutral(rp);
-	bn256_scalarmult_bg1(rp, r);
+	bn256_scalarmult_base_g1(rp, r);
 	bn256_serialize_g1(out, rp);
 	fp12e_t pairing_qid_ppub;
 	fp12e_setzero(pairing_qid_ppub);

@@ -10,6 +10,7 @@
 #include "net_common.h"
 #include <pthread.h>
 #include "bloom.h"
+#include <sys/eventfd.h>
 
 #if USE_PBC
 #include "ibe.h"
@@ -46,8 +47,6 @@ struct action
 	action *next;
 };
 
-
-
 struct client_net
 {
 	connection mix_entry;
@@ -59,6 +58,8 @@ struct client_net
 	int num_auth_responses;
 	action *action_stack;
 	pthread_mutex_t aq_lock;
+	int interrupt_fd;
+
 };
 
 struct client
@@ -78,7 +79,8 @@ struct client
 	uint8_t friend_request_buf[net_header_BYTES + onionenc_friend_request_BYTES];
 	uint8_t dial_request_buf[net_header_BYTES + onionenc_dial_token_BYTES];
 	uint8_t session_key_buf[crypto_ghash_BYTES];
-	uint8_t mix_eph_pub_keys[num_mix_servers][crypto_box_PUBLICKEYBYTES];
+	uint8_t mix_af_pks[num_mix_servers][crypto_pk_BYTES];
+	uint8_t mix_dial_pks[num_mix_servers][crypto_pk_BYTES];
 	uint8_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
 	uint8_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES];
 	int curr_ibe;
@@ -114,7 +116,7 @@ struct client
 struct friend_request
 {
 	uint8_t user_id[user_id_BYTES];
-	uint8_t dh_pk[crypto_box_PUBLICKEYBYTES];
+	uint8_t dh_pk[crypto_pk_BYTES];
 	uint64_t dialling_round;
 	uint8_t lt_sig_key[crypto_sign_PUBLICKEYBYTES];
 	friend_request_s *next;
@@ -138,15 +140,14 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round);
 int print_friend_request(friend_request_s *req);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
-int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id);
+int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id, bool is_dial);
 int af_add_friend(client_s *c, const char *user_id);
 int af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages, uint64_t round);
-int af_accept_request(struct client *c, const char *user_id, struct friend_request *pRequest);
+int af_accept_request(client_s *c, friend_request_s *pRequest);
 int dial_call_friend(client_s *c, const uint8_t *user_id, uint32_t intent);
 int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint32_t num_tokens);
 int dial_fake_request(client_s *c);
 int af_fake_request(client_s *c);
-
 int client_net_init(client_s *c);
 int net_send_message(client_s *s, struct connection *conn, uint8_t *msg, uint32_t msg_size_bytes);
 int mix_entry_process_msg(void *client, struct connection *conn);

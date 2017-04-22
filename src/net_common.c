@@ -208,6 +208,8 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 		}
 		// Message hasn't been fully received
 		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
+			printf("Msg type: %d | Remaining: %d\n", conn->msg_type, conn->curr_msg_len - conn->bytes_read + net_header_BYTES);
+			printhex("buffer", conn->read_buf.data, conn->bytes_read);
 			return;
 		}
 
@@ -336,7 +338,7 @@ int net_start_listen_socket(const char *port, const int set_nb)
 			break;
 	}
 
-	freeaddrinfo(serverinfo);
+
 
 	if (listen_sfd == -1) {
 		perror("couldn't establish socket");
@@ -371,6 +373,6 @@ int net_start_listen_socket(const char *port, const int set_nb)
 		close(listen_sfd);
 		return -1;
 	}
-
+	freeaddrinfo(serverinfo);
 	return listen_sfd;
 }

@@ -70,6 +70,7 @@ struct mix_af
 	uint32_t last_noise_count;
 	uint64_t round;
 	uint32_t round_duration;
+	int32_t accept_window_duration;
 	uint32_t mb_counts[5];
 };
 
@@ -86,6 +87,7 @@ struct mix_dial
 	byte_buffer_s out_buf;
 	uint64_t round;
 	uint32_t round_duration;
+	int32_t accept_window_duration;
 	laplace_s laplace;
 	uint32_t last_noise_count;
 	uint32_t mailbox_counts[5];
@@ -101,8 +103,10 @@ struct mix_s
 	uint32_t num_inc_onion_layers;
 	uint32_t num_out_onion_layers;
 	bool is_last;
-	uint8_t eph_sk[crypto_box_SECRETKEYBYTES];
-	uint8_t *mix_dh_pks[crypto_box_PUBLICKEYBYTES];
+	uint8_t af_dh_sk[crypto_box_SECRETKEYBYTES];
+	uint8_t dial_dh_sk[crypto_box_SECRETKEYBYTES];
+	uint8_t *mix_af_dh_pks[crypto_pk_BYTES];
+	uint8_t *mix_dial_dh_pks[crypto_pk_BYTES];
 	afmb_container_s af_mb_container;
 	dmb_container_s dial_mb_containers[mix_num_dial_mbs_stored];
 	uint32_t dial_cont_stack_head;

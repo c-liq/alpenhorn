@@ -64,7 +64,7 @@ struct pkg_client
 {
 	uint8_t user_id[user_id_BYTES];
 	uint8_t lt_sig_pk[crypto_sign_PUBLICKEYBYTES];
-	uint8_t auth_msg_from_client[crypto_box_PUBLICKEYBYTES + crypto_sign_BYTES];
+	uint8_t auth_msg_from_client[crypto_pk_BYTES + crypto_sign_BYTES];
 	uint8_t eph_symmetric_key[crypto_generichash_BYTES];
 	uint8_t rnd_sig_msg[pkg_sig_message_BYTES];
 	uint8_t eph_client_data[net_header_BYTES + pkg_enc_auth_res_BYTES];
