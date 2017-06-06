@@ -6,6 +6,7 @@
 #include "prime_gen.h"
 #include "bloom.h"
 #define MAX_PREFIX_SZ 256
+
 void bloom_calc_partitions(const int m_target,
                            uint32_t *m_actual_bytes,
                            const uint32_t num_partitions,
@@ -161,11 +162,12 @@ int bloom_init(bloomfilter_s *bf, double p, uint32_t n, uint64_t hash_key, uint8
 		part_offsets[i] = offset_sum;
 	}
 	free(part_length_bytes);
-
+	free(primes_table);
 
 	if (bloom_data != NULL) {
 		bf->base_ptr = bloom_data;
 	}
+
 	else {
 		bf->base_ptr = calloc(actual_size + prefix_len, sizeof(uint8_t));
 		if (!bf->base_ptr) {
@@ -202,6 +204,8 @@ void bloom_print_stats(bloomfilter_s *bf)
 
 void bloom_clear(bloomfilter_s *bf)
 {
+	if (!bf)
+		return;
 	if (bf->partition_offsets)
 		free(bf->partition_offsets);
 	if (bf->partition_lengths_bits)

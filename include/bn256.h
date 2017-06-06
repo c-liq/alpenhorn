@@ -10,13 +10,13 @@
 
 #include "bn256/gmp_convert.h"
 
-#define fpe_bytes 32
+#define fpe_bytes 32U
 #define g1_bytes fpe_bytes*2
 #define g2_bytes fpe_bytes*4
 #define gt_bytes fpe_bytes*12
 
 void bn256_scalar_random(scalar_t out);
-void bn256_scalarmult_base_g1(curvepoint_fp_t out, scalar_t scl);
+void bn256_scalarmult_base_g1(curvepoint_fp_t out, scalar_t const scl);
 void bn256_scalarmult_base_g2(twistpoint_fp2_t out, scalar_t scl);
 bool bn256_init();
 int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len);

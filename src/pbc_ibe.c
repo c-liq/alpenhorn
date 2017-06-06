@@ -1,4 +1,4 @@
-#include "ibe.h"
+#include "pbc_ibe.h"
 
 struct ibe_params
 {
@@ -139,45 +139,5 @@ ibe_pbc_decrypt(uint8_t *out,
 	return 0;
 }
 
-/*
-int main() {
-	uint8_t user_id[user_id_BYTES] = "chris";
-	uint8_t user_hash[crypto_ghash_BYTES];
-	crypto_generichash(user_hash, crypto_ghash_BYTES, user_id, user_id_BYTES, NULL, 0);
-	element_t qid;
-	pairing_s pairing;
-	pairing_init_set_str(&pairing, pbc_params);
 
-	element_init(qid, pairing.G2);
-	element_from_hash(qid, user_hash, crypto_ghash_BYTES);
-
-	uint8_t qid_serialized[1024];
-	element_to_bytes_compressed(qid_serialized, qid);
-
-
-	element_s gen;
-	element_init(&gen, pairing.G1);
-	element_set_str(&gen, ibe_generator, 10);
-	element_s master_sk;
-	element_s master_pk;
-	element_init(&master_sk, pairing.Zr);
-	element_init(&master_pk, pairing.G1);
-	element_random(&master_sk);
-	element_pow_zn(&master_pk, &gen, &master_sk);
-
-	element_s user_sk;
-	element_init(&user_sk, pairing.G2);
-	element_pow_zn(&user_sk, qid, &master_sk);
-
-	uint8_t msg[128] = "test msg";
-	uint8_t out[1024];
-	ssize_t res = ibe_pbc_encrypt(out, msg, sizeof msg, &master_pk, &gen, user_id, user_id_BYTES, &pairing);
-	printf("Res: %ld %ld\n", res, sizeof msg);
-	uint8_t dec[1024];
-	res = ibe_pbc_decrypt(dec, out, (uint32_t)res, &user_sk, qid_serialized, &pairing);
-	printf("Res: %ld\n", res);
-	printf("%s\n", dec);
-
-}
-*/
 

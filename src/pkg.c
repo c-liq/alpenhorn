@@ -5,8 +5,6 @@
 #include "pkg_config.h"
 #include <curl/curl.h>
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "OCDFAInspection"
 typedef struct pkg_thread_args pkg_thread_args;
 
 static char payload_text[6][128] = {
@@ -55,6 +53,7 @@ static size_t payload_source(void *ptr, size_t size, size_t nmemb,
 
 int pkg_registration_request(pkg_server *server, const uint8_t *user_id, uint8_t *sig_key)
 {
+
 	struct upload_status upload_ctx;
 	upload_ctx.lines_read = 0;
 
@@ -623,4 +622,3 @@ int main(int argc, char **argv)
 	pkg_server_run(&s);
 }
 
-#pragma clang diagnostic pop

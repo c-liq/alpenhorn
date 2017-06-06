@@ -31,7 +31,7 @@ int kw_save(keywheel_table_s *table)
 	while (curr_kw) {
 		sodium_bin2hex(secret_buf,
 		               crypto_maxhash_BYTES * 2 + 1,
-		               curr_kw->key_state[0] + intent_BYTES,
+		               curr_kw->key_state + intent_BYTES,
 		               crypto_maxhash_BYTES);
 		fprintf(out_file, "%s %s %ld\n", curr_kw->user_id, secret_buf, curr_kw->dialling_round);
 		curr_kw = curr_kw->next;
@@ -106,7 +106,7 @@ int kw_load(keywheel_table_s *table, uint64_t dial_round, char *file_path)
 		prev_kw = curr;
 
 		fscanf(in_file, "%s %s %lu\n", curr->user_id, secret_hex_buf, &curr->dialling_round);
-		sodium_hex2bin(curr->key_state[0] + intent_BYTES,
+		sodium_hex2bin(curr->key_state + intent_BYTES,
 		               crypto_maxhash_BYTES,
 		               secret_hex_buf,
 		               sizeof secret_hex_buf,
@@ -169,13 +169,13 @@ void kw_print_table(keywheel_table_s *table)
 	printf("Keywheel table [Round %ld]\n-------------------------\n", table->table_round);
 	while (entry) {
 		printf("%s", entry->user_id);
-		printhex(" ", entry->key_state[0] + intent_BYTES, crypto_ghash_BYTES);
+		printhex(" ", entry->key_state + intent_BYTES, crypto_ghash_BYTES);
 		entry = entry->next;
 	}
 	printf("-------------------------\n");
 }
 
-int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id, bool is_outgoing)
+int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id)
 {
 	keywheel_s *kw = kw_lookup(table, user_id);
 
@@ -183,13 +183,13 @@ int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id
 		fprintf(stderr, "failed to generate session key, no keywheel entry for %s\n", user_id);
 		return -1;
 	}
-	crypto_generichash_blake2b_salt_personal(out, crypto_ghash_BYTES, kw->key_state[!is_outgoing] + intent_BYTES,
+	crypto_generichash_blake2b_salt_personal(out, crypto_ghash_BYTES, kw->key_state + intent_BYTES,
 	                                         crypto_maxhash_BYTES, NULL, 0, saltbytes_0, NULL);
 
 	return 0;
 }
 
-int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint32_t intent, bool is_outgoing)
+int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint32_t intent)
 {
 
 	keywheel_s *entry = kw_lookup(table, userid);
@@ -199,9 +199,9 @@ int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *user
 		return -1;
 	}
 
-	serialize_uint32(entry->key_state[!is_outgoing], intent);
+	serialize_uint32(entry->key_state, intent);
 	crypto_generichash_blake2b_salt_personal(out, crypto_ghash_BYTES,
-	                                         entry->key_state[!is_outgoing], intent_BYTES + crypto_maxhash_BYTES,
+	                                         entry->key_state, intent_BYTES + crypto_maxhash_BYTES,
 	                                         NULL, 0, saltbytes_1, NULL
 	);
 	//printhex("INACTIVE  ", entry->key_state[table->buffer_toggle], intent_BYTES + crypto_maxhash_BYTES);
@@ -213,10 +213,9 @@ void kw_advance_table(keywheel_table_s *table)
 {
 	keywheel_s *curr = table->keywheels;
 	while (curr) {
-		memcpy(curr->key_state[1] + intent_BYTES, curr->key_state[0] + intent_BYTES, crypto_maxhash_BYTES);
-		crypto_generichash(curr->key_state[0] + intent_BYTES,
+		crypto_generichash(curr->key_state + intent_BYTES,
 		                   crypto_maxhash_BYTES,
-		                   curr->key_state[1] + intent_BYTES,
+		                   curr->key_state + intent_BYTES,
 		                   crypto_maxhash_BYTES,
 		                   NULL,
 		                   0);
@@ -267,7 +266,7 @@ keywheel_s *kw_from_request(keywheel_table_s *table,
 	}
 	memcpy(kw->user_id, user_id, user_id_BYTES);
 	kw->dialling_round = table->table_round;
-	crypto_shared_secret(kw->key_state[0] + intent_BYTES, scalar_mult, friend_pk, dh_pk_out, crypto_maxhash_BYTES);
+	crypto_shared_secret(kw->key_state + intent_BYTES, scalar_mult, friend_pk, dh_pk_out, crypto_maxhash_BYTES);
 
 	kw->next = table->keywheels;
 	kw->prev = NULL;
@@ -344,16 +343,16 @@ int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_
 		return -1;
 	}
 	memcpy(kw->user_id, entry->user_id, user_id_BYTES);
-	crypto_shared_secret(kw->key_state[0] + intent_BYTES,
+	crypto_shared_secret(kw->key_state + intent_BYTES,
 	                     scalar_mult,
 	                     entry->public_key,
 	                     friend_pk,
 	                     crypto_maxhash_BYTES);
 	kw->dialling_round = round_sync;
 	while (kw->dialling_round <= table->table_round - 1) {
-		crypto_generichash(kw->key_state[0] + intent_BYTES,
+		crypto_generichash(kw->key_state + intent_BYTES,
 		                   crypto_maxhash_BYTES,
-		                   kw->key_state[0] + intent_BYTES,
+		                   kw->key_state + intent_BYTES,
 		                   crypto_maxhash_BYTES,
 		                   NULL,
 		                   0);

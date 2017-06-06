@@ -183,6 +183,8 @@ int byte_buffer_init(byte_buffer_s *buf, uint64_t capacity)
 void byte_buffer_clear(byte_buffer_s *buf)
 {
 	if (!buf) return;
+
+	memset(buf->data, 0, buf->capacity);
 	buf->pos = buf->data;
 	buf->used = 0;
 }

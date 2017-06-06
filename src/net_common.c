@@ -105,7 +105,7 @@ int connection_init(connection *conn,
 	return 0;
 }
 
-int net_send_nonblock(int sock_fd, uint8_t *buf, size_t n)
+int net_send_blocking(int sock_fd, uint8_t *buf, size_t n)
 {
 	ssize_t bytes_sent = 0;
 	while (bytes_sent < n) {
@@ -119,7 +119,7 @@ int net_send_nonblock(int sock_fd, uint8_t *buf, size_t n)
 	return 0;
 }
 
-int net_read_nonblock(const int sock_fd, uint8_t *buf, const size_t n)
+int net_read_blocking(const int sock_fd, uint8_t *buf, const size_t n)
 {
 	int bytes_read = 0;
 	while (bytes_read < n) {

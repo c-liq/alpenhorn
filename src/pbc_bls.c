@@ -1,5 +1,5 @@
 #include <pbc/pbc.h>
-#include "pbc_sign.h"
+#include "pbc_bls.h"
 
 bls_instance *bls_alloc(char *params, uint32_t params_len, char *gen_string)
 {

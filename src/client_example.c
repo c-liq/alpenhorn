@@ -14,7 +14,15 @@ int main(int argc, char **argv)
 		uid = atoi(argv[1]);
 	}
 
-	client_s *c = client_alloc(user_ids[uid], user_publickeys[uid], user_lt_secret_sig_keys[uid]);
+	sign_keypair sig_keys;
+
+	sodium_hex2bin(sig_keys.public_key, crypto_sign_PUBLICKEYBYTES, (char *) user_publickeys[uid],
+	               64, NULL, NULL, NULL);
+	sodium_hex2bin(sig_keys.secret_key, crypto_sign_SECRETKEYBYTES, (char *) user_lt_secret_sig_keys[uid],
+	               128, NULL, NULL, NULL);
+
+
+	client_s *c = client_alloc(user_ids[uid], &sig_keys);
 	client_run(c);
 
 	int running = 1;

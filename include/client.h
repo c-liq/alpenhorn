@@ -1,23 +1,23 @@
 #ifndef ALPENHORN_CLIENT_H
 #define ALPENHORN_CLIENT_H
 
-#include <stdbool.h>
-#include "keywheel_table.h"
-#include "config.h"
-#include "utils.h"
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include "net_common.h"
 #include <pthread.h>
-#include "bloom.h"
+#include <stdbool.h>
+#include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <sys/socket.h>
+#include "bloom.h"
+#include "config.h"
+#include "keywheel_table.h"
+#include "net_common.h"
+#include "utils.h"
 
 #if USE_PBC
 #include "ibe.h"
 #include "pbc_sign.h"
 #else
-#include "bn256_ibe.h"
 #include "bn256_bls.h"
+#include "bn256_ibe.h"
 #endif
 
 struct client;
@@ -27,6 +27,13 @@ typedef struct client client_s;
 typedef struct friend_request friend_request_s;
 typedef struct incoming_call incoming_call_s;
 typedef struct client_net client_net;
+
+typedef struct sign_keypair sign_keypair;
+struct sign_keypair
+{
+	uint8_t public_key[crypto_sign_PUBLICKEYBYTES];
+	uint8_t secret_key[crypto_sign_SECRETKEYBYTES];
+};
 
 enum actions
 {
@@ -59,14 +66,12 @@ struct client_net
 	action *action_stack;
 	pthread_mutex_t aq_lock;
 	int interrupt_fd;
-
 };
 
 struct client
 {
 	uint8_t user_id[user_id_BYTES];
-	uint8_t lt_sig_sk[crypto_sign_SECRETKEYBYTES];
-	uint8_t lt_sig_pk[crypto_sign_PUBLICKEYBYTES];
+	sign_keypair lt_sig_keypair;
 	uint64_t dialling_round;
 	keywheel_table_s keywheel;
 	uint8_t friend_request_id[user_id_BYTES];
@@ -74,8 +79,10 @@ struct client
 	uint32_t dial_num_mailboxes;
 	uint32_t af_num_mailboxes;
 	uint8_t hashed_id[g2_serialized_bytes];
-	uint8_t pkg_auth_requests[num_pkg_servers][net_header_BYTES + cli_pkg_single_auth_req_BYTES];
-	uint8_t pkg_auth_responses[num_pkg_servers][net_header_BYTES + pkg_enc_auth_res_BYTES];
+	uint8_t pkg_auth_requests[num_pkg_servers]
+	[net_header_BYTES + cli_pkg_single_auth_req_BYTES];
+	uint8_t pkg_auth_responses[num_pkg_servers]
+	[net_header_BYTES + pkg_enc_auth_res_BYTES];
 	uint8_t friend_request_buf[net_header_BYTES + onionenc_friend_request_BYTES];
 	uint8_t dial_request_buf[net_header_BYTES + onionenc_dial_token_BYTES];
 	uint8_t session_key_buf[crypto_ghash_BYTES];
@@ -93,9 +100,9 @@ struct client
 	uint8_t register_buf[net_header_BYTES + cli_pkg_reg_request_BYTES];
 	bool running;
 	void (*on_recv_call)(incoming_call_s *call);
-	void (*on_new_friend_req)(friend_request_s *req);
+	void (*on_friend_request)(friend_request_s *req);
 	void (*on_friend_confirm)(friend_request_s *req);
-	#if USE_PBC
+#if USE_PBC
 	pairing_s pairing;
 	element_s pkg_lt_sig_keys_combined;
 	element_s pkg_eph_pub_combined_g1;
@@ -104,12 +111,12 @@ struct client
 	element_s pkg_friend_elem;
 	element_s pkg_multisig_combined_g1;
 	element_s pkg_ibe_secret_combined_g2[2];
-	#else
+#else
 	twistpoint_fp2_t pkg_lt_sig_keys_combined;
 	curvepoint_fp_t pkg_eph_pub_combined_g1;
 	curvepoint_fp_t pkg_multisig_combined_g1;
 	twistpoint_fp2_t pkg_ibe_secret_combined_g2[2];
-	#endif
+#endif
 	bool registered;
 };
 
@@ -131,8 +138,8 @@ struct incoming_call
 	uint32_t intent;
 };
 
-client_s *client_alloc(const uint8_t *user_id, const uint8_t *ltp_key, const uint8_t *lts_key);
-int client_init(client_s *c, const uint8_t *user_id, const uint8_t *lt_pk_hex, const uint8_t *lt_sk_hex);
+client_s *client_alloc(const uint8_t *user_id, const sign_keypair *signing_keys);
+int client_init(client_s *c, const uint8_t *user_id, const sign_keypair *signing_keys);
 int af_create_pkg_auth_request(client_s *c);
 int af_create_request(client_s *c);
 int af_process_auth_responses(client_s *c);
@@ -161,9 +168,8 @@ action *action_stack_pop(client_s *c);
 int client_confirm_friend(client_s *c, uint8_t *user_id);
 int client_add_friend(client_s *c, uint8_t *user_id);
 int client_call_friend(client_s *c, uint8_t *user_id, uint32_t intent);
-uint8_t *client_signing_pk(client_s *c);
 int client_net_pkg_register(client_s *cn);
+uint8_t *client_get_public_key(client_s *c);
 int af_confirm_friend(client_s *c, const char *user_id);
 
-
-#endif //ALPENHORN_CLIENT_H
+#endif  // ALPENHORN_CLIENT_H

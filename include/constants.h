@@ -21,8 +21,7 @@
 #define MIX_SYNC 16U
 #define NEW_DMB_AVAIL 17U
 #define NEW_AFMB_AVAIL 18U
-#define MIX_NEW_AF_KEY 20U
-#define MIX_NEW_DIAL_KEY 21U
+
 
 #define crypto_ghash_BYTES crypto_generichash_BYTES
 #define crypto_pk_BYTES crypto_box_PUBLICKEYBYTES

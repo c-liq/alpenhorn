@@ -1,6 +1,3 @@
-#include <sodium.h>
-#include <gmp.h>
-#include <bn256/gmp_convert.h>
 #include "bn256.h"
 
 extern const scalar_t bn_pminus2;
@@ -42,7 +39,7 @@ void bn256_scalar_random(scalar_t out)
 	scalar_setrandom(out, bn_n);
 }
 
-void bn256_scalarmult_base_g1(curvepoint_fp_t out, scalar_t scl)
+void bn256_scalarmult_base_g1(curvepoint_fp_t out, scalar_t const scl)
 {
 	curvepoint_fp_scalarmult_vartime(out, bn_curvegen, scl);
 	curvepoint_fp_makeaffine(out);
@@ -162,7 +159,7 @@ int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len)
 	mpz_mod(w, w, mpz_bn_p);
 	mpz_mul(w, w, mpz_sqrt_neg3);
 	mpz_mod(w, w, mpz_bn_p);
-	//gmp_printf("W: %Zd\n", w);
+	// gmp_printf("W: %Zd\n", w);
 	mpz_t x[3];
 	mpz_init(x[0]);
 	mpz_init(x[1]);
@@ -238,7 +235,8 @@ int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len)
 int xbn256_hash_g1(curvepoint_fp_t out, uint8_t *msg, size_t msg_len)
 {
 	uint8_t hash[crypto_generichash_BYTES];
-	crypto_generichash(hash, crypto_generichash_BYTES, msg, sizeof msg_len, NULL, 0);
+	crypto_generichash(hash, crypto_generichash_BYTES, msg, sizeof msg_len, NULL,
+	                   0);
 
 	mpz_t mpz_hash;
 	mpz_init(mpz_hash);
@@ -270,14 +268,16 @@ int xbn256_hash_g1(curvepoint_fp_t out, uint8_t *msg, size_t msg_len)
 	return 0;
 }
 
-int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg, const ssize_t msg_len)
+int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg,
+                  const ssize_t msg_len)
 {
 	fpe_t t_single;
 	mpz_t tmp_hash;
 	mpz_init(tmp_hash);
 
 	uint8_t hash[crypto_generichash_BYTES];
-	crypto_generichash(hash, crypto_generichash_BYTES, msg, sizeof msg_len, NULL, 0);
+	crypto_generichash(hash, crypto_generichash_BYTES, msg, sizeof msg_len, NULL,
+	                   0);
 	mpz_import(tmp_hash, crypto_generichash_BYTES, 1, 1, 1, 0, hash);
 	mpz_mod(tmp_hash, tmp_hash, mpz_bn_p);
 	mpz2fp(t_single, tmp_hash);
@@ -414,7 +414,8 @@ size_t bn256_serialize_gt(uint8_t *out, fp12e_t gt_elem)
 	return total_count;
 }
 
-void bn256_deserialize_and_sum_g1(curvepoint_fp_t out, uint8_t *in, size_t count)
+void bn256_deserialize_and_sum_g1(curvepoint_fp_t out, uint8_t *in,
+                                  size_t count)
 {
 	if (count <= 0) return;
 
@@ -432,7 +433,8 @@ void bn256_deserialize_and_sum_g1(curvepoint_fp_t out, uint8_t *in, size_t count
 	}
 }
 
-void bn256_deserialize_and_sum_g2(twistpoint_fp2_t out, void *in, size_t count)
+void bn256_deserialize_and_sum_g2(twistpoint_fp2_t out, void *in,
+                                  size_t count)
 {
 	uint8_t *ptr = in;
 	twistpoint_fp2_setneutral(out);
@@ -458,7 +460,8 @@ void bn256_sum_g1(curvepoint_fp_t out, curvepoint_fp_t *in, size_t count)
 	}
 }
 
-void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t in[], const size_t count)
+void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t in[],
+                  const size_t count)
 {
 	if (!in || count <= 0) return;
 

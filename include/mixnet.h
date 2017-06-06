@@ -146,4 +146,10 @@ void mix_broadcast_new_dialmb(mix_s *s, uint64_t round);
 void mix_broadcast_new_afmb(mix_s *s, uint64_t round);
 int mix_net_init(mix_s *mix);
 void net_epoll_send_queue(mix_s *s, connection *conn);
+
+void mix_run(mix_s *mix,
+             void on_accept(void *, connection *),
+             int on_read(void *, connection *));
+int mix_entry_sync(mix_s *mix);
+int mix_main(int argc, char **argv);
 #endif //ALPENHORN_MIX_H

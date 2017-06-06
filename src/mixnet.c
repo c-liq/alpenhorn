@@ -169,10 +169,10 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	}
 
 	mix->af_data.round = 1;
-	mix->af_data.round_duration = 60;
+	mix->af_data.round_duration = 15;
 	mix->af_data.accept_window_duration = 5;
 	mix->dial_data.round = 1;
-	mix->dial_data.round_duration = 35;
+	mix->dial_data.round_duration = 10;
 	mix->dial_data.accept_window_duration = 3;
 	mix->af_data.laplace.mu = 1;
 	mix->af_data.laplace.b = 0;
@@ -181,9 +181,9 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	mix->af_data.num_mailboxes = 1;
 	mix->dial_data.num_mailboxes = 1;
 	memset(&mix->af_mb_container, 0, sizeof mix->af_mb_container);
-
 	memset(mix->dial_data.mailbox_counts, 0, sizeof mix->dial_data.mailbox_counts);
 	memset(mix->af_data.mb_counts, 0, sizeof mix->af_data.mb_counts);
+
 	for (int i = 0; i < mix->num_inc_onion_layers; i++) {
 		mix->mix_af_dh_pks[i] = calloc(1, crypto_pk_BYTES);
 		if (!mix->mix_af_dh_pks[i]) {
@@ -240,7 +240,6 @@ void mix_shuffle_messages(uint8_t *messages, uint32_t msg_count, uint32_t msg_le
 		fprintf(stderr, "Cannot shuffle a set of less than 2 messages\n");
 		return;
 	}
-	double start = get_time();
 	uint8_t tmp_message[msg_length];
 	for (uint32_t i = msg_count - 1; i >= 1; i--) {
 		uint32_t j = randombytes_uniform(i);
@@ -248,8 +247,6 @@ void mix_shuffle_messages(uint8_t *messages, uint32_t msg_count, uint32_t msg_le
 		memcpy(messages + (i * msg_length), messages + (j * msg_length), msg_length);
 		memcpy(messages + (j * msg_length), tmp_message, msg_length);
 	}
-	double end = get_time();
-	printf("Shuffled %d msgs of size %d total, time taken: %f\n", msg_count, msg_length, end - start);
 }
 
 void mix_af_shuffle(mix_s *mix)
@@ -323,7 +320,6 @@ void mix_dial_add_noise(mix_s *mix)
 			mix->dial_data.mailbox_counts[i] += noise;
 		}
 	}
-	printf("Added dial noise: now %d outgoing msgs\n", mix->dial_data.num_out_msgs);
 }
 
 void mix_af_add_noise(mix_s *mix)
@@ -358,7 +354,6 @@ void mix_af_add_noise(mix_s *mix)
 			mix->af_data.mb_counts[i] += noise;
 		}
 	}
-	printf("Added af noise: now %d outgoing msgs\n", mix->af_data.num_out_msgs);
 }
 
 int mix_remove_encryption_layer(uint8_t *out, uint8_t *c, uint32_t onionm_len, uint8_t *pk, uint8_t *sk)
@@ -368,7 +363,7 @@ int mix_remove_encryption_layer(uint8_t *out, uint8_t *c, uint32_t onionm_len, u
 	uint8_t *nonce_ptr = c + onionm_len - crypto_NBYTES;
 	uint8_t *client_pub_dh_ptr = nonce_ptr - crypto_pk_BYTES;
 	uint8_t scalar_mult[crypto_scalarmult_BYTES];
-	//printhex("entry dh", client_pub_dh_ptr, crypto_pk_BYTES);
+
 	int result = crypto_scalarmult(scalar_mult, sk, client_pub_dh_ptr);
 	if (result) {
 		printhex("", c, onionm_len);
@@ -386,7 +381,8 @@ int mix_remove_encryption_layer(uint8_t *out, uint8_t *c, uint32_t onionm_len, u
 		fprintf(stderr, "Mix: Decryption error\n");
 		return -1;
 	}
-	//printhex("decrypted token", out, mb_BYTES + crypto_ghash_BYTES);
+
+	sodium_memzero(shared_secret, crypto_ghash_BYTES);
 	return 0;
 }
 
@@ -439,7 +435,6 @@ void mix_dial_decrypt_messages(mix_s *mix)
 
 	mix->dial_data.num_out_msgs += n;
 	byte_buffer_put_virtual(&mix->dial_data.out_buf, n * mix->dial_data.out_msg_length);
-	printf("%d dial messages decrypted, now %d total\n", n, mix->dial_data.num_out_msgs);
 
 	mix_dial_shuffle(mix);
 	serialize_uint32(mix->dial_data.out_buf.data + net_msg_type_BYTES, mix->dial_data.num_out_msgs * mix->dial_data.out_msg_length);
@@ -455,7 +450,6 @@ void mix_af_decrypt_messages(mix_s *mix)
 	                             mix->af_data.num_inc_msgs, mix->af_data.num_mailboxes, mix->af_data.mb_counts, mix->mix_af_dh_pks[0], mix->af_dh_sk);
 
 	mix->af_data.num_out_msgs += n;
-	printf("%d af messages decrypted, now %d total\n", n, mix->af_data.num_out_msgs);
 	byte_buffer_put_virtual(&mix->af_data.out_buf, n * mix->af_data.out_msg_length);
 	serialize_uint32(mix->af_data.out_buf.data, MIX_AF_BATCH);
 	serialize_uint32(mix->af_data.out_buf.data + net_msg_type_BYTES, mix->af_data.num_out_msgs * mix->af_data.out_msg_length);
@@ -537,6 +531,7 @@ int mix_exit_process_client_msg(void *owner, connection *conn)
 
 	else {
 		fprintf(stderr, "Invalid message\n");
+		return -1;
 	}
 	return 0;
 }
@@ -545,113 +540,83 @@ void mix_exit_new_af_key(mix_s *mix)
 {
 	net_server_state *net_state = &mix->net_state;
 	crypto_box_keypair(mix->mix_af_dh_pks[0], mix->af_dh_sk);
-	byte_buffer_clear(&net_state->bc_buf);
-	byte_buffer_put_virtual(&net_state->bc_buf, net_header_BYTES);
-	byte_buffer_put(&net_state->bc_buf, mix->mix_af_dh_pks[0], crypto_pk_BYTES);
+	byte_buffer_clear(&net_state->af_client_broadcast);
+	byte_buffer_put_virtual(&net_state->af_client_broadcast, net_header_BYTES);
+	byte_buffer_put(&net_state->af_client_broadcast, mix->mix_af_dh_pks[0], crypto_pk_BYTES);
 
-	serialize_uint32(net_state->bc_buf.data, MIX_NEW_AF_KEY);
-	serialize_uint32(net_state->bc_buf.data + net_msg_type_BYTES, crypto_pk_BYTES);
-	net_epoll_queue_write(mix, &net_state->prev_mix, net_state->bc_buf.data, crypto_pk_BYTES + net_header_BYTES, true);
-	//printhex("new AF DH key generated", mix->mix_af_dh_pks[0], crypto_pk_BYTES);
+	serialize_uint32(net_state->af_client_broadcast.data, NEW_AF_ROUND);
+	serialize_uint32(net_state->af_client_broadcast.data + net_msg_type_BYTES, crypto_pk_BYTES);
+	net_epoll_queue_write(mix, &net_state->prev_mix, net_state->af_client_broadcast.data, crypto_pk_BYTES + net_header_BYTES, true);
 }
 
 void mix_exit_new_dial_key(mix_s *mix)
 {
 	net_server_state *net_state = &mix->net_state;
 	crypto_box_keypair(mix->mix_dial_dh_pks[0], mix->dial_dh_sk);
-	byte_buffer_clear(&net_state->bc_buf);
+	byte_buffer_clear(&net_state->dial_client_broadcast);
 
-	serialize_uint32(net_state->bc_buf.data, MIX_NEW_DIAL_KEY);
-	serialize_uint32(net_state->bc_buf.data + net_msg_type_BYTES, crypto_pk_BYTES);
-	byte_buffer_put_virtual(&net_state->bc_buf, net_header_BYTES);
-	byte_buffer_put(&net_state->bc_buf, mix->mix_dial_dh_pks[0], crypto_pk_BYTES);
+	serialize_uint32(net_state->dial_client_broadcast.data, NEW_DIAL_ROUND);
+	serialize_uint32(net_state->dial_client_broadcast.data + net_msg_type_BYTES, crypto_pk_BYTES);
+	byte_buffer_put_virtual(&net_state->dial_client_broadcast, net_header_BYTES);
+	byte_buffer_put(&net_state->dial_client_broadcast, mix->mix_dial_dh_pks[0], crypto_pk_BYTES);
 
-	net_epoll_queue_write(mix, &net_state->prev_mix, net_state->bc_buf.data, crypto_pk_BYTES + net_header_BYTES, true);
-	//printhex("new dial DH key generated", mix->mix_af_dh_pks[0], crypto_pk_BYTES);
-
+	net_epoll_queue_write(mix, &net_state->prev_mix, net_state->dial_client_broadcast.data, crypto_pk_BYTES + net_header_BYTES, true);
 }
 
 int mix_process_mix_msg(void *m, connection *conn)
 {
 	mix_s *mix = (mix_s *) m;
 	net_server_state *net_state = &mix->net_state;
-	if (conn->msg_type == MIX_NEW_AF_KEY) {
+	if (conn->msg_type == NEW_AF_ROUND) {
 		crypto_box_keypair(mix->mix_af_dh_pks[0], mix->af_dh_sk);
-		byte_buffer_clear(&net_state->bc_buf);
-		serialize_uint32(net_state->bc_buf.data, MIX_NEW_AF_KEY);
-		serialize_uint32(net_state->bc_buf.data + net_msg_type_BYTES, conn->curr_msg_len + crypto_pk_BYTES);
+		byte_buffer_clear(&net_state->af_client_broadcast);
 
-		byte_buffer_put_virtual(&net_state->bc_buf, net_header_BYTES);
-		byte_buffer_put(&net_state->bc_buf, mix->mix_af_dh_pks[0], crypto_pk_BYTES);
-		byte_buffer_put(&net_state->bc_buf, net_state->next_mix.read_buf.data + net_header_BYTES, conn->curr_msg_len);
+		serialize_uint32(net_state->af_client_broadcast.data, NEW_AF_ROUND);
+		serialize_uint32(net_state->af_client_broadcast.data + net_msg_type_BYTES, conn->curr_msg_len + crypto_pk_BYTES);
+		serialize_uint64(net_state->af_client_broadcast.data + 8, mix->af_data.round + 1);
+		byte_buffer_put_virtual(&net_state->af_client_broadcast, net_header_BYTES);
+		byte_buffer_put(&net_state->af_client_broadcast, mix->mix_af_dh_pks[0], crypto_pk_BYTES);
+		byte_buffer_put(&net_state->af_client_broadcast, net_state->next_mix.read_buf.data + net_header_BYTES, conn->curr_msg_len);
 
-		uint8_t *ptr = mix->net_state.bc_buf.data + net_header_BYTES + crypto_pk_BYTES;
+		uint8_t *ptr = mix->net_state.af_client_broadcast.data + net_header_BYTES + crypto_pk_BYTES;
 		for (int i = 1; i <= mix->num_out_onion_layers; i++) {
 			memcpy(mix->mix_af_dh_pks[i], ptr, crypto_pk_BYTES);
 			ptr += crypto_pk_BYTES;
 		}
-		if (mix->server_id == 0) {
-			byte_buffer_s *af_broadcast = &net_state->af_client_broadcast;
-			byte_buffer_clear(af_broadcast);
-			serialize_uint32(af_broadcast->data, NEW_AF_ROUND);
-			serialize_uint32(af_broadcast->data + net_msg_type_BYTES, num_mix_servers * crypto_pk_BYTES);
-			serialize_uint64(af_broadcast->data + 8, mix->af_data.round + 1);
-			byte_buffer_put_virtual(af_broadcast, net_header_BYTES);
-			for (int i = 0; i < num_mix_servers; i++) {
-				byte_buffer_put(af_broadcast, mix->mix_af_dh_pks[i], crypto_pk_BYTES);
-			}
-			//	printhex("af broadcast buffer", af_broadcast->data, af_broadcast->capacity);
+
+		if (mix->server_id > 0) {
+			net_epoll_queue_write(mix, &net_state->prev_mix, net_state->af_client_broadcast.data, net_state->af_client_broadcast.used, true);
 		}
-		else {
-			net_epoll_queue_write(mix, &net_state->prev_mix, net_state->bc_buf.data, net_state->bc_buf.used, true);
-		}
-
-
-
-		//printhex("new af key for next mix", mix->mix_af_dh_pks[1], crypto_pk_BYTES);
 		mix_af_newround(mix);
-
 	}
 
-	if (conn->msg_type == MIX_NEW_DIAL_KEY) {
+	else if (conn->msg_type == NEW_DIAL_ROUND) {
 
 		crypto_box_keypair(mix->mix_dial_dh_pks[0], mix->dial_dh_sk);
-		byte_buffer_clear(&net_state->bc_buf);
-		serialize_uint32(net_state->bc_buf.data, MIX_NEW_DIAL_KEY);
-		serialize_uint32(net_state->bc_buf.data + net_msg_type_BYTES, conn->curr_msg_len + crypto_pk_BYTES);
-		byte_buffer_put_virtual(&net_state->bc_buf, net_header_BYTES);
-		byte_buffer_put(&net_state->bc_buf, mix->mix_dial_dh_pks[0], crypto_pk_BYTES);
+		byte_buffer_s *dial_broadcast_buf = &net_state->dial_client_broadcast;
+		byte_buffer_clear(dial_broadcast_buf);
+		serialize_uint32(dial_broadcast_buf->data, NEW_DIAL_ROUND);
+		serialize_uint64(dial_broadcast_buf->data + 16, mix->dial_data.round + 1);
+		serialize_uint32(dial_broadcast_buf->data + net_msg_type_BYTES, conn->curr_msg_len + crypto_pk_BYTES);
+		byte_buffer_put_virtual(dial_broadcast_buf, net_header_BYTES);
+		byte_buffer_put(dial_broadcast_buf, mix->mix_dial_dh_pks[0], crypto_pk_BYTES);
 
-		byte_buffer_put(&net_state->bc_buf, net_state->next_mix.read_buf.data + net_header_BYTES, conn->curr_msg_len);
-		serialize_uint32(net_state->bc_buf.data, MIX_NEW_DIAL_KEY);
+		byte_buffer_put(dial_broadcast_buf, net_state->next_mix.read_buf.data + net_header_BYTES, conn->curr_msg_len);
+		serialize_uint32(dial_broadcast_buf->data, NEW_DIAL_ROUND);
 
-		uint8_t *ptr = mix->net_state.bc_buf.data + net_header_BYTES + crypto_pk_BYTES;
+		uint8_t *ptr = dial_broadcast_buf->data + net_header_BYTES + crypto_pk_BYTES;
 		for (int i = 1; i <= mix->num_out_onion_layers; i++) {
 			memcpy(mix->mix_dial_dh_pks[i], ptr, crypto_pk_BYTES);
 			ptr += crypto_pk_BYTES;
 		}
-		if (mix->server_id == 0) {
-			byte_buffer_s *dial_broadcast = &net_state->dial_client_broadcast;
-			byte_buffer_clear(dial_broadcast);
-			serialize_uint32(dial_broadcast->data, NEW_DIAL_ROUND);
-			serialize_uint32(dial_broadcast->data + net_msg_type_BYTES, num_mix_servers * crypto_pk_BYTES);
-			serialize_uint64(dial_broadcast->data + 8, mix->dial_data.round + 1);
-			byte_buffer_put_virtual(dial_broadcast, net_header_BYTES);
-			for (int i = 0; i < num_mix_servers; i++) {
-				byte_buffer_put(dial_broadcast, mix->mix_dial_dh_pks[i], crypto_pk_BYTES);
-			}
-			//printhex("dial broadcast buffer", dial_broadcast->data, dial_broadcast->capacity);
-		}
-		else {
-			net_epoll_queue_write(mix, &net_state->prev_mix, net_state->bc_buf.data, net_state->bc_buf.used, true);
-		}
-		//printhex("new dial key for next mix", mix->mix_dial_dh_pks[1], crypto_pk_BYTES);
-		mix_dial_newround(mix);
 
+		if (mix->server_id > 0) {
+			net_epoll_queue_write(mix, &net_state->prev_mix, dial_broadcast_buf->data, dial_broadcast_buf->used, true);
+		}
+		mix_dial_newround(mix);
 	}
 
-
-	if (conn->msg_type == MIX_AF_BATCH) {
+	else if (conn->msg_type == MIX_AF_BATCH) {
 		mix->af_data.num_inc_msgs = conn->curr_msg_len / mix->af_data.inc_msg_length;
 		byte_buffer_put(&mix->af_data.in_buf, conn->read_buf.data + net_header_BYTES, conn->curr_msg_len);
 		mix_af_decrypt_messages(mix);
@@ -668,7 +633,6 @@ int mix_process_mix_msg(void *m, connection *conn)
 			mix_batch_forward(mix, &mix->af_data.out_buf);
 		}
 		mix_af_newround(mix);
-
 	}
 
 	else if (conn->msg_type == MIX_DIAL_BATCH) {
@@ -744,7 +708,7 @@ int mix_net_sync(mix_s *mix)
 
 		connection_init(&net_state->next_mix, read_buf_SIZE, write_buf_SIZE, mix_process_mix_msg, net_state->epoll_fd, next_mix_sfd);
 		int res =
-			net_read_nonblock(net_state->next_mix.sock_fd, net_state->next_mix.read_buf.data, net_state->bc_buf.capacity - (2 * crypto_pk_BYTES));
+			net_read_blocking(net_state->next_mix.sock_fd, net_state->next_mix.read_buf.data, net_state->bc_buf.capacity - (2 * crypto_pk_BYTES));
 		if (res) {
 			fprintf(stderr, "fatal socket error during mix startup\n");
 			return -1;
@@ -780,7 +744,7 @@ int mix_net_sync(mix_s *mix)
 
 		connection_init(&net_state->prev_mix, read_buf_SIZE, write_buf_SIZE, mix_process_mix_msg, net_state->epoll_fd, neighbour_sockfd);
 
-		int res = net_send_nonblock(net_state->prev_mix.sock_fd, net_state->bc_buf.data, net_state->bc_buf.capacity);
+		int res = net_send_blocking(net_state->prev_mix.sock_fd, net_state->bc_buf.data, net_state->bc_buf.capacity);
 		if (res) {
 			fprintf(stderr, "socker error writing to previous server in mixnet chain\n");
 			return -1;
@@ -791,11 +755,10 @@ int mix_net_sync(mix_s *mix)
 			fprintf(stderr, "failure setting socket to non blocking mode\n");
 			return -1;
 		}
+		mix->af_data.round++;
+		mix->dial_data.round++;
 	}
-	for (int i = 0; i < mix->num_inc_onion_layers; i++) {
-		printhex("dial pk", mix->mix_dial_dh_pks[i], crypto_pk_BYTES);
-		printhex("af pk", mix->mix_af_dh_pks[i], crypto_pk_BYTES);
-	}
+
 	mix_dial_add_noise(mix);
 	mix_af_add_noise(mix);
 	return 0;
@@ -823,21 +786,13 @@ void mix_remove_client(mix_s *s, connection *conn)
 
 void mix_broadcast_dialround(mix_s *s)
 {
-	connection *conn = s->net_state.clients;
-/*	uint8_t bc_buf[net_header_BYTES];
-	memset(bc_buf, 0, net_header_BYTES);
-	serialize_uint32(bc_buf, NEW_DIAL_ROUND);
-	serialize_uint32(s->net_state.bc_buf.data, NEW_DIAL_ROUND);
 	serialize_uint64(s->net_state.bc_buf.data + 16, s->dial_data.round);
-	serialize_uint32(bc_buf + net_msg_type_BYTES, 0);
-	serialize_uint64(bc_buf + 8, s->dial_data.round);*/
-
+	connection *conn = s->net_state.clients;
 	byte_buffer_s *dial_broadcast = &s->net_state.dial_client_broadcast;
 	while (conn) {
 		net_epoll_queue_write(s, conn, dial_broadcast->data, dial_broadcast->capacity, 0);
 		conn = conn->next;
 	}
-
 }
 
 void mix_broadcast_new_dialmb(mix_s *s, uint64_t round)
@@ -850,7 +805,6 @@ void mix_broadcast_new_dialmb(mix_s *s, uint64_t round)
 	connection *conn = s->net_state.clients;
 	while (conn) {
 		send(conn->sock_fd, bc_buff, sizeof bc_buff, 0);
-		//printf("Broadcast new dial mailbox avail to client\n");
 		conn = conn->next;
 	}
 }
@@ -864,26 +818,18 @@ void mix_broadcast_new_afmb(mix_s *s, uint64_t round)
 	connection *conn = s->net_state.clients;
 	while (conn) {
 		send(conn->sock_fd, bc_buff, sizeof bc_buff, 0);
-		//printf("Broadcast new af mailbox avail to client\n");
 		conn = conn->next;
 	}
 }
 
 void mix_broadcast_new_afr(mix_s *s)
 {
-/*	uint8_t bc_buf[net_header_BYTES];
-	memset(bc_buf, 0, net_header_BYTES);
-	serialize_uint32(bc_buf, NEW_AF_ROUND);
-	serialize_uint32(s->net_state.bc_buf.data, NEW_AF_ROUND);
-	serialize_uint64(s->net_state.bc_buf.data + 8, s->af_data.round);
-	serialize_uint64(bc_buf + 8, s->af_data.round);*/
 	connection *conn = s->net_state.clients;
 	byte_buffer_s *af_broadcast = &s->net_state.af_client_broadcast;
 	while (conn) {
 		net_epoll_queue_write(s, conn, af_broadcast->data, af_broadcast->capacity, 0);
 		conn = conn->next;
 	}
-	//printhex("AF BROADCAST BUFFER", af_broadcast->data, af_broadcast->capacity);
 }
 
 int mix_entry_sync(mix_s *mix)
@@ -931,9 +877,7 @@ int mix_entry_sync(mix_s *mix)
 		byte_buffer_put(&net_state->dial_client_broadcast, mix->mix_af_dh_pks[i], crypto_pk_BYTES);
 	}
 
-
-
-	// Start main listening socket for client connections
+	// Start mix_main listening socket for client connections
 	net_state->listen_socket = net_start_listen_socket(mix_client_listen, 1);
 	if (net_state->listen_socket == -1) {
 		fprintf(stderr, "entry mix error when starting listensocket\n");
@@ -979,6 +923,7 @@ int mix_net_init(mix_s *mix)
 
 	uint32_t buffer_size = crypto_pk_BYTES * 2 * (num_mix_servers - mix->server_id);
 	byte_buffer_init(&net_state->bc_buf, net_header_BYTES + buffer_size);
+
 	byte_buffer_init(&net_state->af_client_broadcast, net_header_BYTES + buffer_size / 2);
 	byte_buffer_init(&net_state->dial_client_broadcast, net_header_BYTES + buffer_size / 2);
 	serialize_uint32(net_state->bc_buf.data, MIX_SYNC);
@@ -1017,25 +962,9 @@ void mix_dial_calc_num_mbs(mix_s *mix)
 
 void mix_entry_new_af_round(mix_s *mix)
 {
-	//mix_af_decrypt_messages(mix);
-	//byte_buffer_clear(&mix->af_data.in_buf);
-	//mix->af_data.num_inc_msgs = 0;
-	//mix->af_data.round++;
-
-	//mix_af_calc_num_mbs(mix);
+	serialize_uint64(mix->net_state.bc_buf.data + 8, mix->af_data.round);
 	mix_broadcast_new_afr(mix);
 	mix_pkg_broadcast(mix);
-	/*mix_batch_forward(mix, &mix->af_data.out_buf);
-	mix_af_s *af_data = &mix->af_data;
-	printf("AF Round %ld: Received %d msgs, added %d noise -> Forwarding %d\n",
-	       af_data->round,
-	       af_data->num_inc_msgs,
-	       af_data->last_noise_count,
-	       af_data->num_out_msgs);
-
-	byte_buffer_clear(&mix->af_data.out_buf);
-	mix->af_data.num_out_msgs = 0;
-	mix_af_add_noise(mix);*/
 }
 
 void mix_entry_process_af_batch(mix_s *mix)
@@ -1054,8 +983,6 @@ void mix_entry_process_af_batch(mix_s *mix)
 	mix_batch_forward(mix, &mix->af_data.out_buf);
 	byte_buffer_clear(&mix->af_data.out_buf);
 	mix->af_data.num_out_msgs = 0;
-
-	//mix_af_add_noise(mix);
 }
 
 void mix_entry_process_dial_batch(mix_s *mix)
@@ -1073,18 +1000,11 @@ void mix_entry_process_dial_batch(mix_s *mix)
 	mix_batch_forward(mix, &mix->dial_data.out_buf);
 	byte_buffer_clear(&mix->dial_data.out_buf);
 	mix->dial_data.num_out_msgs = 0;
-
-	//mix_dial_add_noise(mix);
 }
 
 void mix_entry_new_dial_round(mix_s *mix)
 {
-	//mix_dial_decrypt_messages(mix);
-	//byte_buffer_clear(&mix->dial_data.in_buf);
-	//mix->dial_data.num_inc_msgs = 0;
-	//mix->dial_data.round++;
 	mix_broadcast_dialround(mix);
-
 }
 
 void net_epoll_send_queue(mix_s *s, connection *conn)
@@ -1217,7 +1137,7 @@ void mix_run(mix_s *mix,
 	}
 }
 
-int main(int argc, char **argv)
+int mix_main(int argc, char **argv)
 {
 	#if !USE_PBC
 	bn256_init();
@@ -1236,6 +1156,6 @@ int main(int argc, char **argv)
 		mix_net_sync(&mix);
 		mix_run(&mix, NULL, mix_exit_process_client_msg);
 	}
+
+	return 0;
 }
-
-

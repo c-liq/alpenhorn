@@ -63,8 +63,8 @@ struct net_server_state
 int net_accept(int listen_fd, int set_nb);
 int net_epoll_send(void *c, connection *conn, int epoll_fd);
 int net_epoll_read(void *owner, connection *conn);
-int net_read_nonblock(const int sock_fd, uint8_t *buf, const size_t n);
-int net_send_nonblock(int sock_fd, uint8_t *buf, size_t n);
+int net_read_blocking(const int sock_fd, uint8_t *buf, const size_t n);
+int net_send_blocking(int sock_fd, uint8_t *buf, size_t n);
 int net_connect(const char *addr, const char *port, const int set_nb);
 int socket_set_nonblocking(int socket);
 int net_start_listen_socket(const char *port, const int set_nb);
