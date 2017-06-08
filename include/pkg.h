@@ -97,8 +97,8 @@ int pkg_client_lookup(pkg_server *server, uint8_t *user_id);
 int pkg_parallel_extract(pkg_server *server);
 int pkg_registration_request(pkg_server *server, const uint8_t *user_id, uint8_t *sig_key);
 int pkg_confirm_registration(pkg_server *server, uint8_t *user_id, uint8_t *sig);
-
-
+int pkg_server_startup(pkg_server *pkg);
+void pkg_server_run(pkg_server *s);
 
 
 #endif //ALPENHORN_PKG_H
