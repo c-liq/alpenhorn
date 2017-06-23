@@ -20,11 +20,11 @@ set(BN256_SOURCE_FILES ${OFILES} lib/bn256/fpe.c lib/bn256/fp2e.c lib/bn256/scal
         lib/bn256/optate.c lib/bn256/linefunction.c lib/bn256/final_expo.c lib/bn256/asfunctions.a lib/bn256/gmp_convert.c)
 
 
-set(CLIENT_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/bn256_ibe.c src/bn256_bls.c
+set(CLIENT_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/bn256_ibe.c src/bn256_bls.c src/pbc_bls.c src/pbc_ibe.c
         include/config.h src/client.c src/bloom.c src/prime_gen.c src/keywheel_table.c src/net_common.c src/utils.c lib/xxhash/xxhash.c include/client_config.h)
 
 set(MIX_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/mixnet.c src/utils.c src/prime_gen.c lib/xxhash/xxhash.c src/bloom.c src/net_common.c)
-set(PKG_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/bn256_ibe.c src/bn256_bls.c src/pkg.c src/utils.c lib/xxhash/xxhash.c src/net_common.c)
+set(PKG_SOURCE_FILES ${BN256_SOURCE_FILES} src/bn256.c src/bn256_ibe.c src/bn256_bls.c src/pkg.c src/utils.c lib/xxhash/xxhash.c src/net_common.c src/pbc_bls.c src/pbc_bls.c)
 set(TEST_BN256_SOURCES ${BN256_SOURCE_FILES} tests/test_bn256_ibe.c include/greatest.h src/bn256_ibe.c src/bn256.c src/utils.c include/greatest.h)
 set(TEST_BLOOM_SOURCES src/bloom.c src/utils.c include/greatest.h tests/test_bloom.c lib/xxhash/xxhash.c src/prime_gen.c)
 set(TEST_MIX_SOURCES ${MIX_SOURCE_FILES} include/greatest.h tests/test_mix.c)

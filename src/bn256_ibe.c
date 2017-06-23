@@ -41,7 +41,12 @@ int bn256_ibe_decrypt(uint8_t *out, uint8_t *c, size_t clen, uint8_t *pk, twistp
 	return res;
 }
 
-ssize_t bn256_ibe_encrypt(uint8_t *out, uint8_t *msg, uint32_t msg_len, curvepoint_fp_t master_pk, uint8_t *recv_id, size_t recv_id_len)
+ssize_t bn256_ibe_encrypt(uint8_t *out,
+                          uint8_t *msg,
+                          uint32_t msg_len,
+                          curvepoint_fp_t master_pk,
+                          uint8_t *recv_id,
+                          size_t recv_id_len)
 {
 	twistpoint_fp2_t q_id;
 	twistpoint_fp2_setneutral(q_id);
@@ -49,15 +54,19 @@ ssize_t bn256_ibe_encrypt(uint8_t *out, uint8_t *msg, uint32_t msg_len, curvepoi
 	uint8_t qid_serialized[fpe_bytes * 4];
 	memset(qid_serialized, 0, sizeof qid_serialized);
 	bn256_serialize_g2(qid_serialized, q_id);
+
 	scalar_t r;
 	bn256_scalar_random(r);
 	curvepoint_fp_t rp;
 	curvepoint_fp_setneutral(rp);
+
 	bn256_scalarmult_base_g1(rp, r);
 	bn256_serialize_g1(out, rp);
+
 	fp12e_t pairing_qid_ppub;
 	fp12e_setzero(pairing_qid_ppub);
 	bn256_pair(pairing_qid_ppub, q_id, master_pk);
+
 	fp12e_pow_vartime(pairing_qid_ppub, pairing_qid_ppub, r);
 	uint8_t pair_qid_ppub_serialized[fpe_bytes * 12];
 	bn256_serialize_gt(pair_qid_ppub_serialized, pairing_qid_ppub);

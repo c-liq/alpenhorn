@@ -53,6 +53,10 @@ static size_t payload_source(void *ptr, size_t size, size_t nmemb,
 
 int pkg_registration_request(pkg_server *server, const uint8_t *user_id, uint8_t *sig_key)
 {
+	if (!server || !user_id || !sig_key) {
+		fprintf(stderr, "invalid args passed to pkg_registration_request\n");
+		return -1;
+	}
 
 	struct upload_status upload_ctx;
 	upload_ctx.lines_read = 0;
@@ -154,24 +158,6 @@ int pkg_confirm_registration(pkg_server *server, uint8_t *user_id, uint8_t *sig)
 
 int pkg_server_init(pkg_server *server, uint32_t server_id, uint32_t num_clients, uint32_t num_threads)
 {
-	server->current_round = 1;
-	server->num_clients = num_clients;
-	server->client_buf_capacity = num_clients * 2;
-	server->num_threads = num_threads;
-	server->srv_id = server_id;
-	server->clients = calloc(server->client_buf_capacity, sizeof(pkg_client));
-	for (int i = 0; i < 5; i++) {
-		pkg_client_init(&server->clients[i], user_ids[i], user_publickeys[i]);
-	}
-	for (int i = 5; i < server->num_clients; i++) {
-		uint8_t user_id[user_id_BYTES];
-		uint8_t pk_buf[crypto_ghash_BYTES];
-		randombytes_buf(user_id, user_id_BYTES);
-		randombytes_buf(pk_buf, crypto_ghash_BYTES);
-		pkg_client_init(&server->clients[i], user_id, pk_buf);
-	}
-	server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_serialized_bytes;
-
 	#if USE_PBC
 	pairing_init_set_str(server->pairing, pbc_params);
 	pairing_ptr pairing = server->pairing;
@@ -189,6 +175,25 @@ int pkg_server_init(pkg_server *server, uint32_t server_id, uint32_t num_clients
 	twistpoint_fp2_set(server->lt_keypair.public_key, pkg_lt_pks[server_id]);
 	scalar_set_lluarray(server->lt_keypair.secret_key, pkg_lt_sks[server_id]);
 	#endif
+	server->current_round = 1;
+	server->num_clients = num_clients;
+	server->client_buf_capacity = num_clients * 2;
+	server->num_threads = num_threads;
+	server->srv_id = server_id;
+	server->clients = calloc(server->client_buf_capacity, sizeof(pkg_client));
+	for (int i = 0; i < 5; i++) {
+		pkg_client_init(&server->clients[i], server, user_ids[i], user_publickeys[i]);
+	}
+	for (int i = 5; i < server->num_clients; i++) {
+		uint8_t user_id[user_id_BYTES];
+		uint8_t pk_buf[crypto_ghash_BYTES];
+		randombytes_buf(user_id, user_id_BYTES);
+		randombytes_buf(pk_buf, crypto_ghash_BYTES);
+		pkg_client_init(&server->clients[i], server, user_id, pk_buf);
+	}
+	server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_serialized_bytes;
+
+
 
 	pkg_new_ibe_keypair(server);
 	crypto_box_keypair(server->broadcast_dh_pkey_ptr, server->eph_secret_dh_key);
@@ -196,7 +201,9 @@ int pkg_server_init(pkg_server *server, uint32_t server_id, uint32_t num_clients
 	serialize_uint32(server->eph_broadcast_message + net_msg_type_BYTES, pkg_broadcast_msg_BYTES);
 	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
 	// Extract secret keys and generate signatures for each client_s
+	start_timer(x);
 	pkg_parallel_extract(server);
+	end_timer_print(x, "Extracted %d clients");
 	return 0;
 }
 
@@ -287,22 +294,22 @@ void pkg_client_init(pkg_client *client, pkg_server *server, const uint8_t *user
 	element_from_hash(client->hashed_id_elem_g2, id_hash, crypto_ghash_BYTES);
 }
 #else
-void pkg_client_init(pkg_client *client, const uint8_t *user_id, const uint8_t *lt_sig_key)
+void pkg_client_init(pkg_client *client, pkg_server *server, const uint8_t *user_id, const uint8_t *lt_sig_key)
 {
 
 	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + g1_serialized_bytes;
 	serialize_uint32(client->eph_client_data, PKG_AUTH_RES_MSG);
 	memcpy(client->user_id, user_id, user_id_BYTES);
 	sodium_hex2bin(client->lt_sig_pk,
-	               crypto_sign_PUBLICKEYBYTES,
-	               (char *) lt_sig_key,
-	               crypto_sign_PUBLICKEYBYTES * 2,
-	               NULL,
-	               NULL,
-	               NULL);
+				   crypto_sign_PUBLICKEYBYTES,
+				   (char *) lt_sig_key,
+				   crypto_sign_PUBLICKEYBYTES * 2,
+				   NULL,
+				   NULL,
+				   NULL);
 	memcpy(client->rnd_sig_msg + round_BYTES, client->user_id, user_id_BYTES);
 	memcpy(client->rnd_sig_msg + round_BYTES + user_id_BYTES,
-	       client->lt_sig_pk, crypto_sign_PUBLICKEYBYTES);
+		   client->lt_sig_pk, crypto_sign_PUBLICKEYBYTES);
 
 
 	bn256_hash_g2(client->hashed_id_elem_g2, user_id, user_id_BYTES);
@@ -520,6 +527,7 @@ int pkg_net_process_client_msg(void *srv, connection *conn)
 			fprintf(stderr, "Authentication failed for %s\n", conn->read_buf.data + net_header_BYTES + round_BYTES);
 		}
 	}
+
 	else if (conn->msg_type == CLIENT_REG_REQUEST) {
 		pkg_registration_request(s,
 		                         conn->read_buf.data + net_header_BYTES,

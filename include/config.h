@@ -8,7 +8,7 @@
 #include "constants.h"
 
 // Server parameters
-#define USE_PBC 0
+#define USE_PBC 1
 #define LOG 0
 #define num_pkg_servers 2U
 #define num_mix_servers 2U

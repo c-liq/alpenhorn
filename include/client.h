@@ -13,8 +13,8 @@
 #include "utils.h"
 
 #if USE_PBC
-#include "ibe.h"
-#include "pbc_sign.h"
+#include "pbc_ibe.h"
+#include "pbc_bls.h"
 #else
 #include "bn256_bls.h"
 #include "bn256_ibe.h"
@@ -79,8 +79,7 @@ struct client
 	uint32_t dial_num_mailboxes;
 	uint32_t af_num_mailboxes;
 	uint8_t hashed_id[g2_serialized_bytes];
-	uint8_t pkg_auth_requests[num_pkg_servers]
-	[net_header_BYTES + cli_pkg_single_auth_req_BYTES];
+	uint8_t pkg_auth_requests[num_pkg_servers][net_header_BYTES + cli_pkg_single_auth_req_BYTES];
 	uint8_t pkg_auth_responses[num_pkg_servers]
 	[net_header_BYTES + pkg_enc_auth_res_BYTES];
 	uint8_t friend_request_buf[net_header_BYTES + onionenc_friend_request_BYTES];

@@ -6,8 +6,8 @@ static const char mix_client_listen[] = "7000";
 static const char *pkg_cl_listen_ports[] = {"7500", "7501", "7502"};
 
 #if USE_PBC
-#include "ibe.h"
-#include "pbc_sign.h"
+#include "pbc_ibe.h"
+#include "pbc_bls.h"
 static const char pbc_params[] = "type f\n"
 	"q 16283262548997601220198008118239886027035269286659395419233331082106632227801\n"
 	"r 16283262548997601220198008118239886026907663399064043451383740756301306087801\n"

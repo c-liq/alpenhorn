@@ -37,6 +37,11 @@ uint32_t deserialize_uint32(uint8_t *in)
 	return ntohl(*ptr);
 }
 
+uint64_t sizeof_serialized_bytes(uint64_t size)
+{
+	return size * 2 + 1;
+}
+
 ssize_t crypto_secret_nonce_seal(uint8_t *out, uint8_t *m, size_t mlen, uint8_t *k)
 {
 	randombytes_buf(out, crypto_NBYTES);

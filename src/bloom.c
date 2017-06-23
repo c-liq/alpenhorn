@@ -58,7 +58,7 @@ void bloom_calc_partitions(const int m_target,
 	}
 
 	uint32_t bits_size = 0;
-	for (int i = 0; i < num_partitions; i++) {
+	for (uint32_t i = 0; i < num_partitions; i++) {
 		partition_lengths_bits[i] = ptable[j - num_partitions + i];
 		partition_lengths_bytes[i] = (uint32_t) ceil((double) partition_lengths_bits[i] / 8);
 		bits_size += partition_lengths_bits[i];
@@ -74,7 +74,7 @@ void bloom_add_elem(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
 	uint32_t *partition_offsets = bf->partition_offsets;
 	uint64_t hash = XXH64(data, data_len, bf->hash_key);
 
-	for (int i = 0; i < num_partitions; i++) {
+	for (uint32_t i = 0; i < num_partitions; i++) {
 		uint64_t mod_result = hash % part_lengths[i];
 		uint8_t *partition = bloom_ptr + partition_offsets[i];
 		partition[mod_result / 8] |= 1 << (mod_result % 8);
@@ -89,7 +89,7 @@ int bloom_lookup(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
 	uint32_t num_partitions = bf->num_partitions;
 	uint64_t hash = XXH64(data, data_len, bf->hash_key);
 
-	for (int i = 0; i < num_partitions; i++) {
+	for (uint32_t i = 0; i < num_partitions; i++) {
 		uint64_t mod_result = hash % partition_lengths[i];
 		uint8_t *partition = bloom_ptr + partition_offsets[i];
 		if (!(partition[mod_result / 8] & 1 << mod_result % 8)) {
@@ -122,7 +122,7 @@ int bloom_init(bloomfilter_s *bf, double p, uint32_t n, uint64_t hash_key, uint8
 {
 	// calculate number of partitions and approx filter size based on target false probability rate
 	// and number of elements to be placed in the filter
-	if (p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
+	if (!bf || p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
 		fprintf(stderr, "invalid parameters to bloom allocator\n");
 		return -1;
 	}

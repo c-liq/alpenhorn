@@ -5,8 +5,8 @@
 #include "utils.h"
 #include "net_common.h"
 #if USE_PBC
-#include "ibe.h"
-#include "pbc_sign.h"
+#include "pbc_ibe.h"
+#include "pbc_bls.h"
 #else
 #include "bn256_ibe.h"
 #include "bn256_bls.h"
@@ -69,6 +69,7 @@ struct pkg_client
 	uint8_t rnd_sig_msg[pkg_sig_message_BYTES];
 	uint8_t eph_client_data[net_header_BYTES + pkg_enc_auth_res_BYTES];
 	uint8_t *auth_response_ibe_key_ptr; // Pointer into response buffer where secret key_state will be placed
+	time_t last_auth;
 	#if USE_PBC
 	element_t hashed_id_elem_g2; // Permanent
 	element_t eph_sig_elem_G1;
@@ -82,7 +83,7 @@ struct pkg_client
 	#endif
 };
 
-void pkg_client_init(pkg_client *client, const uint8_t *user_id, const uint8_t *lt_sig_key);
+void pkg_client_init(pkg_client *client, pkg_server *server, const uint8_t *user_id, const uint8_t *lt_sig_key);
 void pkg_new_ibe_keypair(pkg_server *server);
 int pkg_server_init(pkg_server *server, uint32_t id, uint32_t num_clients, uint32_t num_threads);
 void pkg_new_ibe_keypair(pkg_server *server);

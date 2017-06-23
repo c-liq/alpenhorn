@@ -249,7 +249,7 @@ int xbn256_hash_g1(curvepoint_fp_t out, uint8_t *msg, size_t msg_len)
 	int is_negative = fpe_legendre(x);
 
 	for (;;) {
-		fpe_t tmp;
+		fpe_t tmp = {};
 		fpe_cube(tmp, x);
 		fpe_add(tmp, tmp, curve_b);
 		int res = fpe_sqrt(y, tmp);
@@ -370,7 +370,7 @@ void bn256_deserialize_g1(curvepoint_fp_t out, uint8_t *in)
 
 void bn256_deserialize_g2(twistpoint_fp2_t out, uint8_t *in)
 {
-	fpe_t fp1, fp2, fp3, fp4;
+	fpe_t fp1 = {}, fp2 = {}, fp3 = {}, fp4 = {};
 	deserialize_fpe(fp1, in);
 	deserialize_fpe(fp2, in + fpe_bytes);
 	deserialize_fpe(fp3, in + fpe_bytes * 2);
@@ -404,10 +404,9 @@ size_t bn256_serialize_gt(uint8_t *out, fp12e_t gt_elem)
 	fp2e_to_2fpe(fpe_elems[8], fpe_elems[9], gt_elem->m_b->m_b);
 	fp2e_to_2fpe(fpe_elems[10], fpe_elems[11], gt_elem->m_b->m_c);
 	size_t total_count = 0;
-	size_t tmp_count = 0;
 	uint8_t *ptr = out;
 	for (int i = 0; i < 12; i++) {
-		tmp_count = serialize_fpe(ptr, fpe_elems[i]);
+		size_t tmp_count = serialize_fpe(ptr, fpe_elems[i]);
 		ptr += fpe_bytes;
 		total_count += tmp_count;
 	}
@@ -417,10 +416,10 @@ size_t bn256_serialize_gt(uint8_t *out, fp12e_t gt_elem)
 void bn256_deserialize_and_sum_g1(curvepoint_fp_t out, uint8_t *in,
                                   size_t count)
 {
-	if (count <= 0) return;
+	if (count < 1) return;
 
 	uint8_t *ptr = in;
-	curvepoint_fp_t tmp;
+	curvepoint_fp_t tmp = {};
 	bn256_deserialize_g1(tmp, ptr);
 	curvepoint_fp_set(out, tmp);
 	ptr += g1_bytes;
@@ -450,7 +449,7 @@ void bn256_deserialize_and_sum_g2(twistpoint_fp2_t out, void *in,
 
 void bn256_sum_g1(curvepoint_fp_t out, curvepoint_fp_t *in, size_t count)
 {
-	if (!in || count <= 0) return;
+	if (!in || count < 1) return;
 
 	curvepoint_fp_set(out, in[0]);
 	fpe_setone(out->m_z);
@@ -463,7 +462,7 @@ void bn256_sum_g1(curvepoint_fp_t out, curvepoint_fp_t *in, size_t count)
 void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t in[],
                   const size_t count)
 {
-	if (!in || count <= 0) return;
+	if (!in || count <= 1) return;
 
 	twistpoint_fp2_set(out, in[0]);
 	fp2e_setone(out->m_z);
@@ -478,10 +477,9 @@ size_t bn256_serialize_g2(uint8_t *out, twistpoint_fp2_t in)
 	fp2e_to_2fpe(fpe_elems[0], fpe_elems[1], in->m_x);
 	fp2e_to_2fpe(fpe_elems[2], fpe_elems[3], in->m_y);
 	size_t total_count = 0;
-	size_t tmp_count = 0;
 	uint8_t *ptr = out;
 	for (int i = 0; i < 4; i++) {
-		tmp_count = serialize_fpe(ptr, fpe_elems[i]);
+		size_t tmp_count = serialize_fpe(ptr, fpe_elems[i]);
 		ptr += fpe_bytes;
 		total_count += tmp_count;
 	}

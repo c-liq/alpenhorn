@@ -1,8 +1,8 @@
 CC=gcc
-CFLAGS=-std=gnu99 -O3 -fomit-frame-pointer -g -I lib -I include/ -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -pthread -lpbc -Wl,-rpath /usr/local/lib
+CFLAGS=-std=gnu99 -O3 -fomit-frame-pointer -g -I lib -I include/ -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -pthread -Wl,-rpath /usr/local/lib
 
 
-DCLXCI_SRC_DIR=lib/dclxci
+DCLXCI_SRC_DIR=lib/bn256
 
 BN256_FILES= fpe.c fp2e.c scalar.c parameters.c \
              twistpoint_fp2.c mul.c mydouble.c curvepoint_fp.c \
@@ -13,19 +13,21 @@ BN256_FILES= fpe.c fp2e.c scalar.c parameters.c \
 BN256_SOURCES=$(addprefix $(DCLXCI_SRC_DIR)/, $(BN256_FILES))
 
 
-COMMON_SOURCE_FILES=$(src/net_common.c src/utils.c include/config.h asfunctions.a)
+COMMON_SOURCE_FILES=$(src/net_common.c src/utils.c include/config.h)
 CLIENT_SOURCE_FILES=$(addprefix src/, client.c client_net.c bn256.c bn256_ibe.c bn256_bls.c keywheel_table.c bloom.c prime_gen.c)
-PKG_SOURCE_FILES=$(addprefix src/, pkg.c pkg_net.c )
-             
+PKG_SOURCE_FILES=$(addprefix src/, pkg.c bn256.c bn256_ibe.c bn256_bls.c)
 
 
-all: client
+
+all: bench_pkg
 
 
 client: $(CLIENT_SOURCE_FILES) $(BN256_SOURCES) asfunctions.a lib/xxhash/xxhash.c
 	$(CC) $(CFLAGS) $(LFLAGS) -DQHASM -o $@ $^ $(COMMON_SOURCE_FILES)
 
 
+bench_pkg: $(COMMON_SOURCE_FILES) $(PKG_SOURCE_FILES) $(BN256_SOURCES) src/pkg.c tests/test_bench_pkg_server.c include/greatest.h lib/xxhash/xxhash.c
+	$(CC) $(CFLAGS) $(LFLAGS) -DQHASM -o $@ $^ $(COMMON_SOURCE_FILES) asfunctions.a
 
 
 test_ibe: include/config.h src/pkg.c src/bloom.c src/prime_gen.c src/keywheel_table.c \
