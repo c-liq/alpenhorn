@@ -1,20 +1,20 @@
 #ifndef ALPENHORN_CLIENT_H
 #define ALPENHORN_CLIENT_H
 
-#include <pthread.h>
-#include <stdbool.h>
-#include <sys/epoll.h>
-#include <sys/eventfd.h>
-#include <sys/socket.h>
 #include "bloom.h"
 #include "config.h"
 #include "keywheel_table.h"
 #include "net_common.h"
 #include "utils.h"
+#include <pthread.h>
+#include <stdbool.h>
+#include <sys/epoll.h>
+#include <sys/eventfd.h>
+#include <sys/socket.h>
 
 #if USE_PBC
-#include "pbc_ibe.h"
 #include "pbc_bls.h"
+#include "pbc_ibe.h"
 #else
 #include "bn256_bls.h"
 #include "bn256_ibe.h"
@@ -41,7 +41,6 @@ enum actions
 	CONFIRM_FRIEND = '2',
 	DIAL_FRIEND = '3',
 	PRINT_KW_TABLE = '4',
-	REGISTER = '5',
 };
 
 typedef struct action action;
@@ -167,8 +166,9 @@ action *action_stack_pop(client_s *c);
 int client_confirm_friend(client_s *c, uint8_t *user_id);
 int client_add_friend(client_s *c, uint8_t *user_id);
 int client_call_friend(client_s *c, uint8_t *user_id, uint32_t intent);
-int client_net_pkg_register(client_s *cn);
 uint8_t *client_get_public_key(client_s *c);
 int af_confirm_friend(client_s *c, const char *user_id);
+int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key, uint8_t *msgs_buf);
+int client_register(sign_keypair *sig_keys, char *user_id);
 
-#endif  // ALPENHORN_CLIENT_H
+#endif // ALPENHORN_CLIENT_H

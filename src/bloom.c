@@ -20,6 +20,7 @@ void bloom_calc_partitions(const int m_target,
 	int l = 0;
 	int r = ptable_size - 1;
 	int mid = 0;
+
 	uint32_t target_avg = m_target / num_partitions;
 	while (l <= r) {
 		mid = (l + r + 1) / 2;

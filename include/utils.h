@@ -32,10 +32,15 @@ struct laplace
 
 typedef struct byte_buffer byte_buffer_s;
 
-void crypto_shared_secret(uint8_t *shared_secret, uint8_t *scalar_mult,
-                          uint8_t *client_pub, uint8_t *server_pub,
+void crypto_shared_secret(uint8_t *shared_secret,
+                          uint8_t *scalar_mult,
+                          uint8_t *client_pub,
+                          uint8_t *server_pub,
                           uint32_t output_size);
-ssize_t crypto_secret_nonce_seal(uint8_t *out, uint8_t *c, size_t clen,
+
+ssize_t crypto_secret_nonce_seal(uint8_t *out,
+                                 uint8_t *c,
+                                 size_t clen,
                                  uint8_t *k);
 int crypto_secret_nonce_open(uint8_t *out, uint8_t *c, size_t clen, uint8_t *k);
 void printhex(char *msg, uint8_t *data, size_t len);
@@ -46,10 +51,14 @@ uint64_t sizeof_serialized_bytes(uint64_t size);
 void serialize_uint32(uint8_t *out, uint32_t in);
 void print_b64(char *msg, uint8_t *data, size_t input_length);
 
-int crypto_chacha_decrypt(unsigned char *m, unsigned long long *mlen_p,
-                          unsigned char *nsec, const unsigned char *c,
-                          unsigned long long clen, const unsigned char *ad,
-                          unsigned long long adlen, const unsigned char *npub,
+int crypto_chacha_decrypt(unsigned char *m,
+                          unsigned long long *mlen_p,
+                          unsigned char *nsec,
+                          const unsigned char *c,
+                          unsigned long long clen,
+                          const unsigned char *ad,
+                          unsigned long long adlen,
+                          const unsigned char *npub,
                           const unsigned char *k);
 
 int byte_buffer_init(byte_buffer_s *buf, uint64_t size);

@@ -116,6 +116,7 @@ int net_send_blocking(int sock_fd, uint8_t *buf, size_t n)
 		}
 		bytes_sent += tmp_sent;
 	}
+	printf("Sent %lu bytes\n", bytes_sent);
 	return 0;
 }
 
@@ -131,6 +132,7 @@ int net_read_blocking(const int sock_fd, uint8_t *buf, const size_t n)
 		bytes_read += tmp_read;
 
 	}
+	printf("Read %d bytes\n", bytes_read);
 	return 0;
 }
 
@@ -213,6 +215,7 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 			return;
 		}
 
+		printf("Processing msg\n");
 		conn->process(owner, conn);
 		uint32_t read_remaining = (conn->bytes_read - conn->curr_msg_len - net_header_BYTES);
 

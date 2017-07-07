@@ -102,7 +102,9 @@ void fp2e_get_weierstrass(fp2e_t y, const fp2e_t x)
 
 bool bn256_init()
 {
-	if (running) return true;
+	if (running) {
+		return true;
+	}
 
 	mpz_t mpz_b0, mpz_b1;
 	mpz_init_set_str(mpz_b0, b0, 10);

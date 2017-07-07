@@ -349,7 +349,7 @@ int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_
 	                     friend_pk,
 	                     crypto_maxhash_BYTES);
 	kw->dialling_round = round_sync;
-	while (kw->dialling_round <= table->table_round - 1) {
+	while (kw->dialling_round < table->table_round) {
 		crypto_generichash(kw->key_state + intent_BYTES,
 		                   crypto_maxhash_BYTES,
 		                   kw->key_state + intent_BYTES,

@@ -9,9 +9,9 @@
 #define CLIENT_AF_MB_REQUEST 5U
 #define CLIENT_REG_REQUEST 6U
 #define CLIENT_REG_CONFIRM 7U
-#define CLIENT_AUTH_REQUEST 19U
 #define PKG_BR_MSG 8U
 #define PKG_AUTH_RES_MSG 9U
+#define PKG_CONFIRM_CLIENT_REG 25U
 #define MIX_AF_BATCH 10U
 #define MIX_DIAL_BATCH 11U
 #define NEW_DIAL_ROUND 12U
@@ -21,6 +21,7 @@
 #define MIX_SYNC 16U
 #define NEW_DMB_AVAIL 17U
 #define NEW_AFMB_AVAIL 18U
+#define PKG_REG_REQUEST_RECEIVED 66U
 
 
 #define crypto_ghash_BYTES crypto_generichash_BYTES

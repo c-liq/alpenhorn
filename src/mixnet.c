@@ -11,8 +11,7 @@
 
 int mix_buffers_init(mix_s *mix)
 {
-	int result;
-	result = byte_buffer_init(&mix->af_data.in_buf, mix_num_buffer_elems * mix->af_data.inc_msg_length);
+	int result = byte_buffer_init(&mix->af_data.in_buf, mix_num_buffer_elems * mix->af_data.inc_msg_length);
 	if (result)
 		return -1;
 	result = byte_buffer_init(&mix->af_data.out_buf, mix_num_buffer_elems * mix->af_data.out_msg_length);
