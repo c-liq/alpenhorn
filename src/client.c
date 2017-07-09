@@ -66,13 +66,13 @@ int client_register(sign_keypair *sig_keys, char *user_id)
 			close(sock_fd);
 			exit(EXIT_FAILURE);
 		}
-		printhex("HEADER BUF", buf, net_header_BYTES);
+		//printhex("HEADER BUF", buf, net_header_BYTES);
 		close(sock_fd);
 	}
 
 	printf("Registration request made for email %s\n", user_id);
-	printhex("Public sig key", sig_keys->public_key, crypto_sign_PUBLICKEYBYTES);
-	printhex("Private sig key", sig_keys->secret_key, crypto_sign_SECRETKEYBYTES);
+	//printhex("Public sig key", sig_keys->public_key, crypto_sign_PUBLICKEYBYTES);
+	//printhex("Private sig key", sig_keys->secret_key, crypto_sign_SECRETKEYBYTES);
 
 	return 0;
 }
@@ -225,8 +225,8 @@ int dial_call_friend(client_s *c, const uint8_t *user_id,
 	sodium_bin2hex(session_key_hex, sizeof session_key_hex, c->session_key_buf,
 	               dialling_token_BYTES);
 	printf("Calling friend %s | Session Key: %s\n", user_id, session_key_hex);
-	printhex("dialling token", c->dial_request_buf + net_header_BYTES + mb_BYTES,
-	         crypto_ghash_BYTES);
+	//printhex("dialling token", c->dial_request_buf + net_header_BYTES + mb_BYTES,
+	//         crypto_ghash_BYTES);
 	return 0;
 }
 
@@ -332,7 +332,7 @@ int print_call(incoming_call_s *call)
 	printf("User ID: %s\n", call->user_id);
 	printf("Round: %ld\n", call->round);
 	printf("Intent: %d\n", call->intent);
-	printhex("Session Key", call->session_key, crypto_ghash_BYTES);
+	//printhex("Session Key", call->session_key, crypto_ghash_BYTES);
 	printf("------------\n");
 	return 0;
 }
@@ -744,6 +744,10 @@ int af_create_request(client_s *c)
 		                  dr_ptr, af_request_BYTES, c->pkg_eph_pub_combined_g1,
 		                  c->friend_request_id, user_id_BYTES);
 
+	uint8_t serialized_g1[g1_serialized_bytes];
+	bn256_serialize_g1(serialized_g1, c->pkg_eph_pub_combined_g1);
+	////printhex("ibe public key", serialized_g1, g1_serialized_bytes);
+
 	if (res < 0) {
 		fprintf(stderr, "failure during ibe encryption\n");
 		return -1;
@@ -753,6 +757,7 @@ int af_create_request(client_s *c)
 	// number of the recipient
 	uint32_t mb = af_calc_mailbox_num(c, c->friend_request_id);
 	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
+	//printhex("encrypted msg buf", c->friend_request_buf + net_header_BYTES + mb_BYTES, af_request_BYTES);
 	return 0;
 }
 
@@ -761,12 +766,17 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 	if (!c || !request_buf)
 		return -1;
 
+	uint8_t serialized_g2[g2_serialized_bytes];
+	bn256_serialize_g2(serialized_g2, c->pkg_ibe_secret_combined_g2[c->curr_ibe]);
+	////printhex("ibe sk decryption", serialized_g2, g2_serialized_bytes);
+	//printhex("decrypted msg buf", request_buf, af_request_BYTES);
 	uint8_t request_buffer[af_request_BYTES];
 	ssize_t result = bn256_ibe_decrypt(
 		request_buffer, request_buf, af_ibeenc_request_BYTES, c->hashed_id,
 		c->pkg_ibe_secret_combined_g2[c->curr_ibe]);
 
 	if (result) {
+		printf("ibe decryption failed\n");
 		return -1;
 	}
 
@@ -1001,10 +1011,10 @@ int add_onion_encryption_layer(client_s *client, uint8_t *msg,
 	return res;
 }
 
-int client_init(client_s *c, const uint8_t *user_id,
+int client_init(client_s *c, const uint8_t *user_id1,
                 const sign_keypair *sign_keys)
 {
-	if (!c || !user_id || !sign_keys)
+	if (!c || !user_id1 || !sign_keys)
 		return -1;
 
 	int res = sodium_init();
@@ -1020,9 +1030,13 @@ int client_init(client_s *c, const uint8_t *user_id,
 	c->af_round = 1;
 	c->friend_requests = NULL;
 
-	memcpy(c->user_id, user_id, user_id_BYTES);
+	uint8_t user_id_sanitized[user_id_BYTES];
+	memset(user_id_sanitized, 0, user_id_BYTES);
+	strncpy((char *) user_id_sanitized, (char *) user_id1, user_id_BYTES);
+
+	memcpy(c->user_id, user_id_sanitized, user_id_BYTES);
 	for (int i = 0; i < num_pkg_servers; i++) {
-		memcpy(c->pkg_auth_requests[i] + net_header_BYTES + round_BYTES, user_id,
+		memcpy(c->pkg_auth_requests[i] + net_header_BYTES + round_BYTES, user_id_sanitized,
 		       user_id_BYTES);
 	}
 	c->curr_ibe = 0;
@@ -1069,7 +1083,7 @@ int client_init(client_s *c, const uint8_t *user_id,
 	element_to_bytes_compressed(c->hashed_id, &q_id);
 #else
 	twistpoint_fp2_t userid_hash;
-	bn256_hash_g2(userid_hash, user_id, user_id_BYTES);
+	bn256_hash_g2(userid_hash, user_id_sanitized, user_id_BYTES);
 	bn256_serialize_g2(c->hashed_id, userid_hash);
 	bn256_sum_g2(c->pkg_lt_sig_keys_combined, pkg_lt_pks, 2);
 	twistpoint_fp2_setneutral(c->pkg_ibe_secret_combined_g2[0]);
@@ -1102,8 +1116,8 @@ int print_friend_request(friend_request_s *req)
 
 	printf("------------\n");
 	printf("Sender id: %s\n", req->user_id);
-	printhex("Sender DH key", req->dh_pk, crypto_pk_BYTES);
-	printhex("Sender signing key: ", req->lt_sig_key, crypto_sign_PUBLICKEYBYTES);
+	//printhex("Sender DH key", req->dh_pk, crypto_pk_BYTES);
+	//printhex("Sender signing key: ", req->lt_sig_key, crypto_sign_PUBLICKEYBYTES);
 	printf("Dialling round: %ld\n", req->dialling_round);
 	printf("------------\n");
 
@@ -1183,7 +1197,7 @@ void client_update_dial_keys(client_s *client, uint8_t *buffer)
 	uint8_t *ptr = buffer;
 	for (int i = 0; i < num_mix_servers; i++) {
 		memcpy(client->mix_dial_pks[i], ptr, crypto_pk_BYTES);
-		// printhex("new dial dh key", client->mix_dial_pks[i], crypto_pk_BYTES);
+		//printhex("new dial dh key", client->mix_dial_pks[i], crypto_pk_BYTES);
 		ptr += crypto_pk_BYTES;
 	}
 }
@@ -1234,7 +1248,7 @@ int mix_entry_process_msg(void *client_ptr, connection *conn)
 
 	switch (conn->msg_type) {
 	case NEW_AF_ROUND:
-		// printhex("new af round buffer", conn->read_buf.data, conn->curr_msg_len
+		// //printhex("new af round buffer", conn->read_buf.data, conn->curr_msg_len
 		// + net_header_BYTES);
 		client_update_af_keys(client, conn->read_buf.data + net_header_BYTES);
 		af_onion_encrypt_request(client);
@@ -1249,19 +1263,21 @@ int mix_entry_process_msg(void *client_ptr, connection *conn)
 		af_fake_request(client);
 		break;
 	case NEW_DIAL_ROUND:
-		// printhex("new dial round buffer", conn->read_buf.data,
+		// //printhex("new dial round buffer", conn->read_buf.data,
 		// conn->curr_msg_len + net_header_BYTES);
 		client_update_dial_keys(client, conn->read_buf.data + net_header_BYTES);
 		dial_onion_encrypt_request(client);
 		net_send_message(client, conn, client->dial_request_buf,
 		                 net_header_BYTES + onionenc_dial_token_BYTES);
 		client->dialling_round = deserialize_uint64(conn->read_buf.data + 16);
+
 		printf("Dial round %ld started\n", client->dialling_round);
 		dial_fake_request(client);
 		break;
 	case MIX_SYNC:
 		client->af_round = deserialize_uint64(conn->read_buf.data + 8);
 		client->dialling_round = deserialize_uint64(conn->read_buf.data + 16);
+		printf("AF round: %lu | Dial round: %lu\n", client->af_round, client->dialling_round);
 		break;
 	default:
 		fprintf(stderr, "Invalid message from Mix Entry\n");
@@ -1312,7 +1328,7 @@ int client_net_process_pkg(void *client_ptr, connection *conn)
 	case PKG_AUTH_RES_MSG:
 		memcpy(c->pkg_auth_responses[conn->id],
 		       conn->read_buf.data + net_header_BYTES, pkg_enc_auth_res_BYTES);
-		// printhex("auth response", conn->read_buf.data + net_header_BYTES,
+		// //printhex("auth response", conn->read_buf.data + net_header_BYTES,
 		// pkg_enc_auth_res_BYTES);
 		net_state->num_auth_responses++;
 		if (net_state->num_auth_responses == num_pkg_servers && c->mb_processed) {
