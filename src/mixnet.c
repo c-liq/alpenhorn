@@ -174,7 +174,7 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	mix->dial_data.round = 1;
 	mix->dial_data.round_duration = 10;
 	mix->dial_data.accept_window_duration = 3;
-	mix->af_data.laplace.mu = 1;
+	mix->af_data.laplace.mu = 0;
 	mix->af_data.laplace.b = 0;
 	mix->dial_data.laplace.mu = 2;
 	mix->dial_data.laplace.b = 0;
@@ -199,6 +199,8 @@ int mix_init(mix_s *mix, uint32_t server_id)
 
 	crypto_box_keypair(mix->mix_af_dh_pks[0], mix->af_dh_sk);
 	crypto_box_keypair(mix->mix_dial_dh_pks[0], mix->dial_dh_sk);
+	//printhex("mix dial pk", mix->mix_dial_dh_pks[0], crypto_box_PUBLICKEYBYTES);
+	//printhex("mix af pk", mix->mix_af_dh_pks[0], crypto_box_PUBLICKEYBYTES);
 	mix_net_init(mix);
 	return 0;
 }
@@ -276,7 +278,7 @@ int mix_add_onion_layer(uint8_t *msg, uint32_t msg_len, uint32_t index, uint8_t 
 	uint8_t shared_secret[crypto_ghash_BYTES];
 	randombytes_buf(dh_secret, crypto_box_SECRETKEYBYTES);
 	crypto_scalarmult_base(dh_pub_ptr, dh_secret);
-	//printhex("dh", matching_pub_dh, crypto_pk_BYTES);
+	////printhex("dh", matching_pub_dh, crypto_pk_BYTES);
 	int res = crypto_scalarmult(scalar_mult, dh_secret, matching_pub_dh);
 	if (res) {
 		fprintf(stderr, "Mix: scalar mult error while encrypting onion request\n");
@@ -310,7 +312,7 @@ void mix_dial_add_noise(mix_s *mix)
 			uint8_t *curr_ptr = mix->dial_data.out_buf.pos;
 			serialize_uint32(curr_ptr, i);
 			randombytes_buf(curr_ptr + sizeof i, dialling_token_BYTES);
-			//printhex ("gen di", mix->dial_data.out_buf.buf_pos_ptr, dialling_token_BYTES + mailbox_BYTES);
+			////printhex ("gen di", mix->dial_data.out_buf.buf_pos_ptr, dialling_token_BYTES + mailbox_BYTES);
 			mix_onion_encrypt_msg(mix, curr_ptr, dialling_token_BYTES + mb_BYTES, mix->mix_dial_dh_pks);
 			byte_buffer_put_virtual(&mix->dial_data.out_buf, mix->dial_data.out_msg_length);
 			mix->dial_data.num_out_msgs++;
@@ -366,7 +368,7 @@ int mix_remove_encryption_layer(uint8_t *out, uint8_t *c, uint32_t onionm_len, u
 
 	int result = crypto_scalarmult(scalar_mult, sk, client_pub_dh_ptr);
 	if (result) {
-		printhex("", c, onionm_len);
+		//printhex("", c, onionm_len);
 		fprintf(stderr, "Scalarmult error removing encryption layer\n");
 		return -1;
 	}
@@ -593,6 +595,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 	else if (conn->msg_type == NEW_DIAL_ROUND) {
 
 		crypto_box_keypair(mix->mix_dial_dh_pks[0], mix->dial_dh_sk);
+		//printhex("mix dial key", mix->mix_dial_dh_pks[0], crypto_box_PUBLICKEYBYTES);
 		byte_buffer_s *dial_broadcast_buf = &net_state->dial_client_broadcast;
 		byte_buffer_clear(dial_broadcast_buf);
 		serialize_uint32(dial_broadcast_buf->data, NEW_DIAL_ROUND);
@@ -789,6 +792,7 @@ void mix_broadcast_dialround(mix_s *s)
 	serialize_uint64(s->net_state.bc_buf.data + 16, s->dial_data.round);
 	connection *conn = s->net_state.clients;
 	byte_buffer_s *dial_broadcast = &s->net_state.dial_client_broadcast;
+	//printhex("dial bc buf", dial_broadcast->data, dial_broadcast->capacity);
 	while (conn) {
 		net_epoll_queue_write(s, conn, dial_broadcast->data, dial_broadcast->capacity, 0);
 		conn = conn->next;
@@ -869,12 +873,12 @@ int mix_entry_sync(mix_s *mix)
 	serialize_uint32(net_state->af_client_broadcast.data + net_msg_type_BYTES, net_state->af_client_broadcast.capacity - net_header_BYTES);
 	serialize_uint32(net_state->dial_client_broadcast.data + net_msg_type_BYTES, net_state->dial_client_broadcast.capacity - net_header_BYTES);
 	serialize_uint64(net_state->af_client_broadcast.data + 8, mix->af_data.round);
-	serialize_uint64(net_state->dial_client_broadcast.data + 8, mix->dial_data.round);
+	serialize_uint64(net_state->dial_client_broadcast.data + 16, mix->dial_data.round);
 	byte_buffer_put_virtual(&net_state->af_client_broadcast, net_header_BYTES);
 	byte_buffer_put_virtual(&net_state->dial_client_broadcast, net_header_BYTES);
 	for (int i = 0; i < num_mix_servers; i++) {
 		byte_buffer_put(&net_state->af_client_broadcast, mix->mix_af_dh_pks[i], crypto_pk_BYTES);
-		byte_buffer_put(&net_state->dial_client_broadcast, mix->mix_af_dh_pks[i], crypto_pk_BYTES);
+		byte_buffer_put(&net_state->dial_client_broadcast, mix->mix_dial_dh_pks[i], crypto_pk_BYTES);
 	}
 
 	// Start mix_main listening socket for client connections

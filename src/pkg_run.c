@@ -19,7 +19,7 @@ int main(int argc, char **argv)
 	}
 
 	pkg_server s;
-	pkg_server_init(&s, (uint32_t) sid, 10, 4);
+	pkg_server_init(&s, (uint32_t) sid, 2, 4);
 	pkg_server_startup(&s);
 	printf("[PKG %d successfully initialised]\n", s.srv_id);
 	pkg_server_run(&s);

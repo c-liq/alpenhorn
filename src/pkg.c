@@ -222,11 +222,11 @@ pkg_server_init(pkg_server *server,
 	server->num_threads = num_threads;
 	server->srv_id = server_id;
 	server->clients = calloc(server->client_buf_capacity, sizeof(pkg_client));
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < 2; i++) {
 		pkg_client_init(
 			&server->clients[i], server, user_ids[i], user_publickeys[i], true);
 	}
-	for (int i = 5; i < server->num_clients; i++) {
+	for (int i = 2; i < server->num_clients; i++) {
 		uint8_t user_id[user_id_BYTES];
 		uint8_t pk_buf[crypto_ghash_BYTES];
 		randombytes_buf(user_id, user_id_BYTES);
@@ -526,6 +526,7 @@ pkg_new_ibe_keypair(pkg_server *server)
 	curvepoint_fp_makeaffine(server->eph_pub_key_elem_g1);
 	bn256_serialize_g1(server->eph_broadcast_message + net_header_BYTES,
 	                   server->eph_pub_key_elem_g1);
+	printhex("pkg public ibe key", server->eph_broadcast_message + net_header_BYTES, g1_serialized_bytes);
 }
 
 void
@@ -536,6 +537,7 @@ pkg_extract_client_sk(pkg_server *server, pkg_client *client)
 	                                  server->eph_secret_key_elem_zr);
 	twistpoint_fp2_makeaffine(client->eph_sk_G2);
 	bn256_serialize_g2(client->auth_response_ibe_key_ptr, client->eph_sk_G2);
+	printhex("client ibe sk", client->auth_response_ibe_key_ptr, g2_serialized_bytes);
 }
 
 void
@@ -546,6 +548,7 @@ pkg_sign_for_client(pkg_server *server, pkg_client *client)
 	                       client->rnd_sig_msg,
 	                       pkg_sig_message_BYTES,
 	                       server->lt_keypair.secret_key);
+	printhex("client pkg sig", client->eph_client_data + net_header_BYTES, g1_serialized_bytes);
 }
 #endif
 

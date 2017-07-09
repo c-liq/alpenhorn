@@ -1,5 +1,4 @@
 #include <bn256_ibe.h>
-#include <sys/time.h>
 
 #include "greatest.h"
 
@@ -28,9 +27,14 @@ TEST test_bn256_ibe_crypto(void)
 
 		ASSERT_EQ_FMT(ciphertext_length, expected_ciphertext_length, "a: %u | b: %u\n");
 
-	bn256_ibe_decrypt(decrypt_buffer, ciphertext, ciphertext_length, id2.serialized_public_key, id2.secret_key);
-
-		PASS();
+	int res =
+		bn256_ibe_decrypt(decrypt_buffer, ciphertext, ciphertext_length, id2.serialized_public_key, id2.secret_key);
+	if (res) {
+			FAIL();
+	}
+	else {
+			PASS();
+	}
 }
 
 GREATEST_MAIN_DEFS();
