@@ -105,6 +105,24 @@ int connection_init(connection *conn,
 	return 0;
 }
 
+int net_serialize_header(uint8_t *header,
+                         uint32_t msg_type,
+                         uint32_t msg_length,
+                         uint64_t af_round,
+                         uint64_t dial_round)
+{
+	if (!header) {
+		return -1;
+	}
+
+	serialize_uint32(header, msg_type);
+	serialize_uint32(header + 4, msg_length);
+	serialize_uint64(header + 8, af_round);
+	serialize_uint64(header + 16, dial_round);
+
+	return 0;
+}
+
 int net_send_blocking(int sock_fd, uint8_t *buf, size_t n)
 {
 	ssize_t bytes_sent = 0;

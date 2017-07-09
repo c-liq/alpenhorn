@@ -79,8 +79,7 @@ struct client
 	uint32_t af_num_mailboxes;
 	uint8_t hashed_id[g2_serialized_bytes];
 	uint8_t pkg_auth_requests[num_pkg_servers][net_header_BYTES + cli_pkg_single_auth_req_BYTES];
-	uint8_t pkg_auth_responses[num_pkg_servers]
-	[net_header_BYTES + pkg_enc_auth_res_BYTES];
+	uint8_t pkg_auth_responses[num_pkg_servers][net_header_BYTES + pkg_enc_auth_res_BYTES];
 	uint8_t friend_request_buf[net_header_BYTES + onionenc_friend_request_BYTES];
 	uint8_t dial_request_buf[net_header_BYTES + onionenc_dial_token_BYTES];
 	uint8_t session_key_buf[crypto_ghash_BYTES];
@@ -95,7 +94,6 @@ struct client
 	client_net net_state;
 	bool authed;
 	bool mb_processed;
-	uint8_t register_buf[net_header_BYTES + cli_pkg_reg_request_BYTES];
 	bool running;
 	void (*on_recv_call)(incoming_call_s *call);
 	void (*on_friend_request)(friend_request_s *req);
@@ -115,7 +113,6 @@ struct client
 	curvepoint_fp_t pkg_multisig_combined_g1;
 	twistpoint_fp2_t pkg_ibe_secret_combined_g2[2];
 #endif
-	bool registered;
 };
 
 struct friend_request

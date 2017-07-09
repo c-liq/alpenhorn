@@ -76,4 +76,9 @@ int connection_init(connection *conn,
                     int socket_fd);
 void net_process_read(void *owner, connection *conn, ssize_t count);
 int net_epoll_client_accept(net_server_state *srv_state, void on_accept(void *, connection *), int on_read(void *, connection *));
+int net_serialize_header(uint8_t *header,
+                         uint32_t msg_type,
+                         uint32_t msg_length,
+                         uint64_t af_round,
+                         uint64_t dial_round);
 #endif //ALPENHORN_NET_COMMON_H

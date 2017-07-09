@@ -35,10 +35,7 @@ int bn256_ibe_decrypt(uint8_t *out, uint8_t *c, size_t clen, uint8_t *pk, twistp
 
 	uint8_t secret_key[crypto_ghash_BYTES];
 	bn256_ibe_build_sk(secret_key, pk, c, pair_val_serialized);
-	printhex("qid", pk, g2_bytes);
-	printhex("rp", c, g1_bytes);
-	printhex("pair val", pair_val_serialized, fpe_bytes * 12);
-	printhex("secret key", secret_key, crypto_ghash_BYTES);
+
 	int res = crypto_secret_nonce_open(out, c + g1_bytes, clen - g1_bytes, secret_key);
 
 	sodium_memzero(secret_key, crypto_ghash_BYTES);
@@ -77,10 +74,6 @@ ssize_t bn256_ibe_encrypt(uint8_t *out,
 	uint8_t secret_key[crypto_ghash_BYTES];
 	bn256_ibe_build_sk(secret_key, qid_serialized, out, pair_qid_ppub_serialized);
 	ssize_t res = crypto_secret_nonce_seal(out + g1_bytes, msg, msg_len, secret_key);
-	printhex("qid", qid_serialized, sizeof qid_serialized);
-	printhex("rp", out, g1_bytes);
-	printhex("pair val", pair_qid_ppub_serialized, fpe_bytes * 12);
-	printhex("secret key", secret_key, crypto_ghash_BYTES);
 
 	sodium_memzero(secret_key, sizeof secret_key);
 	if (res < 0) {

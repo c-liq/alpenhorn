@@ -517,45 +517,36 @@ pkg_sign_for_client(pkg_server* server, pkg_client* client)
 }
 
 #else
-void
-pkg_new_ibe_keypair(pkg_server *server)
+void pkg_new_ibe_keypair(pkg_server *server)
 {
 	bn256_scalar_random(server->eph_secret_key_elem_zr);
-	bn256_scalarmult_base_g1(server->eph_pub_key_elem_g1,
-	                         server->eph_secret_key_elem_zr);
+	bn256_scalarmult_base_g1(server->eph_pub_key_elem_g1, server->eph_secret_key_elem_zr);
 	curvepoint_fp_makeaffine(server->eph_pub_key_elem_g1);
-	bn256_serialize_g1(server->eph_broadcast_message + net_header_BYTES,
-	                   server->eph_pub_key_elem_g1);
-	printhex("pkg public ibe key", server->eph_broadcast_message + net_header_BYTES, g1_serialized_bytes);
+	bn256_serialize_g1(server->eph_broadcast_message + net_header_BYTES, server->eph_pub_key_elem_g1);
 }
 
-void
-pkg_extract_client_sk(pkg_server *server, pkg_client *client)
+void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
 {
 	twistpoint_fp2_scalarmult_vartime(client->eph_sk_G2,
 	                                  client->hashed_id_elem_g2,
 	                                  server->eph_secret_key_elem_zr);
 	twistpoint_fp2_makeaffine(client->eph_sk_G2);
 	bn256_serialize_g2(client->auth_response_ibe_key_ptr, client->eph_sk_G2);
-	printhex("client ibe sk", client->auth_response_ibe_key_ptr, g2_serialized_bytes);
 }
 
-void
-pkg_sign_for_client(pkg_server *server, pkg_client *client)
+void pkg_sign_for_client(pkg_server *server, pkg_client *client)
 {
 	serialize_uint64(client->rnd_sig_msg, server->current_round + 1);
 	bn256_bls_sign_message(client->eph_client_data + net_header_BYTES,
 	                       client->rnd_sig_msg,
 	                       pkg_sig_message_BYTES,
 	                       server->lt_keypair.secret_key);
-	printhex("client pkg sig", client->eph_client_data + net_header_BYTES, g1_serialized_bytes);
 }
 #endif
 
 static const char *pkg_cl_listen_ports[] = {"7500", "7501", "7502"};
 
-bool
-pkg_net_auth_client(pkg_server *s, connection *conn)
+bool pkg_net_auth_client(pkg_server *s, connection *conn)
 {
 	pkg_client *client_state = conn->client_state;
 	if (!client_state) {
@@ -568,9 +559,7 @@ pkg_net_auth_client(pkg_server *s, connection *conn)
 		client_state = &s->clients[index];
 	}
 
-	memcpy(client_state->auth_msg_from_client,
-	       conn->read_buf.data + net_header_BYTES,
-	       cli_pkg_single_auth_req_BYTES);
+	memcpy(client_state->auth_msg_from_client, conn->read_buf.data + net_header_BYTES, cli_pkg_single_auth_req_BYTES);
 	int authed = pkg_auth_client(s, client_state);
 	if (!authed) {
 		memcpy(conn->write_buf.data + conn->bytes_written,
@@ -579,12 +568,10 @@ pkg_net_auth_client(pkg_server *s, connection *conn)
 		conn->write_remaining += net_header_BYTES + pkg_enc_auth_res_BYTES;
 		net_epoll_send(s, conn, conn->sock_fd);
 	}
-	printf("User authed%s\n", client_state->user_id);
 	return true;
 }
 
-void
-remove_client(pkg_server *s, connection *conn)
+void remove_client(pkg_server *s, connection *conn)
 {
 	net_server_state *net_state = &s->net_state;
 	epoll_ctl(net_state->epoll_fd, EPOLL_CTL_DEL, conn->sock_fd, &conn->event);
@@ -650,7 +637,6 @@ pkg_net_process_client_msg(void *srv, connection *conn)
 		uint8_t header[net_header_BYTES];
 		memset(header, 0, sizeof header);
 		serialize_uint32(header, PKG_REG_REQUEST_RECEIVED);
-		printhex("HEADER BUF", header, net_header_BYTES);
 		memcpy(
 			conn->write_buf.data + conn->bytes_written, header, net_header_BYTES);
 		conn->write_remaining += net_header_BYTES;
