@@ -41,11 +41,12 @@ void mix_af_distribute(mix_s *mix)
 		uint32_t mailbox_sz = net_header_BYTES + (af_ibeenc_request_BYTES * mb->num_messages);
 		mb->size_bytes = mailbox_sz;
 		mb->data = calloc(1, mailbox_sz);
-		serialize_uint32(mb->data, AF_MB);
+		net_serialize_header(mb->data, AF_MB, mailbox_sz - net_header_BYTES, c->round, mb->num_messages);
+/*		serialize_uint32(mb->data, AF_MB);
 		serialize_uint32(mb->data + net_msg_type_BYTES, mailbox_sz - net_header_BYTES);
 		serialize_uint64(mb->data + 8, c->round);
 		serialize_uint32(mb->data + 16, mb->num_messages);
-		mb->next_msg_ptr = mb->data + net_header_BYTES;
+*/        mb->next_msg_ptr = mb->data + net_header_BYTES;
 	}
 
 	uint32_t curr_mailbox = 0;
@@ -199,8 +200,6 @@ int mix_init(mix_s *mix, uint32_t server_id)
 
 	crypto_box_keypair(mix->mix_af_dh_pks[0], mix->af_dh_sk);
 	crypto_box_keypair(mix->mix_dial_dh_pks[0], mix->dial_dh_sk);
-	//printhex("mix dial pk", mix->mix_dial_dh_pks[0], crypto_box_PUBLICKEYBYTES);
-	//printhex("mix af pk", mix->mix_af_dh_pks[0], crypto_box_PUBLICKEYBYTES);
 	mix_net_init(mix);
 	return 0;
 }
@@ -312,7 +311,6 @@ void mix_dial_add_noise(mix_s *mix)
 			uint8_t *curr_ptr = mix->dial_data.out_buf.pos;
 			serialize_uint32(curr_ptr, i);
 			randombytes_buf(curr_ptr + sizeof i, dialling_token_BYTES);
-			////printhex ("gen di", mix->dial_data.out_buf.buf_pos_ptr, dialling_token_BYTES + mailbox_BYTES);
 			mix_onion_encrypt_msg(mix, curr_ptr, dialling_token_BYTES + mb_BYTES, mix->mix_dial_dh_pks);
 			byte_buffer_put_virtual(&mix->dial_data.out_buf, mix->dial_data.out_msg_length);
 			mix->dial_data.num_out_msgs++;
@@ -427,7 +425,7 @@ void mix_dial_decrypt_messages(mix_s *mix)
 {
 	uint8_t *in_ptr = mix->dial_data.in_buf.data;
 	uint8_t *out_ptr = mix->dial_data.out_buf.pos;
-	//printf("Num messages to decrypt: %d\n", mix->dial_data.in_buf.num_msgs);
+
 	int n = mix_decrypt_messages(mix, in_ptr, out_ptr, mix->dial_data.inc_msg_length, mix->dial_data.out_msg_length,
 	                             mix->dial_data.num_inc_msgs,
 	                             mix->dial_data.num_mailboxes,

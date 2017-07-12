@@ -645,9 +645,6 @@ int af_accept_request(client_s *c, friend_request_s *req)
 	                     onionenc_friend_request_BYTES,
 	                     c->af_round,
 	                     c->dialling_round);
-	/*serialize_uint32(c->friend_request_buf, CLIENT_AF_MSG);
-	serialize_uint32(c->friend_request_buf + 4, onionenc_friend_request_BYTES);
-	serialize_uint64(c->friend_request_buf + 8, c->af_round);*/
 
 	uint8_t *dr_ptr = c->friend_request_buf + net_header_BYTES + mb_BYTES +
 		g1_serialized_bytes + crypto_ghash_BYTES + crypto_NBYTES;
@@ -703,10 +700,6 @@ int af_create_request(client_s *c)
 	                     onionenc_friend_request_BYTES,
 	                     c->af_round,
 	                     c->dialling_round);
-	/*serialize_uint32(c->friend_request_buf, CLIENT_AF_MSG);
-	serialize_uint32(c->friend_request_buf + net_msg_type_BYTES,
-	                 onionenc_friend_request_BYTES);
-	serialize_uint64(c->friend_request_buf + 8, c->af_round);*/
 
 	uint8_t *dr_ptr = c->friend_request_buf + net_header_BYTES + mb_BYTES +
 		g1_serialized_bytes + crypto_NBYTES;
@@ -1035,7 +1028,7 @@ int client_init(client_s *c, const uint8_t *user_id1,
 		       user_id_BYTES);
 	}
 	c->curr_ibe = 0;
-	c->af_round = 1;
+
 
 	memcpy(c->lt_sig_keypair.public_key, sign_keys->public_key,
 	       crypto_sign_PUBLICKEYBYTES);
@@ -1182,8 +1175,7 @@ int net_send_message(client_s *s, connection *conn, uint8_t *msg,
 	if (!s || !conn || !msg)
 		return -1;
 
-	memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining,
-	       msg, msg_size_bytes);
+	byte_buffer_put(&conn->write_buf, msg, msg_size_bytes);
 	conn->write_remaining += msg_size_bytes;
 
 	return net_epoll_send(s, conn, conn->sock_fd);
@@ -1325,8 +1317,6 @@ int client_net_process_pkg(void *client_ptr, connection *conn)
 	case PKG_AUTH_RES_MSG:
 		memcpy(c->pkg_auth_responses[conn->id],
 		       conn->read_buf.data + net_header_BYTES, pkg_enc_auth_res_BYTES);
-		// //printhex("auth response", conn->read_buf.data + net_header_BYTES,
-		// pkg_enc_auth_res_BYTES);
 		net_state->num_auth_responses++;
 		if (net_state->num_auth_responses == num_pkg_servers && c->mb_processed) {
 			af_process_auth_responses(c);
