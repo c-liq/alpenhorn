@@ -32,7 +32,7 @@ static mpz_t mpz_bn_n;
 static mpz_t mpz_sqrt_neg3;
 static mpz_t mpz_j;
 
-bool running = 0;
+static bool running = 0;
 
 void bn256_scalar_random(scalar_t out)
 {
