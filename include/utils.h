@@ -17,7 +17,7 @@ struct byte_buffer
 	uint8_t *data;
 	uint8_t *pos;
 	uint32_t used;
-	uint32_t capacity;
+	uint64_t capacity;
 };
 
 struct laplace;

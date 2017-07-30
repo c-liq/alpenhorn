@@ -38,6 +38,7 @@ TEST test_bn256_ibe_crypto(void)
 }
 
 GREATEST_MAIN_DEFS();
+
 int main(int argc, char **argv)
 {
 	GREATEST_MAIN_BEGIN();

@@ -259,7 +259,7 @@ int af_confirm_friend(client_s *c, const char *user_id)
 	return 0;
 }
 
-int af_process_mb(client_s *c, uint8_t *mailbox, uint32_t num_messages,
+int af_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages,
                   uint64_t round)
 {
 	if (!c || !mailbox)
@@ -325,7 +325,7 @@ int print_call(incoming_call_s *call)
 }
 
 int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round,
-                    uint32_t num_tokens)
+                    uint64_t num_tokens)
 {
 	if (!c || !mb_data)
 		return -1;
@@ -731,10 +731,9 @@ int af_create_request(client_s *c)
 	// verification
 	bn256_serialize_g1(multisig_ptr, c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
-	ssize_t res =
-		bn256_ibe_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES,
-		                  dr_ptr, af_request_BYTES, c->pkg_eph_pub_combined_g1,
-		                  c->friend_request_id, user_id_BYTES);
+	ssize_t res = bn256_ibe_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES,
+	                                dr_ptr, af_request_BYTES, c->pkg_eph_pub_combined_g1,
+	                                c->friend_request_id, user_id_BYTES);
 
 	uint8_t serialized_g1[g1_serialized_bytes];
 	bn256_serialize_g1(serialized_g1, c->pkg_eph_pub_combined_g1);
@@ -813,6 +812,7 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 			return 0;
 		}
 	}
+
 	friend_request_s *new_req = calloc(1, sizeof(friend_request_s));
 	if (!new_req) {
 		fprintf(stderr, "fatal malloc error\n");
@@ -844,7 +844,6 @@ int af_create_pkg_auth_request(client_s *c)
 	uint8_t *auth_request;
 	curvepoint_fp_t g1_tmp;
 	curvepoint_fp_setneutral(c->pkg_eph_pub_combined_g1);
-
 	for (int i = 0; i < num_pkg_servers; i++) {
 		auth_request = c->pkg_auth_requests[i];
 		bn256_deserialize_g1(g1_tmp, c->pkg_broadcast_msgs[i]);
@@ -1175,7 +1174,8 @@ int net_send_message(client_s *s, connection *conn, uint8_t *msg,
 	if (!s || !conn || !msg)
 		return -1;
 
-	byte_buffer_put(&conn->write_buf, msg, msg_size_bytes);
+	memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining,
+	       msg, msg_size_bytes);
 	conn->write_remaining += msg_size_bytes;
 
 	return net_epoll_send(s, conn, conn->sock_fd);
@@ -1186,7 +1186,7 @@ void client_update_dial_keys(client_s *client, uint8_t *buffer)
 	uint8_t *ptr = buffer;
 	for (int i = 0; i < num_mix_servers; i++) {
 		memcpy(client->mix_dial_pks[i], ptr, crypto_pk_BYTES);
-		//printhex("new dial dh key", client->mix_dial_pks[i], crypto_pk_BYTES);
+		printhex("new dial dh key", client->mix_dial_pks[i], crypto_pk_BYTES);
 		ptr += crypto_pk_BYTES;
 	}
 }
@@ -1252,8 +1252,6 @@ int mix_entry_process_msg(void *client_ptr, connection *conn)
 		af_fake_request(client);
 		break;
 	case NEW_DIAL_ROUND:
-		// //printhex("new dial round buffer", conn->read_buf.data,
-		// conn->curr_msg_len + net_header_BYTES);
 		client_update_dial_keys(client, conn->read_buf.data + net_header_BYTES);
 		dial_onion_encrypt_request(client);
 		net_send_message(client, conn, client->dial_request_buf,
@@ -1341,12 +1339,12 @@ int mix_last_process_msg(void *client_ptr, connection *conn)
 	case DIAL_MB:
 		dial_process_mb(client, conn->read_buf.data + net_header_BYTES,
 		                deserialize_uint64(conn->read_buf.data + 8),
-		                deserialize_uint32(conn->read_buf.data + 16));
+		                deserialize_uint64(conn->read_buf.data + 16));
 		kw_advance_table(&client->keywheel);
 		break;
 	case AF_MB:
 		af_process_mb(client, conn->read_buf.data + net_header_BYTES,
-		              deserialize_uint32(conn->read_buf.data + 16),
+		              deserialize_uint64(conn->read_buf.data + 16),
 		              deserialize_uint64(conn->read_buf.data + 8));
 		client->mb_processed = true;
 		if (net_state->num_auth_responses == num_pkg_servers && !client->authed) {

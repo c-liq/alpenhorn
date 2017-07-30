@@ -44,6 +44,8 @@ TEST test_bloom_false_pos(void)
 	bloom_run_test(p, &pos, &neg);
 	p = 0.2;
 	bloom_run_test(p, &pos, &neg);
+	p = 0.3;
+	bloom_run_test(p, &pos, &neg);
 		PASS();
 }
 

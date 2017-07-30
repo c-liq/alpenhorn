@@ -79,7 +79,7 @@ void mix_dial_distribute(mix_s *mix)
 		dial_mailbox_s *mb = &c->mailboxes[i];
 		mb->id = i;
 		mb->num_messages = mix->dial_data.mailbox_counts[i];
-		mb->num_messages = 1000;
+
 		bloom_init(&mb->bloom, mix->dial_data.bloom_p_val, mb->num_messages, 0,
 		           NULL, net_header_BYTES);
 		net_serialize_header(mb->bloom.base_ptr, DIAL_MB, mb->bloom.size_bytes,
@@ -162,14 +162,14 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	}
 
 	mix->af_data.round = 1;
-	mix->af_data.round_duration = 15;
-	mix->af_data.accept_window_duration = 5;
+	mix->af_data.round_duration = 25;
+	mix->af_data.accept_window_duration = 8;
 	mix->dial_data.round = 1;
 	mix->dial_data.round_duration = 10;
 	mix->dial_data.accept_window_duration = 3;
-	mix->af_data.laplace.mu = 0;
+	mix->af_data.laplace.mu = 20;
 	mix->af_data.laplace.b = 0;
-	mix->dial_data.laplace.mu = 2;
+	mix->dial_data.laplace.mu = 1000;
 	mix->dial_data.laplace.b = 0;
 	mix->af_data.num_mailboxes = 1;
 	mix->dial_data.num_mailboxes = 1;
@@ -240,8 +240,7 @@ void mix_shuffle_messages(uint8_t *messages,
 	for (uint32_t i = msg_count - 1; i >= 1; i--) {
 		uint32_t j = randombytes_uniform(i);
 		memcpy(tmp_message, messages + (i * msg_length), msg_length);
-		memcpy(messages + (i * msg_length), messages + (j * msg_length),
-		       msg_length);
+		memcpy(messages + (i * msg_length), messages + (j * msg_length), msg_length);
 		memcpy(messages + (j * msg_length), tmp_message, msg_length);
 	}
 }
@@ -249,7 +248,8 @@ void mix_shuffle_messages(uint8_t *messages,
 void mix_af_shuffle(mix_s *mix)
 {
 	mix_shuffle_messages(mix->af_data.out_buf.data + net_header_BYTES,
-	                     mix->af_data.num_out_msgs, mix->af_data.out_msg_length);
+	                     mix->af_data.num_out_msgs,
+	                     mix->af_data.out_msg_length);
 }
 
 void mix_dial_shuffle(mix_s *mix)
@@ -264,8 +264,7 @@ int mix_add_onion_layer(uint8_t *msg,
                         uint32_t index,
                         uint8_t *matching_pub_dh)
 {
-	// Add another layer of encryption to the request, append public DH key_state
-	// for server + nonce in clear (but authenticated)
+
 	uint32_t message_length = msg_len + (onion_layer_BYTES * index);
 	uint8_t *message_end_ptr = msg + message_length;
 	uint8_t *dh_pub_ptr = message_end_ptr + crypto_MACBYTES;
@@ -274,9 +273,8 @@ int mix_add_onion_layer(uint8_t *msg,
 	uint8_t dh_secret[crypto_box_SECRETKEYBYTES];
 	uint8_t scalar_mult[crypto_scalarmult_BYTES];
 	uint8_t shared_secret[crypto_ghash_BYTES];
-	randombytes_buf(dh_secret, crypto_box_SECRETKEYBYTES);
-	crypto_scalarmult_base(dh_pub_ptr, dh_secret);
-	////printhex("dh", matching_pub_dh, crypto_pk_BYTES);
+
+	crypto_box_keypair(dh_pub_ptr, dh_secret);
 	int res = crypto_scalarmult(scalar_mult, dh_secret, matching_pub_dh);
 	if (res) {
 		fprintf(stderr, "Mix: scalar mult error while encrypting onion request\n");
@@ -502,7 +500,7 @@ void mix_pkg_broadcast(mix_s *s)
 int net_epoll_queue_write(void *owner,
                           connection *conn,
                           uint8_t *buffer,
-                          uint32_t data_size,
+                          uint64_t data_size,
                           bool copy)
 {
 	if (!owner || !conn || !buffer)
@@ -868,7 +866,10 @@ void mix_broadcast_dialround(mix_s *s)
 	serialize_uint64(s->net_state.bc_buf.data + 16, s->dial_data.round);
 	connection *conn = s->net_state.clients;
 	byte_buffer_s *dial_broadcast = &s->net_state.dial_client_broadcast;
-	// printhex("dial bc buf", dial_broadcast->data, dial_broadcast->capacity);
+	for (uint32_t i = 0; i < num_mix_servers; i++) {
+		printf("key %d", i);
+		printhex("", s->mix_dial_dh_pks[i], crypto_box_PUBLICKEYBYTES);
+	}
 	while (conn) {
 		net_epoll_queue_write(s, conn, dial_broadcast->data,
 		                      dial_broadcast->capacity, 0);

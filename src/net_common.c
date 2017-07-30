@@ -226,8 +226,10 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 		}
 		// Message hasn't been fully received
 		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
-			printf("Msg type: %d | Remaining: %d\n", conn->msg_type, conn->curr_msg_len - conn->bytes_read + net_header_BYTES);
-			printhex("buffer", conn->read_buf.data, conn->bytes_read);
+			printf("Msg type: %u | Remaining: %u | Msg len: %u\n",
+			       conn->msg_type,
+			       conn->curr_msg_len - conn->bytes_read + net_header_BYTES,
+			       conn->curr_msg_len);
 			return;
 		}
 
