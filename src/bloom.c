@@ -119,7 +119,7 @@ bloomfilter_s *bloom_alloc(double p, uint32_t n, uint64_t hash_key, uint8_t *blo
 	return bf;
 }
 
-int bloom_init(bloomfilter_s *bf, double p, uint32_t n, uint64_t hash_key, uint8_t *bloom_data, uint32_t prefix_len)
+int bloom_init(bloomfilter_s *bf, double p, uint64_t n, uint64_t hash_key, uint8_t *bloom_data, uint32_t prefix_len)
 {
 	// calculate number of partitions and approx filter size based on target false probability rate
 	// and number of elements to be placed in the filter

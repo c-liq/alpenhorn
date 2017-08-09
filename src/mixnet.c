@@ -162,10 +162,10 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	}
 
 	mix->af_data.round = 1;
-	mix->af_data.round_duration = 25;
-	mix->af_data.accept_window_duration = 8;
+	mix->af_data.round_duration = 15;
+	mix->af_data.accept_window_duration = 5;
 	mix->dial_data.round = 1;
-	mix->dial_data.round_duration = 10;
+	mix->dial_data.round_duration = 8;
 	mix->dial_data.accept_window_duration = 3;
 	mix->af_data.laplace.mu = 20;
 	mix->af_data.laplace.b = 0;
@@ -866,10 +866,10 @@ void mix_broadcast_dialround(mix_s *s)
 	serialize_uint64(s->net_state.bc_buf.data + 16, s->dial_data.round);
 	connection *conn = s->net_state.clients;
 	byte_buffer_s *dial_broadcast = &s->net_state.dial_client_broadcast;
-	for (uint32_t i = 0; i < num_mix_servers; i++) {
+	/*for (uint32_t i = 0; i < num_mix_servers; i++) {
 		printf("key %d", i);
 		printhex("", s->mix_dial_dh_pks[i], crypto_box_PUBLICKEYBYTES);
-	}
+	}*/
 	while (conn) {
 		net_epoll_queue_write(s, conn, dial_broadcast->data,
 		                      dial_broadcast->capacity, 0);

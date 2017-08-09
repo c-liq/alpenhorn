@@ -23,11 +23,14 @@
 struct client;
 struct friend_request;
 struct incoming_call;
+struct pending_friend_req;
+struct pending_call;
 typedef struct client client_s;
 typedef struct friend_request friend_request_s;
 typedef struct incoming_call incoming_call_s;
 typedef struct client_net client_net;
-
+typedef struct pending_friend_req pending_friend_req;
+typedef struct pending_call pending_call;
 typedef struct sign_keypair sign_keypair;
 struct sign_keypair
 {
@@ -53,6 +56,20 @@ struct action
 	action *next;
 };
 
+struct pending_friend_req
+{
+	uint8_t user_id[user_id_BYTES];
+	friend_request_s *req;
+	pending_friend_req *next;
+};
+
+struct pending_call
+{
+	uint8_t user_id[user_id_BYTES];
+	uint32_t intent;
+	pending_call *next;
+};
+
 struct client_net
 {
 	connection mix_entry;
@@ -73,7 +90,6 @@ struct client
 	sign_keypair lt_sig_keypair;
 	uint64_t dialling_round;
 	keywheel_table_s keywheel;
-	uint8_t friend_request_id[user_id_BYTES];
 	uint64_t af_round;
 	uint32_t dial_num_mailboxes;
 	uint32_t af_num_mailboxes;
@@ -87,17 +103,18 @@ struct client
 	uint8_t mix_dial_pks[num_mix_servers][crypto_pk_BYTES];
 	uint8_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
 	uint8_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES];
-	int curr_ibe;
 	double bloom_p_val;
 	uint32_t num_intents;
 	friend_request_s *friend_requests;
 	client_net net_state;
-	bool authed;
-	bool mb_processed;
 	bool running;
-	void (*on_recv_call)(incoming_call_s *call);
-	void (*on_friend_request)(friend_request_s *req);
-	void (*on_friend_confirm)(friend_request_s *req);
+	void (*on_recv_call)(incoming_call_s *);
+	void (*on_friend_request)(friend_request_s *);
+	void (*on_friend_confirm)(friend_request_s *);
+	uint64_t af_mb_num_messages;
+	byte_buffer_s af_mb_buffer;
+	pending_friend_req *friend_request_queue;
+	pending_call *outgoing_call_queue;
 #if USE_PBC
 	pairing_s pairing;
 	element_s pkg_lt_sig_keys_combined;
@@ -111,7 +128,7 @@ struct client
 	twistpoint_fp2_t pkg_lt_sig_keys_combined;
 	curvepoint_fp_t pkg_eph_pub_combined_g1;
 	curvepoint_fp_t pkg_multisig_combined_g1;
-	twistpoint_fp2_t pkg_ibe_secret_combined_g2[2];
+	twistpoint_fp2_t pkg_ibe_secret_combined_g2;
 #endif
 };
 
@@ -133,13 +150,21 @@ struct incoming_call
 	uint32_t intent;
 };
 
-client_s *client_alloc(const uint8_t *user_id, const sign_keypair *signing_keys);
-int client_init(client_s *c, const uint8_t *user_id, const sign_keypair *signing_keys);
+client_s *client_alloc(const uint8_t *user_id,
+                       const sign_keypair *signing_keys,
+                       void (*on_recv_call)(incoming_call_s *),
+                       void (*on_recv_friend_request)(friend_request_s *),
+                       void (*on_friend_confirm)(friend_request_s *));
+int client_init(client_s *c,
+                const uint8_t *user_id,
+                const sign_keypair *signing_keys,
+                void (*on_recv_call)(incoming_call_s *),
+                void (*on_recv_friend_request)(friend_request_s *),
+                void (*on_friend_confirm)(friend_request_s *));
 int af_create_pkg_auth_request(client_s *c);
-int af_create_request(client_s *c);
+int af_create_request(client_s *c, uint8_t *friend_user_id);
 int af_process_auth_responses(client_s *c);
 int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round);
-int print_friend_request(friend_request_s *req);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
 int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id, bool is_dial);

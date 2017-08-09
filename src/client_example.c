@@ -1,5 +1,32 @@
 #include "client.h"
 
+void print_friend_request(friend_request_s *req)
+{
+	if (!req)
+		return;
+
+	printf("------------\n");
+	printf("Sender id: %s\n", req->user_id);
+	printhex("Sender DH key", req->dh_pk, crypto_pk_BYTES);
+	printhex("Sender signing key: ", req->lt_sig_key, crypto_sign_PUBLICKEYBYTES);
+	printf("Dialling round: %ld\n", req->dialling_round);
+	printf("------------\n");
+}
+
+void print_call(incoming_call_s *call)
+{
+	if (!call)
+		return;
+
+	printf("------------\nIncoming call\n------------\n");
+	printf("User ID: %s\n", call->user_id);
+	printf("Round: %ld\n", call->round);
+	printf("Intent: %d\n", call->intent);
+	printhex("Session Key", call->session_key, crypto_ghash_BYTES);
+	printf("------------\n");
+}
+
+
 void run_registration(int argc, char **argv)
 {
 	if (argc != 3) {
@@ -45,7 +72,7 @@ void run_main(int argc, char **argv)
 	               128, NULL, NULL, NULL);
 
 
-	client_s *c = client_alloc((uint8_t *) argv[2], &sig_keys);
+	client_s *c = client_alloc((uint8_t *) argv[2], &sig_keys, print_call, print_friend_request, print_friend_request);
 	client_run(c);
 
 	int running = 1;

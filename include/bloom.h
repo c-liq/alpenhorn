@@ -32,7 +32,7 @@ void bloom_add_elem(struct bloomfilter_s *bf, uint8_t *data, uint32_t data_len);
 int bloom_lookup(struct bloomfilter_s *bf, uint8_t *data, uint32_t data_len);
 int bloom_init(bloomfilter_s *bf,
                double p,
-               uint32_t n,
+               uint64_t n,
                uint64_t hash_key,
                uint8_t *data,
                uint32_t prefix_len);

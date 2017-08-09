@@ -394,7 +394,7 @@ pkg_server_shutdown(pkg_server *server)
 void
 pkg_client_free(pkg_client *client)
 {
-	sodium_memzero(client, sizeof(struct pkg_client));
+	sodium_memzero(client, sizeof(pkg_client));
 	free(client);
 }
 
@@ -536,7 +536,7 @@ void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
 
 void pkg_sign_for_client(pkg_server *server, pkg_client *client)
 {
-	serialize_uint64(client->rnd_sig_msg, server->current_round + 1);
+	serialize_uint64(client->rnd_sig_msg, server->current_round);
 	bn256_bls_sign_message(client->eph_client_data + net_header_BYTES,
 	                       client->rnd_sig_msg,
 	                       pkg_sig_message_BYTES,
@@ -591,6 +591,7 @@ void
 pkg_net_broadcast(void *s, connection *conn)
 {
 	pkg_server *pkg_server = s;
+
 	memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining,
 	       pkg_server->eph_broadcast_message,
 	       net_header_BYTES + pkg_broadcast_msg_BYTES);
@@ -616,7 +617,6 @@ int
 pkg_net_process_client_msg(void *srv, connection *conn)
 {
 	pkg_server *s = (pkg_server *) srv;
-	printf("Client message receieved\n");
 	if (conn->msg_type == CLIENT_AUTH_REQ) {
 		printf("Authentication request received from %s\n",
 		       conn->read_buf.data + net_header_BYTES + round_BYTES);
@@ -678,14 +678,14 @@ pkg_server_startup(pkg_server *pkg)
 	                s->epoll_fd,
 	                mix_fd);
 
-	s->listen_socket =
-		net_start_listen_socket(pkg_cl_listen_ports[pkg->srv_id], 1);
+	s->listen_socket = net_start_listen_socket(pkg_cl_listen_ports[pkg->srv_id], 1);
 	if (s->listen_socket == -1) {
 		fprintf(stderr, "failed to establish listening socket for pkg server\n");
 		return -1;
 	}
 
 	struct epoll_event event;
+	memset(&event, 0, sizeof event);
 	event.data.fd = s->listen_socket;
 	event.events = EPOLLIN | EPOLLET;
 	epoll_ctl(s->epoll_fd, EPOLL_CTL_ADD, s->listen_socket, &event);
