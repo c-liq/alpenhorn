@@ -1,4 +1,6 @@
 #include "pbc_ibe.h"
+#include "pbc_cfg.h"
+
 
 struct ibe_params
 {
@@ -87,7 +89,6 @@ ssize_t ibe_pbc_encrypt(uint8_t *out, uint8_t *msg, uint32_t msg_len, element_s 
 	                       rp_length,
 	                       pairing_value_serialized,
 	                       pairing_val_length);
-	printhex("sk enc", secret_key, crypto_ghash_BYTES);
 	ssize_t res = crypto_secret_nonce_seal(out + rp_length, msg, msg_len, secret_key);
 	if (res < 0) {
 		fprintf(stderr, "[IBE encrypt] failure during symmetric encyrption\n");
@@ -128,7 +129,6 @@ ibe_pbc_decrypt(uint8_t *out,
 	                       (size_t) read,
 	                       u_priv_pairing,
 	                       u_priv_pairing_size);
-	printhex("sk dec", secret_key, crypto_ghash_BYTES);
 	ssize_t
 		res = crypto_secret_nonce_open(out, c + g1_serialized_bytes, clen - g1_serialized_bytes, secret_key);
 	sodium_memzero(secret_key, sizeof secret_key);

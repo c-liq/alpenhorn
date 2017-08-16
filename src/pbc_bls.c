@@ -142,7 +142,7 @@ int bls_verify_signature(element_s *sig, element_s *hash_elem, uint8_t *sig_buf,
 	element_pairing(v, hash_elem, public_key);
 
 	int res = element_cmp(u, v);
-	printf("\n");
+
 
 	element_clear(u);
 	element_clear(v);

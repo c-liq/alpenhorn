@@ -584,7 +584,7 @@ typedef enum greatest_test_res
 #if GREATEST_USE_TIME
 #define GREATEST_SET_TIME(NAME)                                         \
     NAME = clock();                                                     \
-    if (NAME == (clock_t) -1) {                                         \
+    if ((NAME) == (clock_t) -1) {                                         \
         fprintf(GREATEST_STDOUT,                                        \
             "clock error: %s\n", #NAME);                                \
         exit(EXIT_FAILURE);                                             \

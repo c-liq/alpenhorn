@@ -7,17 +7,14 @@
 #include <unistd.h>
 #include "config.h"
 
-#if USE_PBC
-typedef struct element_s element_s;
-typedef struct pairing_s pairing_s;
-#endif
+
 
 struct byte_buffer
 {
 	uint8_t *data;
 	uint8_t *pos;
 	uint32_t used;
-	uint64_t capacity;
+	uint32_t capacity;
 };
 
 struct laplace;

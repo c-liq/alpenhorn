@@ -1,29 +1,31 @@
 #include <pkg.h>
-#include <sys/time.h>
+#include "greatest.h"
 
+#define num_real_clients 10
+#define num_total_clients 1000
 
-int main()
+TEST test_pkg_client_auth(pkg_server *server)
 {
+
+}
+
+TEST test_bench_pkg_keygen(pkg_server *server)
+{
+	pkg_parallel_extract(server);
+		PASS();
+}
+
+GREATEST_MAIN_DEFS();
+
+int main(int argc, char **argv)
+{
+	#if USE_PBC == 0
 	bn256_init();
+	#endif
 	pkg_server server;
 	pkg_server_init(&server, 0, 1000, 4);
-	double start, end;
-	pkg_new_ibe_keypair(&server);
-
-	randombytes_buf(server.eph_secret_dh_key, crypto_box_SECRETKEYBYTES);
-	crypto_scalarmult_base(server.broadcast_dh_pkey_ptr, server.eph_secret_dh_key);
-
-	serialize_uint32(server.eph_broadcast_message, PKG_BR_MSG);
-	serialize_uint32(server.eph_broadcast_message + net_msg_type_BYTES, pkg_broadcast_msg_BYTES);
-	serialize_uint64(server.eph_broadcast_message + 8, server.current_round);
-	start = get_time();
-	for (int i = 0; i < server.num_clients; i++) {
-		pkg_extract_client_sk(&server, &server.clients[i]);
-	}
-	end = get_time();
-	pkg_sign_for_client(&server, &server.clients[0]);
-
-	printf("Benchmarking PKG key extraction for %d clients: %f\n", server.num_clients, end - start);
-
+	GREATEST_MAIN_BEGIN();
+		RUN_TESTp(test_bench_pkg_keygen, &server);
+	GREATEST_MAIN_END();
 }
 

@@ -166,7 +166,7 @@ keywheel_unsynced *kw_unsynced_lookup(keywheel_table_s *table, const uint8_t *us
 void kw_print_table(keywheel_table_s *table)
 {
 	keywheel_s *entry = table->keywheels;
-	printf("Keywheel table [Round %ld]\n-------------------------\n", table->table_round);
+	printf("Keywheel table | #%lu [Round %ld]\n-------------------------\n", table->num_keywheels, table->table_round);
 	while (entry) {
 		printf("%s", entry->user_id);
 		printhex(" ", entry->key_state + intent_BYTES, crypto_ghash_BYTES);
@@ -249,6 +249,7 @@ keywheel_s *kw_from_request(keywheel_table_s *table,
                             uint8_t *dh_pk_out,
                             uint8_t *friend_pk)
 {
+	printf("BLEEP BLOOP\n");
 	uint8_t our_sk[crypto_box_SECRETKEYBYTES];
 	uint8_t scalar_mult[crypto_scalarmult_BYTES];
 

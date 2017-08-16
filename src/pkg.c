@@ -3,7 +3,8 @@
 #include <curl/curl.h>
 #include <pthread.h>
 
-
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "OCDFAInspection"
 typedef struct pkg_thread_args pkg_thread_args;
 
 struct pkg_thread_args
@@ -11,7 +12,6 @@ struct pkg_thread_args
 	pkg_server *server;
 	int begin;
 	int end;
-	int thread_id;
 };
 
 struct upload_status
@@ -46,6 +46,20 @@ payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 	return to_read;
 }
 
+void pkg_configure_curl(struct upload_status *up, CURL *curl, struct curl_slist *recipients)
+{
+	curl_easy_setopt(curl, CURLOPT_USERNAME, "alpenhorn.test@gmail.com");
+	curl_easy_setopt(curl, CURLOPT_PASSWORD, "alpenhorn");
+	curl_easy_setopt(curl, CURLOPT_URL, "smtp://smtp.gmail.com:587");
+	curl_easy_setopt(curl, CURLOPT_USE_SSL, (long) CURLUSESSL_ALL);
+	curl_easy_setopt(curl, CURLOPT_MAIL_FROM, "alpenhorn.test@gmail.com");
+
+	curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
+	curl_easy_setopt(curl, CURLOPT_READFUNCTION, payload_source);
+	curl_easy_setopt(curl, CURLOPT_READDATA, up);
+	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+}
+
 int
 pkg_registration_request(pkg_server *server,
                          const uint8_t *user_id,
@@ -57,13 +71,6 @@ pkg_registration_request(pkg_server *server,
 	}
 
 	printf("Reg request received: %s\n", user_id);
-
-	CURL *curl = curl_easy_init();
-	if (!curl) {
-		fprintf(stderr, "curl error\n");
-		return -1;
-	}
-
 	char *date = "Date: Mon, 29 Nov 2010 21:54:29 +1100\r\n";
 	char *from = "From: alpenhorn.test@gmail.com\r\n";
 	char *subject = "Subject: Alpenhorn registration request\r\n\r\n";
@@ -97,18 +104,16 @@ pkg_registration_request(pkg_server *server,
 	up.read = 0;
 	up.remaining = email_buffer->used;
 
-	curl_easy_setopt(curl, CURLOPT_USERNAME, "alpenhorn.test@gmail.com");
-	curl_easy_setopt(curl, CURLOPT_PASSWORD, "alpenhorn");
-	curl_easy_setopt(curl, CURLOPT_URL, "smtp://smtp.gmail.com:587");
-	curl_easy_setopt(curl, CURLOPT_USE_SSL, (long) CURLUSESSL_ALL);
-	curl_easy_setopt(curl, CURLOPT_MAIL_FROM, "alpenhorn.test@gmail.com");
+	CURL *curl = curl_easy_init();
+	if (!curl) {
+		fprintf(stderr, "curl error\n");
+		return -1;
+	}
+
 	struct curl_slist *recipients = NULL;
 	recipients = curl_slist_append(recipients, (char *) user_id);
-	curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
-	curl_easy_setopt(curl, CURLOPT_READFUNCTION, payload_source);
-	curl_easy_setopt(curl, CURLOPT_READDATA, &up);
-	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
-	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+
+	pkg_configure_curl(&up, curl, recipients);
 
 	memcpy(pc->user_id, user_id, user_id_BYTES);
 	memcpy(pc->sig_key, sig_key, crypto_sign_PUBLICKEYBYTES);
@@ -278,13 +283,12 @@ pkg_parallel_extract(pkg_server *server)
 		args[i].begin = curindex;
 		args[i].end = curindex + num_per_thread;
 		curindex += num_per_thread;
-		args[i].thread_id = i;
+
 	}
 
 	args[num_threads - 1].server = server;
 	args[num_threads - 1].begin = curindex;
 	args[num_threads - 1].end = server->num_clients;
-	args[num_threads - 1].thread_id = num_threads;
 
 	for (int i = 0; i < num_threads; i++) {
 		int res = pthread_create(&threads[i], NULL, pkg_client_auth_data, &args[i]);
@@ -362,8 +366,7 @@ pkg_client_init(pkg_client *client,
                 const uint8_t *lt_sig_key,
                 bool is_key_hex)
 {
-	client->auth_response_ibe_key_ptr =
-		client->eph_client_data + net_header_BYTES + g1_serialized_bytes;
+	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + g1_serialized_bytes;
 	serialize_uint32(client->eph_client_data, PKG_AUTH_RES_MSG);
 	memcpy(client->user_id, user_id, user_id_BYTES);
 	if (is_key_hex) {
@@ -401,19 +404,15 @@ pkg_client_free(pkg_client *client)
 void
 pkg_new_round(pkg_server *server)
 {
-	// Generate epheremal IBE + DH keypairs, place public keys into broadcast
-	// message buffer
 	pkg_new_ibe_keypair(server);
-	randombytes_buf(server->eph_secret_dh_key, crypto_box_SECRETKEYBYTES);
-	crypto_scalarmult_base(server->broadcast_dh_pkey_ptr,
-	                       server->eph_secret_dh_key);
-	// Increment round counter
+	crypto_box_keypair(server->broadcast_dh_pkey_ptr, server->eph_secret_dh_key);
+
 	server->current_round++;
-	serialize_uint32(server->eph_broadcast_message, PKG_BR_MSG);
-	serialize_uint32(server->eph_broadcast_message + net_msg_type_BYTES,
-	                 pkg_broadcast_msg_BYTES);
-	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
-	// Extract secret keys and generate signatures for each client_s
+	net_serialize_header(server->eph_broadcast_message,
+	                     PKG_BR_MSG,
+	                     pkg_broadcast_msg_BYTES,
+	                     server->current_round,
+	                     0UL);
 	pkg_parallel_extract(server);
 }
 
@@ -424,30 +423,26 @@ pkg_auth_client(pkg_server *server, pkg_client *client)
 	if (round_val != server->current_round) {
 		fprintf(stderr,
 		        "%lu, should be %lu | Incorrect round value in client "
-			        "authentication requestion\n",
+			        "authentication request\n",
 		        round_val,
 		        server->current_round);
 		return -1;
 	}
 
 	int s = crypto_sign_verify_detached(
-		client->auth_msg_from_client + cli_pkg_single_auth_req_BYTES -
-			crypto_sign_BYTES,
+		client->auth_msg_from_client + cli_pkg_single_auth_req_BYTES - crypto_sign_BYTES,
 		client->auth_msg_from_client,
 		cli_pkg_single_auth_req_BYTES - crypto_sign_BYTES,
 		client->lt_sig_pk);
 
 	if (s) {
-		// printhex("pkg sig", client->auth_msg_from_client, crypto_sign_BYTES);
 		fprintf(stderr, "failed to verify signature during client auth\n");
 		return -1;
 	}
-	uint8_t *client_dh_ptr =
-		client->auth_msg_from_client + round_BYTES + user_id_BYTES;
+	uint8_t *client_dh_ptr = client->auth_msg_from_client + round_BYTES + user_id_BYTES;
 	uint8_t scalar_mult[crypto_scalarmult_BYTES];
-	int suc =
-		crypto_scalarmult(scalar_mult, server->eph_secret_dh_key, client_dh_ptr);
-	if (suc) {
+	int result = crypto_scalarmult(scalar_mult, server->eph_secret_dh_key, client_dh_ptr);
+	if (result) {
 		fprintf(stderr, "scalarmult error\n");
 		return -1;
 	}
@@ -456,6 +451,7 @@ pkg_auth_client(pkg_server *server, pkg_client *client)
 	                     client_dh_ptr,
 	                     server->broadcast_dh_pkey_ptr,
 	                     crypto_ghash_BYTES);
+
 	pkg_encrypt_client_response(server, client);
 	return 0;
 }
@@ -507,7 +503,9 @@ pkg_extract_client_sk(pkg_server* server, pkg_client* client)
 void
 pkg_sign_for_client(pkg_server* server, pkg_client* client)
 {
-  serialize_uint64(client->rnd_sig_msg, server->current_round + 1);
+	serialize_uint64(client->rnd_sig_msg, server->current_round);
+	memcpy(client->rnd_sig_msg + round_BYTES, client->user_id, user_id_BYTES);
+	memcpy(client->rnd_sig_msg + round_BYTES + user_id_BYTES, client->lt_sig_pk, crypto_sign_PUBLICKEYBYTES);
   bls_sign_message(client->eph_client_data + net_header_BYTES,
 				   client->eph_sig_elem_G1,
 				   client->eph_sig_hash_elem_g1,
@@ -712,7 +710,7 @@ pkg_server_run(pkg_server *s)
 			}
 			else if (net_state->listen_socket == events[i].data.fd) {
 				int res = net_epoll_client_accept(
-					net_state, pkg_net_broadcast, pkg_net_process_client_msg);
+					net_state, NULL, pkg_net_process_client_msg);
 				if (res) {
 					fprintf(stderr, "fatal server error\n");
 					exit(1);

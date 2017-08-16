@@ -3,6 +3,7 @@
 #include <pbc/pbc.h>
 #include "config.h"
 #include "utils.h"
+#include "pbc_cfg.h"
 
 int ibe_pbc_extract(element_s *out, element_s *master_priv_key, const uint8_t *id, const uint32_t id_length);
 

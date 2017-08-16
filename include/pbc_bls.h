@@ -4,6 +4,7 @@
 #include "pbc/pbc.h"
 #include "config.h"
 #include "utils.h"
+#include "pbc_cfg.h"
 
 struct bls_instance;
 

@@ -2,62 +2,95 @@
 #include <utime.h>
 #include "bloom.h"
 #include "greatest.h"
+#include "math.h"
 
 #define test_num_elems 125000
-#define test_num_lookups 100000
+#define test_num_lookups 10000000
 
-void bloom_run_test(double p, int *pos, int *neg)
+static bloomfilter_s *bf;
+static uint8_t *data;
+uint8_t *false_lookup_data;
+
+bloomfilter_s *test_bf_setup(double p)
 {
-	*pos = 0;
-	*neg = 0;
 	bloomfilter_s *bf = bloom_alloc(p, test_num_elems, 12345, NULL, 0);
-
-	for (int i = 0; i < test_num_elems; i++) {
-		uint8_t rand_buf[crypto_hash_BYTES];
-		randombytes_buf(rand_buf, crypto_hash_BYTES);
-		bloom_add_elem(bf, rand_buf, crypto_hash_BYTES);
+	if (!bf) {
+		fprintf(stderr, "Fatal calloc error\n");
+		exit(EXIT_FAILURE);
 	}
-
-	for (int i = 0; i < test_num_lookups; i++) {
-		uint8_t rand_buf[crypto_hash_BYTES];
-		randombytes_buf(rand_buf, crypto_hash_BYTES);
-		int res = bloom_lookup(bf, rand_buf, crypto_hash_BYTES);
-		if (res)
-			(*pos)++;
-		else
-			(*neg)++;
-	}
-	printf("n: %d | target false pos rate: %f | pos: %d | neg: %d | false pos rate: %f\n",
-	       test_num_elems,
-	       p,
-	       *pos,
-	       *neg,
-	       (double) *pos / test_num_lookups);
-
-	bloom_free(bf);
+	return bf;
 }
 
-TEST test_bloom_false_pos(void)
+TEST test_bloom_add(bloomfilter_s *bf, uint8_t *data_array, uint32_t elem_size, uint32_t num_elems)
 {
-	double p = 0.000001;
-	int pos, neg;
-	bloom_run_test(p, &pos, &neg);
-	p = 0.2;
-	bloom_run_test(p, &pos, &neg);
-	p = 0.3;
-	bloom_run_test(p, &pos, &neg);
+	uint8_t *data_ptr = data_array;
+	for (uint32_t i = 0; i < num_elems; i++) {
+		bloom_add_elem(bf, data_ptr, elem_size);
+		data_ptr += elem_size;
+	}
 		PASS();
+}
+
+TEST test_bloom_lookup(bloomfilter_s *bf, uint8_t *data_array, uint32_t elem_size, uint32_t num_elems)
+{
+	uint8_t *data_ptr = data_array;
+	long pos = 0;
+	for (uint32_t i = 0; i < num_elems; i++) {
+		pos += bloom_lookup(bf, data_ptr, elem_size);
+		data_ptr += elem_size;
+	}
+	printf("Number of lookups: %u | Positive: %ld | False pos rate: %f\n", num_elems, pos, (double) pos / num_elems);
+		PASS();
+}
+
+uint8_t *test_generate_data(uint32_t elem_size, uint32_t num_elems)
+{
+	uint8_t *data_array = calloc(num_elems, elem_size);
+	if (!data_array) {
+		fprintf(stderr, "fatal calloc error\n");
+		exit(EXIT_FAILURE);
+	}
+
+	randombytes_buf(data_array, num_elems * elem_size);
+	return data_array;
 }
 
 GREATEST_MAIN_DEFS();
 
+
+SUITE (add_suite)
+{
+		RUN_TESTp(test_bloom_add, bf, data, crypto_pk_BYTES, test_num_elems);
+}
+
+SUITE (lookup_suite)
+{
+		RUN_TESTp(test_bloom_lookup, bf, false_lookup_data, crypto_pk_BYTES, test_num_lookups);
+}
+
+
+
 int main(int argc, char **argv)
 {
-	if (sodium_init())
+	if (sodium_init()) {
 		exit(EXIT_FAILURE);
+	}
+
+	bf = test_bf_setup(0.001);
+	data = test_generate_data(crypto_pk_BYTES, test_num_elems);
+	false_lookup_data = test_generate_data(crypto_pk_BYTES, test_num_lookups);
+	bloom_print_stats(bf);
 
 	GREATEST_MAIN_BEGIN();
-		RUN_TEST(test_bloom_false_pos);
+	RUN_SUITE(add_suite);
+	RUN_SUITE(lookup_suite);
+
+	bloom_free(bf);
+	bf = test_bf_setup(0.0001);
+
+	RUN_SUITE(add_suite);
+	RUN_SUITE(lookup_suite);
+
 	GREATEST_MAIN_END();
 }
 

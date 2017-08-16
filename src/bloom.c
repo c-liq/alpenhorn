@@ -5,23 +5,25 @@
 #include "xxhash.h"
 #include "prime_gen.h"
 #include "bloom.h"
+
 #define MAX_PREFIX_SZ 256
 
-void bloom_calc_partitions(const int m_target,
-                           uint32_t *m_actual_bytes,
-                           const uint32_t num_partitions,
-                           uint32_t *partition_lengths_bytes,
-                           uint32_t *partition_lengths_bits,
-                           const uint32_t *ptable,
-                           const uint32_t ptable_size)
+void bloom_calc_partitions(const long m_target,
+                           uint64_t *m_actual_bytes,
+                           const uint64_t num_partitions,
+                           uint64_t *partition_lengths_bytes,
+                           uint64_t *partition_lengths_bits,
+                           const uint64_t *ptable,
+                           const uint64_t ptable_size)
 {
 
-	int pdex = 0;
-	int l = 0;
-	int r = ptable_size - 1;
-	int mid = 0;
+	long pdex = 0;
+	long l = 0;
+	long r = ptable_size - 1;
+	long mid = 0;
 
-	uint32_t target_avg = m_target / num_partitions;
+	uint64_t target_avg = m_target / num_partitions;
+
 	while (l <= r) {
 		mid = (l + r + 1) / 2;
 		if (target_avg < ptable[mid]) {
@@ -37,16 +39,16 @@ void bloom_calc_partitions(const int m_target,
 	}
 
 	pdex = ptable[mid] == target_avg ? mid : mid - 1;
-	int sum = 0;
-	int diff = 0;
+	long sum = 0;
+	long diff = 0;
 
-	for (int i = pdex - num_partitions + 1; i <= pdex; i++) {
+	for (long i = pdex - num_partitions + 1; i <= pdex; i++) {
 		sum += ptable[i];
 	}
 
-	int min = sum - m_target;
+	long min = sum - m_target;
 	min = min >= 0 ? min : -min;
-	int j = pdex + 1;
+	long j = pdex + 1;
 
 	while (1) {
 		sum += ptable[j] - ptable[j - num_partitions];
@@ -58,10 +60,10 @@ void bloom_calc_partitions(const int m_target,
 		j = j + 1;
 	}
 
-	uint32_t bits_size = 0;
+	uint64_t bits_size = 0;
 	for (uint32_t i = 0; i < num_partitions; i++) {
 		partition_lengths_bits[i] = ptable[j - num_partitions + i];
-		partition_lengths_bytes[i] = (uint32_t) ceil((double) partition_lengths_bits[i] / 8);
+		partition_lengths_bytes[i] = (uint64_t) ceil((double) partition_lengths_bits[i] / 8);
 		bits_size += partition_lengths_bits[i];
 		*m_actual_bytes += partition_lengths_bytes[i];
 	}
@@ -69,30 +71,27 @@ void bloom_calc_partitions(const int m_target,
 
 void bloom_add_elem(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
 {
-	uint8_t *bloom_ptr = bf->bloom_ptr;
-	uint32_t *part_lengths = bf->partition_lengths_bits;
-	uint32_t num_partitions = bf->num_partitions;
-	uint32_t *partition_offsets = bf->partition_offsets;
 	uint64_t hash = XXH64(data, data_len, bf->hash_key);
 
-	for (uint32_t i = 0; i < num_partitions; i++) {
-		uint64_t mod_result = hash % part_lengths[i];
-		uint8_t *partition = bloom_ptr + partition_offsets[i];
+	for (uint32_t i = 0; i < bf->num_partitions; i++) {
+		uint64_t mod_result = hash % bf->partition_lengths_bits[i];
+		uint8_t *partition = bf->bloom_ptr + bf->partition_offsets[i];
 		partition[mod_result / 8] |= 1 << (mod_result % 8);
 	}
 }
 
 int bloom_lookup(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
 {
-	uint8_t *bloom_ptr = bf->bloom_ptr;
-	uint32_t *partition_lengths = bf->partition_lengths_bits;
-	uint32_t *partition_offsets = bf->partition_offsets;
-	uint32_t num_partitions = bf->num_partitions;
+	if (!bf | !data) {
+		fprintf(stderr, "invalid argument to bloom_lookup\n");
+		return -1;
+	}
+
 	uint64_t hash = XXH64(data, data_len, bf->hash_key);
 
-	for (uint32_t i = 0; i < num_partitions; i++) {
-		uint64_t mod_result = hash % partition_lengths[i];
-		uint8_t *partition = bloom_ptr + partition_offsets[i];
+	for (uint32_t i = 0; i < bf->num_partitions; i++) {
+		uint64_t mod_result = hash % bf->partition_lengths_bits[i];
+		uint8_t *partition = bf->bloom_ptr + bf->partition_offsets[i];
 		if (!(partition[mod_result / 8] & 1 << mod_result % 8)) {
 			return 0;
 		}
@@ -100,7 +99,7 @@ int bloom_lookup(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
 	return 1;
 }
 
-bloomfilter_s *bloom_alloc(double p, uint32_t n, uint64_t hash_key, uint8_t *bloom_data, uint32_t prefix_len)
+bloomfilter_s *bloom_alloc(double p, uint64_t n, uint64_t hash_key, uint8_t *bloom_data, uint32_t prefix_len)
 {
 	if (p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
 		fprintf(stderr, "invalid parameters to bloom allocator\n");
@@ -108,48 +107,49 @@ bloomfilter_s *bloom_alloc(double p, uint32_t n, uint64_t hash_key, uint8_t *blo
 	}
 
 	bloomfilter_s *bf = calloc(1, sizeof *bf);
-	if (!bf)
+	if (!bf) {
+		fprintf(stderr, "calloc failure during bloom filter allocation\n");
 		return NULL;
+	}
 
 	int res = bloom_init(bf, p, n, hash_key, bloom_data, prefix_len);
 	if (res) {
 		bloom_free(bf);
 		return NULL;
 	}
+
 	return bf;
 }
 
 int bloom_init(bloomfilter_s *bf, double p, uint64_t n, uint64_t hash_key, uint8_t *bloom_data, uint32_t prefix_len)
 {
-	// calculate number of partitions and approx filter size based on target false probability rate
-	// and number of elements to be placed in the filter
 	if (!bf || p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
 		fprintf(stderr, "invalid parameters to bloom allocator\n");
 		return -1;
 	}
 
 	double m_target = ceil((n * log(p)) / log(1.0 / (pow(2.0, log(2.0)))));
-	uint32_t k = (uint32_t) round(log(2.0) * m_target / n);
-	if (m_target <= 0.0 || k <= 0.0) {
-		fprintf(stderr, "invalid arguments for bloom filter\n");
+	uint64_t k = (uint64_t) round(log(2.0) * m_target / n);
+	if (m_target <= 0.0 || k <= 0) {
+		fprintf(stderr, "invalid parameters for bloom filter\n");
 		return -1;
 	}
 
-	uint32_t *primes_table;
-	uint32_t prime_table_size = generate_primes(&primes_table, (m_target / k));
-	uint32_t actual_size = 0;
+	uint64_t *primes_table;
+	uint64_t prime_table_size = generate_primes(&primes_table, (m_target / k) + 300);
+	uint64_t actual_size = 0;
 
-	uint32_t *part_lengh_bits = calloc(k, sizeof *part_lengh_bits);
+	uint64_t *part_lengh_bits = calloc(k, sizeof *part_lengh_bits);
 	if (!part_lengh_bits)
 		return -1;
-	uint32_t *part_length_bytes = calloc(k, sizeof *part_length_bytes);
+	uint64_t *part_length_bytes = calloc(k, sizeof *part_length_bytes);
 	if (!part_length_bytes)
 		return -1;
-	uint32_t *part_offsets = calloc(k, sizeof *part_offsets);
+	uint64_t *part_offsets = calloc(k, sizeof *part_offsets);
 	if (!part_offsets)
 		return -1;
 
-	bloom_calc_partitions((uint32_t) m_target,
+	bloom_calc_partitions((long) m_target,
 	                      &actual_size,
 	                      k,
 	                      part_length_bytes,
@@ -157,7 +157,7 @@ int bloom_init(bloomfilter_s *bf, double p, uint64_t n, uint64_t hash_key, uint8
 	                      primes_table,
 	                      prime_table_size);
 
-	uint32_t offset_sum = 0;
+	uint64_t offset_sum = 0;
 	for (int i = 1; i < k; i++) {
 		offset_sum += part_length_bytes[i - 1];
 		part_offsets[i] = offset_sum;
@@ -193,14 +193,14 @@ int bloom_init(bloomfilter_s *bf, double p, uint64_t n, uint64_t hash_key, uint8
 void bloom_print_stats(bloomfilter_s *bf)
 {
 	printf("Bloomfilter stats\n--------\n");
-	printf("Size: %d bytes (% d bits)\n", bf->size_bytes, bf->size_bytes * 8);
-	printf("Number of partitions: %d\n", bf->num_partitions);
-	printf("Target false positive rate: %f\n", bf->target_falsepos_rate);
+	printf("Size: %ld bytes (% ld bits)\n", bf->size_bytes, bf->size_bytes * 8);
+	printf("Number of partitions: %ld\n", bf->num_partitions);
+	printf("Target false positive rate: %.10f\n", bf->target_falsepos_rate);
 	printf("Partition sizes: ");
 	for (int i = 0; i < bf->num_partitions - 1; i++) {
-		printf("%d, ", bf->partition_lengths_bits[i]);
+		printf("%ld, ", bf->partition_lengths_bits[i]);
 	}
-	printf("%d\n", bf->partition_lengths_bits[bf->num_partitions - 1]);
+	printf("%ld\n", bf->partition_lengths_bits[bf->num_partitions - 1]);
 }
 
 void bloom_clear(bloomfilter_s *bf)

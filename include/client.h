@@ -123,7 +123,7 @@ struct client
 	element_s bls_gen_element_g2;
 	element_s pkg_friend_elem;
 	element_s pkg_multisig_combined_g1;
-	element_s pkg_ibe_secret_combined_g2[2];
+	element_s pkg_ibe_secret_combined_g2;
 #else
 	twistpoint_fp2_t pkg_lt_sig_keys_combined;
 	curvepoint_fp_t pkg_eph_pub_combined_g1;
@@ -168,7 +168,7 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
 int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id, bool is_dial);
-int af_add_friend(client_s *c, const char *user_id);
+int af_add_friend(client_s *c, const uint8_t *user_id);
 int af_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages, uint64_t round);
 int af_accept_request(client_s *c, friend_request_s *pRequest);
 int dial_call_friend(client_s *c, const uint8_t *user_id, uint32_t intent);
@@ -192,5 +192,7 @@ uint8_t *client_get_public_key(client_s *c);
 int af_confirm_friend(client_s *c, const char *user_id);
 int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key, uint8_t *msgs_buf);
 int client_register(sign_keypair *sig_keys, char *user_id);
+int af_update_pkg_public_keys(client_s *c);
+int af_build_request(client_s *c);
 
 #endif // ALPENHORN_CLIENT_H

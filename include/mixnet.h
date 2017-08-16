@@ -52,7 +52,7 @@ struct af_mailbox_container
 {
 	uint64_t round;
 	uint32_t num_mailboxes;
-	af_mailbox_s mailboxes[5];
+	af_mailbox_s *mailboxes;
 };
 
 typedef struct af_mailbox_container afmb_container_s;
@@ -114,10 +114,10 @@ struct mix_s
 	mix_dial_s dial_data;
 	net_server_state net_state;
 	#if USE_PBC
-	pairing_s pairing;
-	element_s ibe_gen_elem;
-	element_s af_noise_Zr_elem;
-	element_s af_noise_G1_elem;
+	struct pairing_s pairing;
+	struct element_s ibe_gen_elem;
+	struct element_s af_noise_Zr_elem;
+	struct element_s af_noise_G1_elem;
 	#endif
 };
 
@@ -138,15 +138,14 @@ dial_mailbox_s *mix_dial_get_mailbox_buffer(mix_s *mix, uint64_t round, uint8_t 
 
 static const char mix_client_listen[] = "7000";
 static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
-
+void mix_remove_client(mix_s *s, connection *conn);
 void mix_entry_new_af_round(mix_s *mix);
 void mix_entry_new_dial_round(mix_s *mix);
 void mix_batch_forward(mix_s *s, byte_buffer_s *buf);
 void mix_broadcast_new_dialmb(mix_s *s, uint64_t round);
 void mix_broadcast_new_afmb(mix_s *s, uint64_t round);
 int mix_net_init(mix_s *mix);
-void net_epoll_send_queue(mix_s *s, connection *conn);
-
+int mix_exit_process_client_msg(void *owner, connection *conn);
 void mix_run(mix_s *mix,
              void on_accept(void *, connection *),
              int on_read(void *, connection *));

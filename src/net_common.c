@@ -1,9 +1,5 @@
 #include "net_common.h"
-#include <sys/socket.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <errno.h>
-#include <pthread.h>
+
 
 int net_accept(int listen_sfd, int set_nb)
 {
@@ -35,9 +31,9 @@ int net_epoll_client_accept(net_server_state *srv_state,
 		int new_sockfd = net_accept(srv_state->listen_socket, 1);
 		if (new_sockfd == -1) {
 			if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
-				break;
+				return 0;
 			}
-			continue;
+			return -1;
 		}
 
 		connection *new_conn = calloc(1, sizeof *new_conn);
@@ -61,12 +57,118 @@ int net_epoll_client_accept(net_server_state *srv_state,
 		new_conn->prev = NULL;
 		srv_state->clients = new_conn;
 
-		printf("Connection accepted on %d, new sockfd: %d\n", srv_state->listen_socket, new_conn->sock_fd);
 		if (on_accept) {
 			on_accept(srv_state->owner, new_conn);
 		}
 	}
 	return 0;
+}
+
+int net_epoll_queue_write(net_server_state *owner,
+                          connection *conn,
+                          uint8_t *buffer,
+                          uint64_t data_size,
+                          bool copy)
+{
+	if (!owner || !conn || !buffer)
+		return -1;
+
+	send_item *new_item = calloc(1, sizeof *new_item);
+	if (!new_item) {
+		perror("malloc");
+		return -1;
+	}
+
+	if (copy) {
+		uint8_t *msg_buffer = calloc(data_size, sizeof(uint8_t));
+		if (!msg_buffer) {
+			free(new_item);
+			perror("malloc");
+			return -1;
+		}
+		memcpy(msg_buffer, buffer, data_size);
+		new_item->buffer = msg_buffer;
+	}
+	else {
+		new_item->buffer = buffer;
+	}
+
+	new_item->write_remaining = data_size;
+	new_item->bytes_written = 0;
+	new_item->next = NULL;
+	new_item->copied = copy;
+
+	pthread_mutex_lock(&conn->send_queue_lock);
+
+	if (conn->send_queue_tail) {
+		conn->send_queue_tail->next = new_item;
+	}
+
+	conn->send_queue_tail = new_item;
+	if (!conn->send_queue_head) {
+		conn->send_queue_head = new_item;
+	}
+
+	pthread_mutex_unlock(&conn->send_queue_lock);
+	net_epoll_send_queue(owner, conn);
+	return 0;
+}
+
+void net_epoll_send_queue(net_server_state *net_state, connection *conn)
+{
+	int close_connection = 0;
+	send_item *current_item;
+	while (conn->send_queue_head) {
+		current_item = conn->send_queue_head;
+		ssize_t count = send(conn->sock_fd, current_item->buffer + current_item->bytes_written,
+		                     current_item->write_remaining, 0);
+		if (count == -1) {
+			if (errno != EAGAIN) {
+				fprintf(stderr, "socket send error %d on %d\n", errno, conn->sock_fd);
+				close_connection = 1;
+			}
+			break;
+		}
+		else if (count == 0) {
+			fprintf(stderr, "Socket send 0 bytes on %d\n", conn->sock_fd);
+			close_connection = 1;
+			break;
+		}
+		else {
+			current_item->bytes_written += count;
+			current_item->write_remaining -= count;
+
+			if (current_item->write_remaining == 0) {
+				pthread_mutex_lock(&conn->send_queue_lock);
+				if (!current_item->next) {
+					conn->send_queue_tail = NULL;
+				}
+				conn->send_queue_head = current_item->next;
+
+				pthread_mutex_unlock(&conn->send_queue_lock);
+
+				if (current_item->copied) {
+					free(current_item->buffer);
+				}
+				free(current_item);
+			}
+		}
+	}
+	if (close_connection) {
+		return;
+	}
+
+	if (conn->send_queue_head && !(conn->event.events & EPOLLOUT)) {
+		conn->event.events = EPOLLOUT | EPOLLET;
+		epoll_ctl(net_state->epoll_fd, EPOLL_CTL_MOD, conn->sock_fd,
+		          &conn->event);
+	}
+
+	else if (!conn->send_queue_head && conn->event.events & EPOLLOUT) {
+		conn->event.events = EPOLLIN | EPOLLET;
+		epoll_ctl(net_state->epoll_fd, EPOLL_CTL_MOD, conn->sock_fd,
+		          &conn->event);
+	}
 }
 
 int connection_init(connection *conn,
@@ -214,7 +316,6 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 	conn->bytes_read += count;
 	conn->read_buf.pos += count;
 	conn->read_buf.used += count;
-
 	while (conn->bytes_read > 0) {
 		if (conn->curr_msg_len == 0) {
 			if ((count < net_header_BYTES)) {
@@ -233,7 +334,10 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 			return;
 		}
 
-		conn->process(owner, conn);
+		if (conn->process) {
+			conn->process(owner, conn);
+		}
+
 		uint32_t read_remaining = (conn->bytes_read - conn->curr_msg_len - net_header_BYTES);
 
 		if (read_remaining > 0) {
@@ -272,7 +376,6 @@ int net_epoll_read(void *owner, connection *conn)
 		}
 
 		else if (count == 0) {
-			printf("Sock read 0 in epoll read, sock %d\n", conn->sock_fd);
 			close_client_connection = 1;
 			break;
 		}
@@ -281,7 +384,7 @@ int net_epoll_read(void *owner, connection *conn)
 	}
 
 	if (close_client_connection) {
-		fprintf(stderr, "Epoll read: closing client_connection on sock %d\n", conn->sock_fd);
+		//fprintf(stderr, "Epoll read: closing client_connection on sock %d\n", conn->sock_fd);
 		return -1;
 	}
 	return 0;
@@ -289,7 +392,7 @@ int net_epoll_read(void *owner, connection *conn)
 
 int net_epoll_send(void *c, connection *conn, int epoll_fd)
 {
-	if (!c || !conn) return -1;
+	if (!conn) return -1;
 
 	int close = 0;
 

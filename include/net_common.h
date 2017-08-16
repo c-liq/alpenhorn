@@ -3,13 +3,18 @@
 #include "config.h"
 #include "utils.h"
 #include <sys/epoll.h>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <errno.h>
+#include <pthread.h>
 
 typedef struct send_item send_item;
 struct send_item
 {
 	uint8_t *buffer;
-	uint32_t bytes_written;
-	uint32_t write_remaining;
+	uint64_t bytes_written;
+	uint64_t write_remaining;
 	send_item *next;
 	bool copied;
 };
@@ -81,4 +86,10 @@ int net_serialize_header(uint8_t *header,
                          uint32_t msg_length,
                          uint64_t af_round,
                          uint64_t dial_round);
+void net_epoll_send_queue(net_server_state *net_state, connection *conn);
+int net_epoll_queue_write(net_server_state *owner,
+                          connection *conn,
+                          uint8_t *buffer,
+                          uint64_t data_size,
+                          bool copy);
 #endif //ALPENHORN_NET_COMMON_H
