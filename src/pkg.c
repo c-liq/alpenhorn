@@ -3,8 +3,7 @@
 #include <curl/curl.h>
 #include <pthread.h>
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "OCDFAInspection"
+
 typedef struct pkg_thread_args pkg_thread_args;
 
 struct pkg_thread_args
@@ -25,7 +24,6 @@ static size_t
 payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 {
 	struct upload_status *upload_ctx = (struct upload_status *) userp;
-
 	size_t max_read = nmemb * size;
 
 	if ((size == 0) || (nmemb == 0) || ((max_read) < 1)) {
@@ -48,7 +46,7 @@ payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 
 void pkg_configure_curl(struct upload_status *up, CURL *curl, struct curl_slist *recipients)
 {
-	curl_easy_setopt(curl, CURLOPT_USERNAME, "alpenhorn.test@gmail.com");
+	/*curl_easy_setopt(curl, CURLOPT_USERNAME, "alpenhorn.test@gmail.com");
 	curl_easy_setopt(curl, CURLOPT_PASSWORD, "alpenhorn");
 	curl_easy_setopt(curl, CURLOPT_URL, "smtp://smtp.gmail.com:587");
 	curl_easy_setopt(curl, CURLOPT_USE_SSL, (long) CURLUSESSL_ALL);
@@ -57,7 +55,7 @@ void pkg_configure_curl(struct upload_status *up, CURL *curl, struct curl_slist 
 	curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
 	curl_easy_setopt(curl, CURLOPT_READFUNCTION, payload_source);
 	curl_easy_setopt(curl, CURLOPT_READDATA, up);
-	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);*/
 }
 
 int
@@ -202,7 +200,8 @@ int
 pkg_server_init(pkg_server *server,
                 uint32_t server_id,
                 uint32_t num_clients,
-                uint32_t num_threads)
+                uint32_t num_threads,
+                char *user_data_path)
 {
 #if USE_PBC
 	pairing_init_set_str(server->pairing, pbc_params);
@@ -231,13 +230,25 @@ pkg_server_init(pkg_server *server,
 		pkg_client_init(
 			&server->clients[i], server, user_ids[i], user_publickeys[i], true);
 	}
-	for (int i = 2; i < server->num_clients; i++) {
-		uint8_t user_id[user_id_BYTES];
-		uint8_t pk_buf[crypto_ghash_BYTES];
-		randombytes_buf(user_id, user_id_BYTES);
-		randombytes_buf(pk_buf, crypto_ghash_BYTES);
-		pkg_client_init(&server->clients[i], server, user_id, pk_buf, true);
+	if (user_data_path) {
+		FILE *user_file = fopen(user_data_path, "r");
+		if (!user_file) {
+			fprintf(stderr, "failed to open user data file, terminating\n");
+			exit(EXIT_FAILURE);
+		}
+		for (int i = 2; i < server->num_clients; i++) {
+			uint8_t user_id[user_id_BYTES];
+			uint8_t pk[crypto_sign_PUBLICKEYBYTES];
+			uint8_t sk[crypto_sign_SECRETKEYBYTES];
+			fread(user_id, user_id_BYTES, 1, user_file);
+			fread(pk, crypto_sign_PUBLICKEYBYTES, 1, user_file);
+			fread(sk, crypto_sign_SECRETKEYBYTES, 1, user_file);
+			pkg_client_init(&server->clients[i], server, user_id, pk, false);
+		}
+		fclose(user_file);
+
 	}
+
 	server->broadcast_dh_pkey_ptr =
 		server->eph_broadcast_message + net_header_BYTES + g1_serialized_bytes;
 
@@ -250,9 +261,9 @@ pkg_server_init(pkg_server *server,
 	                 pkg_broadcast_msg_BYTES);
 	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
 	// Extract secret keys and generate signatures for each client_s
-	start_timer(x);
+
 	pkg_parallel_extract(server);
-	end_timer_print(x, "Extracted %d clients");
+
 	return 0;
 }
 
@@ -273,6 +284,7 @@ pkg_client_auth_data(void *args)
 int
 pkg_parallel_extract(pkg_server *server)
 {
+	LOG_START_TIMER(extract);
 	uint32_t num_threads = server->num_threads;
 	pthread_t threads[num_threads];
 	pkg_thread_args args[num_threads];
@@ -301,7 +313,7 @@ pkg_parallel_extract(pkg_server *server)
 	for (int i = 0; i < num_threads; i++) {
 		pthread_join(threads[i], NULL);
 	}
-
+	end_timer_print(extract, "extracting client data");
 	return 0;
 }
 
@@ -392,6 +404,10 @@ pkg_client_init(pkg_client *client,
 void
 pkg_server_shutdown(pkg_server *server)
 {
+	if (!server)
+		return;
+
+	free(server->clients);
 }
 
 void
@@ -662,9 +678,9 @@ pkg_server_startup(pkg_server *pkg)
 	s->owner = pkg;
 	s->clients = NULL;
 	s->epoll_fd = epoll_create1(0);
-	s->events = calloc(1000, sizeof *s->events);
+	s->events = calloc(50000, sizeof *s->events);
 
-	int mix_fd = net_connect("127.0.0.1", "3000", 1);
+	int mix_fd = net_connect(mix_server_ip, mix_server_port, 1);
 	if (mix_fd == -1) {
 		printf("failed to connect to mix entry server\n");
 		return -1;
@@ -725,5 +741,3 @@ pkg_server_run(pkg_server *s)
 		}
 	}
 }
-
-#pragma clang diagnostic pop

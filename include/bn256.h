@@ -32,5 +32,6 @@ void bn256_sum_g1(curvepoint_fp_t out, curvepoint_fp_t *in, size_t count);
 void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t *in, const size_t count);
 void bn256_deserialize_and_sum_g1(curvepoint_fp_t out, uint8_t *in, size_t count);
 void bn256_deserialize_and_sum_g2(twistpoint_fp2_t out, void *in, size_t count);
+void bn256_clear();
 
 #endif //ALPENHORN_BN_256_H

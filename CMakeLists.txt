@@ -33,7 +33,7 @@ set(SOURCE_FILES tests/test_bench_pkg_server.c include/mixnet.h src/mixnet.c inc
         include/pkg.h src/utils.c include/utils.h include/config.h include/bloom.h src/net_common.c include/net_common.h src/bn256_ibe.c include/pkg_config.h
         include/bn256_ibe.h include/bn256.h src/bn256_bls.c include/bn256_bls.h tests/test_bn256_ibe.c tests/test_bn256_bls.c
         src/bn256_keygen.c src/client_example.c tests/test.c tests/test_utils.c tests/test_utils.h include/constants.h
-        include/utest.h include/greatest.h tests/test_mix.c src/mixnet_run.c src/pkg_run.c src/dequeue.c tests/bench_mix_distribution.c tests/bench_mail_distribution_clientsim.c include/pbc_cfg.h)
+        include/utest.h include/greatest.h tests/test_mix.c src/mixnet_run.c src/pkg_run.c src/dequeue.c tests/bench_mix_distribution.c tests/bench_mail_distribution_clientsim.c include/pbc_cfg.h src/user_generator.c)
 
 set(CLIENT_SOURCE_FILES ${PBC_SOURCE_FILES}
         include/config.h src/client.c src/bloom.c src/prime_gen.c src/keywheel_table.c src/net_common.c src/utils.c lib/xxhash/xxhash.c include/client_config.h)
@@ -61,3 +61,4 @@ add_executable(bench_pkg ${TEST_PKG_SOURCE_FILES})
 add_executable(dequeue src/dequeue.c)
 add_executable(bench_mix_dist ${MIX_SOURCE_FILES} tests/bench_mix_distribution.c)
 add_executable(bench_mix_clientsim src/utils.c src/net_common.c tests/bench_mail_distribution_clientsim.c)
+add_executable(user_gen src/user_generator.c)

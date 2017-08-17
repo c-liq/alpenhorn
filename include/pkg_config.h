@@ -1,6 +1,9 @@
 #ifndef ALPENHORN_PKG_CONFIG_H
 #define ALPENHORN_PKG_CONFIG_H
 #include "config.h"
+
+static const char mix_server_ip[] = "127.0.0.1";
+static const char mix_server_port[] = "6666";
 #if USE_PBC
 static const char pbc_params[] = "type f\n"
 	"q 16283262548997601220198008118239886027035269286659395419233331082106632227801\n"

@@ -7,9 +7,11 @@
 #include <sys/types.h>
 #include "constants.h"
 
+
+
 // Server parameters
 #define USE_PBC 1
-#define LOG 0
+#define LOG 1
 #define num_pkg_servers 2U
 #define num_mix_servers 2U
 #define num_INTENTS 5
@@ -29,7 +31,7 @@
 
 #define user_id_BYTES 60U
 #define intent_BYTES 4U
-#define mb_BYTES 4U
+#define mb_BYTES 8U
 #define round_BYTES 8U
 #define dialling_token_BYTES 32U
 
@@ -55,10 +57,10 @@
 #define pkg_sig_message_BYTES (user_id_BYTES + crypto_pk_BYTES + round_BYTES)
 
 #if LOG
-#define start_timer(x) double x = get_time()
+#define LOG_START_TIMER(x) double timer_##x = get_time()
 #define end_timer_print(x, msg) \
   double x_end = get_time();    \
-  printf("Time elapsed for %s: %f\n", msg, x_end - x)
+  printf("Time elapsed for %s: %f\n", msg, x_end - timer_##x)
 #else
 #define start_timer(x)
 #define end_timer_print(x, msg)

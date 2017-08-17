@@ -3,18 +3,18 @@
 #include "xxhash.h"
 #include <math.h>
 
-uint32_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id)
+uint64_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id)
 {
-	if (!c || !user_id) return c->af_num_mailboxes + 1;
+	if (!c || !user_id) return 0;
 
 	uint64_t hash = XXH64(user_id, user_id_BYTES, 0);
-	return (uint32_t) hash % c->af_num_mailboxes;
+	return hash % c->af_num_mailboxes;
 }
 
-uint32_t dial_calc_mailbox_num(client_s *c, const uint8_t *user_id)
+uint64_t dial_calc_mailbox_num(client_s *c, const uint8_t *user_id)
 {
 	uint64_t hash = XXH64(user_id, user_id_BYTES, 0);
-	return (uint32_t) hash % c->dial_num_mailboxes;
+	return hash % c->dial_num_mailboxes;
 }
 
 static void delete_friend_request(client_s *c, friend_request_s *req)
@@ -45,7 +45,7 @@ int client_register(sign_keypair *sig_keys, char *user_id)
 	       crypto_sign_PUBLICKEYBYTES);
 
 	for (uint32_t i = 0; i < num_pkg_servers; i++) {
-		int sock_fd = net_connect("127.0.0.1", pkg_cl_listen_ports[i], 0);
+		int sock_fd = net_connect(pkg_server_ips[i], pkg_cl_listen_ports[i], 0);
 		if (sock_fd == -1) {
 			fprintf(stderr, "server connection failure\n");
 			return -1;
@@ -102,7 +102,7 @@ int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key,
 		            msgs_buf + (i * msg_length_hex), crypto_ghash_BYTES * 2,
 		            sig_key);
 
-		int socket_fd = net_connect("127.0.0.1", "7500", 0);
+		int socket_fd = net_connect(pkg_server_ips[i], pkg_cl_listen_ports[i], 0);
 		if (socket_fd == -1) {
 			fprintf(stderr, "pkg server connection failure\n");
 			return -1;
@@ -217,18 +217,15 @@ int dial_build_call(client_s *c)
 
 	int result = dial_call_friend(c, call->user_id, call->intent);
 	if (result) {
-		return -1;
+		dial_fake_request(c);
 	}
 
 	result = dial_onion_encrypt_request(c);
-	if (result) {
-		return -1;
-	}
 
 	c->outgoing_call_queue = call->next;
 	free(call);
 
-	return 0;
+	return result;
 }
 
 int dial_call_friend(client_s *c, const uint8_t *user_id,
@@ -237,13 +234,13 @@ int dial_call_friend(client_s *c, const uint8_t *user_id,
 	if (!c || !user_id || intent > c->num_intents)
 		return -1;
 
-	uint32_t mailbox = dial_calc_mailbox_num(c, user_id);
+	uint64_t mailbox = dial_calc_mailbox_num(c, user_id);
 	net_serialize_header(c->dial_request_buf,
 	                     CLIENT_DIAL_MSG,
 	                     onionenc_dial_token_BYTES,
 	                     c->af_round,
 	                     c->dialling_round);
-	serialize_uint32(c->dial_request_buf + net_header_BYTES, mailbox);
+	serialize_uint64(c->dial_request_buf + net_header_BYTES, mailbox);
 
 	int result = kw_dialling_token(c->dial_request_buf + net_header_BYTES + mb_BYTES,
 	                               &c->keywheel, user_id, intent);
@@ -348,7 +345,7 @@ int af_fake_request(client_s *c)
 	                     c->af_round,
 	                     c->dialling_round);
 
-	serialize_uint32(c->friend_request_buf + net_header_BYTES, c->af_num_mailboxes + 1);
+	serialize_uint64(c->friend_request_buf + net_header_BYTES, c->af_num_mailboxes + 1);
 	return 0;
 }
 
@@ -365,8 +362,9 @@ int dial_fake_request(client_s *c)
 	                     c->dialling_round);
 
 	// Set mailbox number to invalid valuse to mark the message as cover traffic
-	serialize_uint32(c->dial_request_buf + net_header_BYTES,
+	serialize_uint64(c->dial_request_buf + net_header_BYTES,
 	                 c->dial_num_mailboxes + 1);
+	uint64_t x = deserialize_uint64(c->dial_request_buf + net_header_BYTES);
 
 	return 0;
 }
@@ -552,8 +550,8 @@ int af_accept_request(client_s *c, friend_request_s *req)
 	                &c->pairing);
 	// Only information identifying the destination of a request, the mailbox no.
 	// of the recipient
-	uint32_t mb = af_calc_mailbox_num(c, req->user_id);
-	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
+	uint64_t mb = af_calc_mailbox_num(c, req->user_id);
+	serialize_uint64(c->friend_request_buf + net_header_BYTES, mb);
 	// Encrypt the request in layers ready for the mixnet
 	delete_friend_request(c, req);
 	return 0;
@@ -608,8 +606,8 @@ int af_create_request(client_s *c, uint8_t *friend_user_id)
 	}
 	// Only information identifying the destination of a request, the mailbox no.
 	// of the recipient
-	uint32_t mb = af_calc_mailbox_num(c, friend_user_id);
-	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
+	uint64_t mb = af_calc_mailbox_num(c, friend_user_id);
+	serialize_uint64(c->friend_request_buf + net_header_BYTES, mb);
 	// Encrypt the request in layers ready for the mixnet
 	return 0;
 }
@@ -635,7 +633,6 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 
 	// Reconstruct the message signed by the PKG's so we can verify the signature
 	uint8_t multisig_message[pkg_sig_message_BYTES];
-	printf("ROUND: %lu\n", round);
 	serialize_uint64(multisig_message, round);
 	memcpy(multisig_message + round_BYTES, user_id_ptr, user_id_BYTES);
 	memcpy(multisig_message + round_BYTES + user_id_BYTES, lt_sig_key_ptr,
@@ -981,7 +978,6 @@ int af_build_request(client_s *c)
 	pending_friend_req *request = c->friend_request_queue;
 
 	if (!request) {
-		printf("Bleep bloop\n");
 		af_fake_request(c);
 		af_onion_encrypt_request(c);
 		return 0;
@@ -1324,15 +1320,17 @@ int mix_entry_process_msg(void *client_ptr, connection *conn)
 		net_state->num_broadcast_responses = 0;
 		net_state->num_auth_responses = 0;
 		client->af_round = deserialize_uint64(conn->read_buf.data + 8);
-		printf("AF round %ld started\n", client->af_round);
+		client->af_num_mailboxes = deserialize_uint64((conn->read_buf.data + 16));
+		printf("AF round %ld started, %ld mailboxes\n", client->af_round, client->af_num_mailboxes);
 		break;
 	case NEW_DIAL_ROUND:
 		client_update_dial_keys(client, conn->read_buf.data + net_header_BYTES);
+		client->dial_num_mailboxes = deserialize_uint64(conn->read_buf.data + 16);
 		dial_build_call(client);
 		net_send_message(client, conn, client->dial_request_buf, net_header_BYTES + onionenc_dial_token_BYTES);
-		client->dialling_round = deserialize_uint64(conn->read_buf.data + 16);
+		client->dialling_round = deserialize_uint64(conn->read_buf.data + 8);
 
-		printf("Dial round %ld started\n", client->dialling_round);
+		printf("Dial round %ld started, %ld mailboxes\n", client->dialling_round, client->dial_num_mailboxes);
 		dial_fake_request(client);
 		break;
 	case MIX_SYNC:
@@ -1475,7 +1473,7 @@ int client_run(client_s *client)
 	client_net *net_state = &client->net_state;
 
 	int last_sockfd =
-		net_connect("127.0.0.1", mix_listen_ports[num_mix_servers - 1], 1);
+		net_connect(mix_server_ips[num_mix_servers - 1], mix_listen_ports[num_mix_servers - 1], 1);
 	if (last_sockfd == -1) {
 		fprintf(stderr, "could not connect to mix distribution server\n");
 		return -1;
@@ -1483,7 +1481,7 @@ int client_run(client_s *client)
 	connection_init(&net_state->mix_last, read_buf_SIZE, write_buf_SIZE,
 	                mix_last_process_msg, net_state->epoll_fd, last_sockfd);
 
-	int entry_sockfd = net_connect("127.0.0.1", mix_client_listen, 0);
+	int entry_sockfd = net_connect(mix_server_ips[0], mix_entry_client_listenport, 0);
 	if (entry_sockfd == -1) {
 		fprintf(stderr, "could not connect to mix entry server\n");
 		return -1;
@@ -1516,7 +1514,7 @@ int client_run(client_s *client)
 	}
 
 	for (uint32_t i = 0; i < num_pkg_servers; i++) {
-		int new_pkg_sockfd = net_connect("127.0.0.1", pkg_cl_listen_ports[i], 1);
+		int new_pkg_sockfd = net_connect(pkg_server_ips[i], pkg_cl_listen_ports[i], 1);
 		if (new_pkg_sockfd == -1) {
 			return -1;
 		}

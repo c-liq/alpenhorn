@@ -91,8 +91,8 @@ struct client
 	uint64_t dialling_round;
 	keywheel_table_s keywheel;
 	uint64_t af_round;
-	uint32_t dial_num_mailboxes;
-	uint32_t af_num_mailboxes;
+	uint64_t dial_num_mailboxes;
+	uint64_t af_num_mailboxes;
 	uint8_t hashed_id[g2_serialized_bytes];
 	uint8_t pkg_auth_requests[num_pkg_servers][net_header_BYTES + cli_pkg_single_auth_req_BYTES];
 	uint8_t pkg_auth_responses[num_pkg_servers][net_header_BYTES + pkg_enc_auth_res_BYTES];

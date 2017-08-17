@@ -7,6 +7,10 @@
 #include "bloom.h"
 #include "net_common.h"
 
+static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "localhost"};
+static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
+static const char mix_entry_client_listenport[] = "7000";
+static const char mix_entry_pkg_listenport[] = "6666";
 
 struct mix_s;
 typedef struct mix_s mix_s;
@@ -15,7 +19,7 @@ struct dial_mailbox
 {
 	uint32_t id;
 	bloomfilter_s bloom;
-	uint32_t num_messages;
+	uint64_t num_messages;
 };
 
 typedef struct dial_mailbox dial_mailbox_s;
@@ -23,7 +27,7 @@ typedef struct dial_mailbox dial_mailbox_s;
 struct dial_mailbox_container
 {
 	uint64_t round;
-	uint32_t num_mailboxes;
+	uint64_t num_mailboxes;
 	dial_mailbox_s mailboxes[5];
 };
 
@@ -34,8 +38,8 @@ struct af_mailbox
 	uint32_t id;
 	uint8_t *data;
 	uint8_t *next_msg_ptr;
-	uint32_t num_messages;
-	uint32_t size_bytes;
+	uint64_t num_messages;
+	uint64_t size_bytes;
 };
 
 struct remove_conn_list
@@ -51,7 +55,7 @@ typedef struct af_mailbox af_mailbox_s;
 struct af_mailbox_container
 {
 	uint64_t round;
-	uint32_t num_mailboxes;
+	uint64_t num_mailboxes;
 	af_mailbox_s *mailboxes;
 };
 
@@ -59,7 +63,7 @@ typedef struct af_mailbox_container afmb_container_s;
 
 struct mix_af
 {
-	uint32_t num_mailboxes;
+	uint64_t num_mailboxes;
 	byte_buffer_s in_buf;
 	byte_buffer_s out_buf;
 	uint32_t num_inc_msgs;
@@ -71,14 +75,14 @@ struct mix_af
 	uint64_t round;
 	uint32_t round_duration;
 	int32_t accept_window_duration;
-	uint32_t mb_counts[5];
+	uint64_t mb_counts[20];
 };
 
 typedef struct mix_af mix_af_s;
 
 struct mix_dial
 {
-	uint32_t num_mailboxes;
+	uint64_t num_mailboxes;
 	byte_buffer_s in_buf;
 	uint32_t num_inc_msgs;
 	uint32_t num_out_msgs;
@@ -90,7 +94,7 @@ struct mix_dial
 	int32_t accept_window_duration;
 	laplace_s laplace;
 	uint32_t last_noise_count;
-	uint32_t mailbox_counts[5];
+	uint64_t mailbox_counts[20];
 	double bloom_p_val;
 };
 
@@ -136,8 +140,6 @@ void mix_af_newround(mix_s *mix);
 void mix_dial_newround(mix_s *mix);
 dial_mailbox_s *mix_dial_get_mailbox_buffer(mix_s *mix, uint64_t round, uint8_t *user_id);
 
-static const char mix_client_listen[] = "7000";
-static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
 void mix_remove_client(mix_s *s, connection *conn);
 void mix_entry_new_af_round(mix_s *mix);
 void mix_entry_new_dial_round(mix_s *mix);

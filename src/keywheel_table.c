@@ -249,7 +249,6 @@ keywheel_s *kw_from_request(keywheel_table_s *table,
                             uint8_t *dh_pk_out,
                             uint8_t *friend_pk)
 {
-	printf("BLEEP BLOOP\n");
 	uint8_t our_sk[crypto_box_SECRETKEYBYTES];
 	uint8_t scalar_mult[crypto_scalarmult_BYTES];
 

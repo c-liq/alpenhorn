@@ -94,10 +94,7 @@ void pkg_client_init(pkg_client *client,
                      const uint8_t *user_id,
                      const uint8_t *lt_sig_key, bool is_key_hex);
 void pkg_new_ibe_keypair(pkg_server *server);
-int pkg_server_init(pkg_server *server,
-                    uint32_t id,
-                    uint32_t num_clients,
-                    uint32_t num_threads);
+int pkg_server_init(pkg_server *server, uint32_t id, uint32_t num_clients, uint32_t num_threads, char *user_data_path);
 void pkg_new_ibe_keypair(pkg_server *server);
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client);
 void pkg_sign_for_client(pkg_server *server, pkg_client *client);
@@ -105,7 +102,6 @@ void pkg_encrypt_client_response(pkg_server *server, pkg_client *client);
 void pkg_client_free(pkg_client *client);
 void pkg_new_round(pkg_server *server);
 int pkg_auth_client(pkg_server *server, pkg_client *client);
-void pkg_encrypt_client_response(pkg_server *server, pkg_client *client);
 int pkg_client_lookup(pkg_server *server, uint8_t *user_id);
 int pkg_parallel_extract(pkg_server *server);
 int pkg_registration_request(pkg_server *server,
@@ -116,5 +112,7 @@ int pkg_confirm_registration(pkg_server *server,
                              uint8_t *sig);
 int pkg_server_startup(pkg_server *pkg);
 void pkg_server_run(pkg_server *s);
+void
+pkg_server_shutdown(pkg_server *server);
 
 #endif  // ALPENHORN_PKG_H

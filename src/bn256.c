@@ -137,6 +137,17 @@ bool bn256_init()
 	return true;
 }
 
+void bn256_clear()
+{
+	if (!running)
+		return;
+
+	mpz_clear(mpz_j);
+	mpz_clear(mpz_sqrt_neg3);
+	mpz_clear(mpz_bn_p);
+	mpz_clear(mpz_bn_n);
+}
+
 int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len)
 {
 	uint8_t hash[crypto_generichash_BYTES];
@@ -231,6 +242,20 @@ int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len)
 	mpz2fp(rop->m_y, y);
 	fpe_setone(rop->m_z);
 	fpe_setzero(rop->m_t);
+
+	mpz_clear(t);
+	mpz_clear(y);
+	mpz_clear(w);
+	mpz_clear(x[0]);
+	mpz_clear(x[1]);
+	mpz_clear(x[2]);
+	mpz_clear(r[0]);
+	mpz_clear(r[1]);
+	mpz_clear(r[2]);
+	gmp_randclear(rstate);
+	mpz_clear(xi_3_plusb[0]);
+	mpz_clear(xi_3_plusb[1]);
+	mpz_clear(xi_3_plusb[2]);
 	return l1 + l2 + l3;
 }
 
