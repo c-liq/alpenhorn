@@ -13,8 +13,8 @@ struct byte_buffer
 {
 	uint8_t *data;
 	uint8_t *pos;
-	uint32_t used;
-	uint32_t capacity;
+	uint64_t used;
+	uint64_t capacity;
 };
 
 struct laplace;
@@ -65,7 +65,7 @@ void byte_buffer_clear(byte_buffer_s *buf);
 int byte_buffer_put(byte_buffer_s *buf, uint8_t *data, size_t size);
 int byte_buffer_put_virtual(byte_buffer_s *buf, size_t size);
 uint32_t laplace_rand(laplace_s *l);
-
+void get_current_time(char *out_buffer);
 double get_time();
 
 #endif  // ALPENHORN_UTILS_H

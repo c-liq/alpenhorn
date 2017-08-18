@@ -220,6 +220,13 @@ pkg_server_init(pkg_server *server,
 	twistpoint_fp2_set(server->lt_keypair.public_key, pkg_lt_pks[server_id]);
 	scalar_set_lluarray(server->lt_keypair.secret_key, pkg_lt_sks[server_id]);
 #endif
+	char log_file_str[20];
+	sprintf(log_file_str, "pkg_%d.log", server_id);
+	server->log_file = fopen(log_file_str, "a+");
+	if (!server->log_file) {
+		fprintf(stderr, "fatal: couldn't open log file\n");
+		exit(EXIT_FAILURE);
+	}
 	server->current_round = 1;
 	server->num_clients = num_clients;
 	server->client_buf_capacity = num_clients * 2;
@@ -284,7 +291,7 @@ pkg_client_auth_data(void *args)
 int
 pkg_parallel_extract(pkg_server *server)
 {
-	LOG_START_TIMER(extract);
+	double start_timer = get_time();
 	uint32_t num_threads = server->num_threads;
 	pthread_t threads[num_threads];
 	pkg_thread_args args[num_threads];
@@ -313,7 +320,14 @@ pkg_parallel_extract(pkg_server *server)
 	for (int i = 0; i < num_threads; i++) {
 		pthread_join(threads[i], NULL);
 	}
-	end_timer_print(extract, "extracting client data");
+	char time_buffer[40];
+	get_current_time(time_buffer);
+	LOG_OUT(server->log_file,
+	        "[Info] Client data generated at %s | Time taken: %f (%d)\n",
+	        time_buffer,
+	        get_time() - start_timer,
+	        server->num_clients);
+	printf("Keys updated for round %lu\n", server->current_round);
 	return 0;
 }
 
@@ -433,9 +447,9 @@ pkg_new_round(pkg_server *server)
 }
 
 int
-pkg_auth_client(pkg_server *server, pkg_client *client)
+pkg_auth_client(pkg_server *server, pkg_client *client, uint8_t *auth_msg_buf)
 {
-	uint64_t round_val = deserialize_uint64(client->auth_msg_from_client);
+	uint64_t round_val = deserialize_uint64(auth_msg_buf);
 	if (round_val != server->current_round) {
 		fprintf(stderr,
 		        "%lu, should be %lu | Incorrect round value in client "
@@ -446,8 +460,8 @@ pkg_auth_client(pkg_server *server, pkg_client *client)
 	}
 
 	int s = crypto_sign_verify_detached(
-		client->auth_msg_from_client + cli_pkg_single_auth_req_BYTES - crypto_sign_BYTES,
-		client->auth_msg_from_client,
+		auth_msg_buf + cli_pkg_single_auth_req_BYTES - crypto_sign_BYTES,
+		auth_msg_buf,
 		cli_pkg_single_auth_req_BYTES - crypto_sign_BYTES,
 		client->lt_sig_pk);
 
@@ -455,7 +469,7 @@ pkg_auth_client(pkg_server *server, pkg_client *client)
 		fprintf(stderr, "failed to verify signature during client auth\n");
 		return -1;
 	}
-	uint8_t *client_dh_ptr = client->auth_msg_from_client + round_BYTES + user_id_BYTES;
+	uint8_t *client_dh_ptr = auth_msg_buf + round_BYTES + user_id_BYTES;
 	uint8_t scalar_mult[crypto_scalarmult_BYTES];
 	int result = crypto_scalarmult(scalar_mult, server->eph_secret_dh_key, client_dh_ptr);
 	if (result) {
@@ -541,11 +555,12 @@ void pkg_new_ibe_keypair(pkg_server *server)
 
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client)
 {
-	twistpoint_fp2_scalarmult_vartime(client->eph_sk_G2,
+	twistpoint_fp2_t client_sk;
+	twistpoint_fp2_scalarmult_vartime(client_sk,
 	                                  client->hashed_id_elem_g2,
 	                                  server->eph_secret_key_elem_zr);
-	twistpoint_fp2_makeaffine(client->eph_sk_G2);
-	bn256_serialize_g2(client->auth_response_ibe_key_ptr, client->eph_sk_G2);
+	twistpoint_fp2_makeaffine(client_sk);
+	bn256_serialize_g2(client->auth_response_ibe_key_ptr, client_sk);
 }
 
 void pkg_sign_for_client(pkg_server *server, pkg_client *client)
@@ -573,9 +588,9 @@ bool pkg_net_auth_client(pkg_server *s, connection *conn)
 		client_state = &s->clients[index];
 	}
 
-	memcpy(client_state->auth_msg_from_client, conn->read_buf.data + net_header_BYTES, cli_pkg_single_auth_req_BYTES);
-	int authed = pkg_auth_client(s, client_state);
+	int authed = pkg_auth_client(s, client_state, conn->read_buf.data + net_header_BYTES);
 	if (!authed) {
+		client_state->last_auth = time(0);
 		memcpy(conn->write_buf.data + conn->bytes_written,
 		       client_state->eph_client_data,
 		       net_header_BYTES + pkg_enc_auth_res_BYTES);
@@ -617,12 +632,18 @@ int
 pkg_mix_read(void *srv, connection *conn)
 {
 	pkg_server *pkg = (pkg_server *) srv;
-	pkg_new_round(pkg);
-	connection *curr = pkg->net_state.clients;
-	printf("PKG advanced to round %ld\n", pkg->current_round);
-	while (curr) {
-		pkg_net_broadcast(pkg, curr);
-		curr = curr->next;
+	if (conn->msg_type == NEW_AF_ROUND) {
+		connection *curr = pkg->net_state.clients;
+		char time_buffer[40];
+		get_current_time(time_buffer);
+		LOG_OUT(pkg->log_file, "[Info] Round %ld started at %s\n", pkg->current_round, time_buffer);
+		while (curr) {
+			pkg_net_broadcast(pkg, curr);
+			curr = curr->next;
+		}
+	}
+	else if (conn->msg_type == AF_START_GEN_KEYS) {
+		pkg_new_round(pkg);
 	}
 	return 0;
 }

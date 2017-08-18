@@ -10,14 +10,14 @@
 
 
 // Server parameters
-#define USE_PBC 1
+#define USE_PBC 0
 #define LOG 1
 #define num_pkg_servers 2U
 #define num_mix_servers 2U
 #define num_INTENTS 5
 #define mix_num_dial_mbs_stored 5
-#define read_buf_SIZE 16384
-#define write_buf_SIZE 16384
+#define read_buf_SIZE 512
+#define write_buf_SIZE 1024
 
 #if USE_PBC
 #include <pbc/pbc.h>
@@ -54,16 +54,11 @@
 #define pkg_enc_auth_res_BYTES \
   (pkg_auth_res_BYTES + crypto_MACBYTES + crypto_NBYTES)
 #define pkg_broadcast_msg_BYTES (g1_serialized_bytes + crypto_pk_BYTES)
-#define pkg_sig_message_BYTES (user_id_BYTES + crypto_pk_BYTES + round_BYTES)
+#define pkg_sig_message_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + round_BYTES)
 
 #if LOG
-#define LOG_START_TIMER(x) double timer_##x = get_time()
-#define end_timer_print(x, msg) \
-  double x_end = get_time();    \
-  printf("Time elapsed for %s: %f\n", msg, x_end - timer_##x)
-#else
-#define start_timer(x)
-#define end_timer_print(x, msg)
+#define LOG_OUT(file, format, ...) fprintf(file, format, __VA_ARGS__); fflush(file);
+
 #endif
 
 static const uint8_t user_ids[10][user_id_BYTES] = {

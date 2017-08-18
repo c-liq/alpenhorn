@@ -7,7 +7,7 @@
 #include "bloom.h"
 #include "net_common.h"
 
-static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "localhost"};
+static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
 static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
 static const char mix_entry_client_listenport[] = "7000";
 static const char mix_entry_pkg_listenport[] = "6666";
@@ -104,6 +104,7 @@ struct mix_s
 {
 	uint32_t server_id;
 	uint32_t num_servers;
+	FILE *log_file;
 	uint32_t num_inc_onion_layers;
 	uint32_t num_out_onion_layers;
 	bool is_last;
@@ -123,6 +124,7 @@ struct mix_s
 	struct element_s af_noise_Zr_elem;
 	struct element_s af_noise_G1_elem;
 	#endif
+	bool pkg_preprocess_check;
 };
 
 int mix_init(mix_s *mix, uint32_t server_id);

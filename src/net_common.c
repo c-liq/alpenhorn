@@ -236,6 +236,7 @@ int net_send_blocking(int sock_fd, uint8_t *buf, size_t n)
 		}
 		bytes_sent += tmp_sent;
 	}
+	printf("Sent %ld bytes\n", bytes_sent);
 	return 0;
 }
 
@@ -327,10 +328,10 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 		}
 		// Message hasn't been fully received
 		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
-			printf("Msg type: %u | Remaining: %u | Msg len: %u\n",
+			/*printf("Msg type: %u | Remaining: %u | Msg len: %u\n",
 			       conn->msg_type,
 			       conn->curr_msg_len - conn->bytes_read + net_header_BYTES,
-			       conn->curr_msg_len);
+			       conn->curr_msg_len);*/
 			return;
 		}
 
@@ -366,7 +367,6 @@ int net_epoll_read(void *owner, connection *conn)
 		}
 
 		count = read(conn->sock_fd, read_buf->pos, buf_space);
-
 		if (count == -1) {
 			if (errno != EAGAIN) {
 				perror("read");
@@ -384,7 +384,7 @@ int net_epoll_read(void *owner, connection *conn)
 	}
 
 	if (close_client_connection) {
-		//fprintf(stderr, "Epoll read: closing client_connection on sock %d\n", conn->sock_fd);
+		fprintf(stderr, "Epoll read: closing client_connection on sock %d\n", conn->sock_fd);
 		return -1;
 	}
 	return 0;

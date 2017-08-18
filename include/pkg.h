@@ -62,13 +62,13 @@ struct pkg_server
 	uint32_t num_threads;
 	pkg_pending_client *pending_registration_requests;
 	net_server_state net_state;
+	FILE *log_file;
 };
 
 struct pkg_client
 {
 	uint8_t user_id[user_id_BYTES];
 	uint8_t lt_sig_pk[crypto_sign_PUBLICKEYBYTES];
-	uint8_t auth_msg_from_client[cli_pkg_single_auth_req_BYTES];
 	uint8_t eph_symmetric_key[crypto_generichash_BYTES];
 	uint8_t rnd_sig_msg[pkg_sig_message_BYTES];
 	uint8_t eph_client_data[net_header_BYTES + pkg_enc_auth_res_BYTES];
@@ -81,11 +81,6 @@ struct pkg_client
 	element_t eph_sk_G2;
 #else
 	twistpoint_fp2_t hashed_id_elem_g2;  // Permanent
-	curvepoint_fp_t eph_sig_elem_G1;
-	curvepoint_fp_t eph_sig_hash_elem_g1;  // Round-specific sig_lts of (user_id,
-	// lts-sig-key_state, round number)
-	twistpoint_fp2_t
-		eph_sk_G2;  // Round-specific IBE secret key_state for client_s
 #endif
 };
 
@@ -101,7 +96,7 @@ void pkg_sign_for_client(pkg_server *server, pkg_client *client);
 void pkg_encrypt_client_response(pkg_server *server, pkg_client *client);
 void pkg_client_free(pkg_client *client);
 void pkg_new_round(pkg_server *server);
-int pkg_auth_client(pkg_server *server, pkg_client *client);
+int pkg_auth_client(pkg_server *server, pkg_client *client, uint8_t *auth_msg_buf);
 int pkg_client_lookup(pkg_server *server, uint8_t *user_id);
 int pkg_parallel_extract(pkg_server *server);
 int pkg_registration_request(pkg_server *server,

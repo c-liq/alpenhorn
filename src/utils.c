@@ -2,6 +2,7 @@
 #include <memory.h>
 #include "utils.h"
 #include <math.h>
+#include <time.h>
 
 void printhex(char *msg, uint8_t *data, size_t len)
 {
@@ -115,12 +116,11 @@ int byte_buffer_resize(byte_buffer_s *buf, uint64_t new_capacity)
 		return -1;
 	}
 
-	uint8_t *new_buf = realloc(buf->data, (size_t) new_capacity);
+	uint8_t *new_buf = realloc(buf->data, new_capacity);
 	if (!new_buf) {
 		fprintf(stderr, "failed to resize byte buffer, realloc failure\n");
 		return -1;
 	}
-
 	buf->data = new_buf;
 	buf->pos = buf->data + buf->used;
 	buf->capacity = new_capacity;
@@ -130,7 +130,8 @@ int byte_buffer_resize(byte_buffer_s *buf, uint64_t new_capacity)
 int byte_buffer_put(byte_buffer_s *buf, uint8_t *data, size_t size)
 {
 	if (size > buf->capacity - buf->used) {
-		int res = byte_buffer_resize(buf, buf->capacity * 2);
+		uint64_t new_capacity = buf->capacity + size;
+		int res = byte_buffer_resize(buf, new_capacity);
 		if (res)
 			return -1;
 	}
@@ -139,6 +140,26 @@ int byte_buffer_put(byte_buffer_s *buf, uint8_t *data, size_t size)
 	buf->pos += size;
 	buf->used += size;
 	return 0;
+}
+
+void get_current_time(char *out_buffer)
+{
+	long millisec;
+	struct tm *tm_info;
+	struct timeval tv;
+	char buffer[50];
+	gettimeofday(&tv, NULL);
+
+	millisec = lrint(tv.tv_usec / 1000.0); // Round to nearest millisec
+	if (millisec >= 1000) { // Allow for rounding up to nearest second
+		millisec -= 1000;
+		tv.tv_sec++;
+	}
+
+	tm_info = localtime(&tv.tv_sec);
+
+	strftime(buffer, 26, "%Y:%m:%d %H:%M:%S", tm_info);
+	sprintf(out_buffer, "%s.%03ld\n", buffer, millisec);
 }
 
 int byte_buffer_put_virtual(byte_buffer_s *buf, size_t size)

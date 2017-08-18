@@ -22,6 +22,7 @@
 #define NEW_DMB_AVAIL 17U
 #define NEW_AFMB_AVAIL 18U
 #define PKG_REG_REQUEST_RECEIVED 66U
+#define AF_START_GEN_KEYS 99U
 
 
 #define crypto_ghash_BYTES crypto_generichash_BYTES

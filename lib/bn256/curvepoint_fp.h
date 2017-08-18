@@ -13,6 +13,7 @@
 #include "scalar.h"
 
 /// Structure describing a point on a BN-curve
+struct curvepoint_fp_struct;
 typedef struct curvepoint_fp_struct curvepoint_fp_struct_t;
 
 struct curvepoint_fp_struct

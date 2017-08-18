@@ -115,6 +115,7 @@ struct client
 	byte_buffer_s af_mb_buffer;
 	pending_friend_req *friend_request_queue;
 	pending_call *outgoing_call_queue;
+	FILE *log_file;
 #if USE_PBC
 	pairing_s pairing;
 	element_s pkg_lt_sig_keys_combined;
@@ -130,6 +131,10 @@ struct client
 	curvepoint_fp_t pkg_multisig_combined_g1;
 	twistpoint_fp2_t pkg_ibe_secret_combined_g2;
 #endif
+	double af_start_round;
+	double dial_start_round;
+	double af_mb_processed;
+	double dial_mb_processed;
 };
 
 struct friend_request

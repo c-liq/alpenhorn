@@ -3,6 +3,7 @@
 #include "xxhash.h"
 #include <math.h>
 
+
 uint64_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id)
 {
 	if (!c || !user_id) return 0;
@@ -323,13 +324,19 @@ int af_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages,
 	if (!c || !mailbox)
 		return -1;
 
-	printf("Processing AF mailbox for round %lu, %ld messages\n", round,
-	       num_messages);
+	/*printf("Processing AF mailbox for round %lu, %ld messages\n", round,
+	       num_messages);*/
 	uint8_t *msg_ptr = mailbox;
 	for (int i = 0; i < num_messages; i++) {
 		af_decrypt_request(c, msg_ptr, round);
 		msg_ptr += af_ibeenc_request_BYTES;
 	}
+	LOG_OUT(c->log_file,
+	        "[Info] Time taken for AF round %lu: %f | Number of tokens: %lu\n",
+	        c->af_round,
+	        get_time() - c->af_start_round,
+	        num_messages);
+
 	return 0;
 }
 
@@ -364,7 +371,7 @@ int dial_fake_request(client_s *c)
 	// Set mailbox number to invalid valuse to mark the message as cover traffic
 	serialize_uint64(c->dial_request_buf + net_header_BYTES,
 	                 c->dial_num_mailboxes + 1);
-	uint64_t x = deserialize_uint64(c->dial_request_buf + net_header_BYTES);
+
 
 	return 0;
 }
@@ -378,7 +385,7 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round,
 	while (c->keywheel.table_round < round) {
 		kw_advance_table(&c->keywheel);
 	}
-	printf("Processing Dial mb for round %ld, %ld tokens\n", round, num_tokens);
+	//printf("Processing Dial mb for round %ld, %ld tokens\n", round, num_tokens);
 	bloomfilter_s bloom;
 	int found = 0;
 	uint8_t dial_token_buf[dialling_token_BYTES];
@@ -407,6 +414,12 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round,
 		}
 		curr_kw = curr_kw->next;
 	}
+	LOG_OUT(c->log_file,
+	        "[Info] Time taken for dial round %lu: %f | Number of tokens: %lu\n",
+	        c->dialling_round,
+	        get_time() - c->dial_start_round,
+	        num_tokens);
+
 	return 0;
 }
 
@@ -483,20 +496,20 @@ int af_process_auth_responses(client_s *c)
 		auth_response = c->pkg_auth_responses[i];
 		nonce_ptr = auth_response + pkg_auth_res_BYTES + crypto_MACBYTES;
 		int res = crypto_chacha_decrypt(auth_response, NULL, NULL, auth_response,
-		                                pkg_auth_res_BYTES + crypto_MACBYTES,
-		                                nonce_ptr, crypto_NBYTES, nonce_ptr,
-		                                c->pkg_eph_symmetric_keys[i]);
+										pkg_auth_res_BYTES + crypto_MACBYTES,
+										nonce_ptr, crypto_NBYTES, nonce_ptr,
+										c->pkg_eph_symmetric_keys[i]);
 		if (res) {
 			fprintf(stderr, "%s: decryption failed on auth response from pkg %d\n",
-			        c->user_id, i);
+					c->user_id, i);
 			return -1;
 		}
 		element_from_bytes_compressed(g1_tmp, auth_response);
 		element_from_bytes_compressed(g2_tmp, auth_response + g1_serialized_bytes);
 		element_add(&c->pkg_multisig_combined_g1, &c->pkg_multisig_combined_g1,
-		            g1_tmp);
+					g1_tmp);
 		element_add(&c->pkg_ibe_secret_combined_g2,
-		            &c->pkg_ibe_secret_combined_g2, g2_tmp);
+					&c->pkg_ibe_secret_combined_g2, g2_tmp);
 	}
 
 	printf("[Client authed for round %lu]\n", c->af_round);
@@ -513,10 +526,10 @@ int af_accept_request(client_s *c, friend_request_s *req)
 
 	printf("Responding to friend request from %s\n", req->user_id);
 	net_serialize_header(c->friend_request_buf,
-	                     CLIENT_AF_MSG,
-	                     onionenc_friend_request_BYTES,
-	                     c->af_round,
-	                     c->dialling_round);
+						 CLIENT_AF_MSG,
+						 onionenc_friend_request_BYTES,
+						 c->af_round,
+						 c->dialling_round);
 
 	uint8_t *dr_ptr = c->friend_request_buf + net_header_BYTES + mb_BYTES +
 		g1_serialized_bytes + crypto_ghash_BYTES + crypto_NBYTES;
@@ -536,18 +549,18 @@ int af_accept_request(client_s *c, friend_request_s *req)
 
 	memcpy(user_id_ptr, c->user_id, user_id_BYTES);
 	memcpy(lt_sig_key_ptr, c->lt_sig_keypair.public_key,
-	       crypto_sign_PUBLICKEYBYTES);
+		   crypto_sign_PUBLICKEYBYTES);
 	serialize_uint64(dr_ptr, new_kw->dialling_round);
 
 	crypto_sign_detached(client_sig_ptr, NULL, dr_ptr,
-	                     round_BYTES + user_id_BYTES + crypto_pk_BYTES,
-	                     c->lt_sig_keypair.secret_key);
+						 round_BYTES + user_id_BYTES + crypto_pk_BYTES,
+						 c->lt_sig_keypair.secret_key);
 	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
 	// Encrypt the request using IBE
 	ibe_pbc_encrypt(c->friend_request_buf + net_header_BYTES + mb_BYTES, dr_ptr,
-	                af_request_BYTES, &c->pkg_eph_pub_combined_g1,
-	                &c->ibe_gen_element_g1, new_kw->user_id, user_id_BYTES,
-	                &c->pairing);
+					af_request_BYTES, &c->pkg_eph_pub_combined_g1,
+					&c->ibe_gen_element_g1, new_kw->user_id, user_id_BYTES,
+					&c->pairing);
 	// Only information identifying the destination of a request, the mailbox no.
 	// of the recipient
 	uint64_t mb = af_calc_mailbox_num(c, req->user_id);
@@ -561,10 +574,10 @@ int af_create_request(client_s *c, uint8_t *friend_user_id)
 {
 	printf("Adding %s\n", friend_user_id);
 	net_serialize_header(c->friend_request_buf,
-	                     CLIENT_AF_MSG,
-	                     onionenc_friend_request_BYTES,
-	                     c->af_round,
-	                     c->dialling_round);
+						 CLIENT_AF_MSG,
+						 onionenc_friend_request_BYTES,
+						 c->af_round,
+						 c->dialling_round);
 
 	uint8_t *dr_ptr = c->friend_request_buf + net_header_BYTES + mb_BYTES +
 		g1_serialized_bytes + crypto_NBYTES;
@@ -585,13 +598,13 @@ int af_create_request(client_s *c, uint8_t *friend_user_id)
 	memcpy(user_id_ptr, c->user_id, user_id_BYTES);
 	serialize_uint64(dr_ptr, dialling_round);
 	memcpy(lt_sig_key_ptr, c->lt_sig_keypair.public_key,
-	       crypto_sign_PUBLICKEYBYTES);
+		   crypto_sign_PUBLICKEYBYTES);
 	kw_new_keywheel(&c->keywheel, friend_user_id, dh_pub_ptr, dh_secret_key,
-	                c->dialling_round);
+					c->dialling_round);
 	// Sign our information with our LT signing key
 	crypto_sign_detached(client_sig_ptr, NULL, dr_ptr,
-	                     round_BYTES + user_id_BYTES + crypto_pk_BYTES,
-	                     c->lt_sig_keypair.secret_key);
+						 round_BYTES + user_id_BYTES + crypto_pk_BYTES,
+						 c->lt_sig_keypair.secret_key);
 	// Also include the multisignature from PKG servers, primary source of
 	// verification
 	element_to_bytes_compressed(multisig_ptr, &c->pkg_multisig_combined_g1);
@@ -636,16 +649,16 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 	serialize_uint64(multisig_message, round);
 	memcpy(multisig_message + round_BYTES, user_id_ptr, user_id_BYTES);
 	memcpy(multisig_message + round_BYTES + user_id_BYTES, lt_sig_key_ptr,
-	       crypto_sign_PUBLICKEYBYTES);
+		   crypto_sign_PUBLICKEYBYTES);
 
 
 	element_t sig_verify_elem, hash_elem;
 	element_init(sig_verify_elem, c->pairing.G1);
 	element_init(hash_elem, c->pairing.G1);
 	result = bls_verify_signature(sig_verify_elem, hash_elem, multisig_ptr,
-	                              multisig_message, pkg_sig_message_BYTES,
-	                              &c->pkg_lt_sig_keys_combined,
-	                              &c->bls_gen_element_g2, &c->pairing);
+								  multisig_message, pkg_sig_message_BYTES,
+								  &c->pkg_lt_sig_keys_combined,
+								  &c->bls_gen_element_g2, &c->pairing);
 
 	element_clear(sig_verify_elem);
 	element_clear(hash_elem);
@@ -669,16 +682,16 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 	keywheel_unsynced *entry = kw_unsynced_lookup(&c->keywheel, user_id_ptr);
 	if (entry) {
 		int res = kw_complete_keywheel(&c->keywheel, user_id_ptr, dh_pub_ptr,
-		                               deserialize_uint64(dialling_round_ptr));
+									   deserialize_uint64(dialling_round_ptr));
 		if (res) {
 			fprintf(stderr,
-			        "Failure occurred when trying to complete keywheel for %s\n",
-			        user_id_ptr);
+					"Failure occurred when trying to complete keywheel for %s\n",
+					user_id_ptr);
 			return -1;
 		}
 		else {
 			printf("[Client: friend request accepted by %s, keywheel completed]\n",
-			       user_id_ptr);
+				   user_id_ptr);
 			return 0;
 		}
 	}
@@ -761,8 +774,8 @@ int af_accept_request(client_s *c, friend_request_s *req)
 	}
 	// Only information identifying the destination of a request, the mailbox no.
 	// of the recipient
-	uint32_t mb = af_calc_mailbox_num(c, req->user_id);
-	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
+	uint64_t mb = af_calc_mailbox_num(c, req->user_id);
+	serialize_uint64(c->friend_request_buf + net_header_BYTES, mb);
 
 	delete_friend_request(c, req);
 	// Encrypt the request in layers ready for the mixnet
@@ -821,8 +834,8 @@ int af_create_request(client_s *c, uint8_t *friend_user_id)
 
 	// Only information identifying the destination of a request, the mailbox
 	// number of the recipient
-	uint32_t mb = af_calc_mailbox_num(c, friend_user_id);
-	serialize_uint32(c->friend_request_buf + net_header_BYTES, mb);
+	uint64_t mb = af_calc_mailbox_num(c, friend_user_id);
+	serialize_uint64(c->friend_request_buf + net_header_BYTES, mb);
 
 	return 0;
 }
@@ -888,7 +901,7 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 		if (c->on_friend_confirm) {
 			friend_request_s confirmed_friend;
 			memset(&confirmed_friend, 0, sizeof confirmed_friend);
-			memcpy(confirmed_friend.user_id, entry->user_id, user_id_BYTES);
+			memcpy(confirmed_friend.user_id, user_id_ptr, user_id_BYTES);
 			memcpy(confirmed_friend.lt_sig_key, lt_sig_key_ptr, crypto_sign_PUBLICKEYBYTES);
 			memcpy(confirmed_friend.dh_pk, dh_pub_ptr, crypto_box_PUBLICKEYBYTES);
 			confirmed_friend.dialling_round = dial_round;
@@ -1091,8 +1104,13 @@ int client_init(client_s *c,
 		fprintf(stderr, "libsodium fatal error\n");
 		exit(EXIT_FAILURE);
 	}
-
-
+	char log_file_str[100];
+	sprintf(log_file_str, "%s.log", user_id1);
+	c->log_file = fopen(log_file_str, "a+");
+	if (!c->log_file) {
+		fprintf(stderr, "failed to open log file\n");
+		exit(EXIT_FAILURE);
+	}
 	c->af_num_mailboxes = 1;
 	c->dial_num_mailboxes = 1;
 	c->dialling_round = 1;
@@ -1149,11 +1167,11 @@ int client_init(client_s *c,
 	}
 
 	pbc_sum_bytes_G2_compressed(&c->pkg_lt_sig_keys_combined,
-	                            pkg_sig_key_bytes[0], g2_serialized_bytes,
-	                            num_pkg_servers, &c->pairing);
+								pkg_sig_key_bytes[0], g2_serialized_bytes,
+								num_pkg_servers, &c->pairing);
 	uint8_t id_hash[crypto_ghash_BYTES];
 	crypto_generichash(id_hash, crypto_ghash_BYTES, c->user_id, user_id_BYTES,
-	                   NULL, 0);
+					   NULL, 0);
 	element_s q_id;
 	element_init(&q_id, c->pairing.G2);
 	element_from_hash(&q_id, id_hash, crypto_ghash_BYTES);
@@ -1316,6 +1334,7 @@ int mix_entry_process_msg(void *client_ptr, connection *conn)
 
 	switch (conn->msg_type) {
 	case NEW_AF_ROUND:
+		client->af_start_round = get_time();
 		client_update_af_keys(client, conn->read_buf.data + net_header_BYTES);
 		net_state->num_broadcast_responses = 0;
 		net_state->num_auth_responses = 0;
@@ -1324,6 +1343,7 @@ int mix_entry_process_msg(void *client_ptr, connection *conn)
 		printf("AF round %ld started, %ld mailboxes\n", client->af_round, client->af_num_mailboxes);
 		break;
 	case NEW_DIAL_ROUND:
+		client->dial_start_round = get_time();
 		client_update_dial_keys(client, conn->read_buf.data + net_header_BYTES);
 		client->dial_num_mailboxes = deserialize_uint64(conn->read_buf.data + 16);
 		dial_build_call(client);

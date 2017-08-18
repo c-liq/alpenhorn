@@ -8,7 +8,8 @@ int main(int argc, char **argv)
 	#endif
 	pkg_server server;
 
-	pkg_server_init(&server, 0, 10, 4, "/home/chris/ClionProjects/Alpenhorn/users");
+	pkg_server_init(&server, 0, 100, 4, "/home/chris/ClionProjects/Alpenhorn/users");
+	printf("%ld\n", sizeof(pkg_client));
 	pkg_server_shutdown(&server);
 	#if !USE_PBC
 	bn256_clear();
