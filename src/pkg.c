@@ -273,7 +273,7 @@ pkg_server_init(pkg_server *server,
 	// Extract secret keys and generate signatures for each client_s
 
 	pkg_parallel_operation(server, pkg_client_auth_data, NULL, 0);
-	server->thread_pool = thpool_init(32);
+	server->thread_pool = thpool_init(server->num_threads);
 
 	return 0;
 }

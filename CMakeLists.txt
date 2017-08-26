@@ -50,7 +50,7 @@ set(TEST_BLOOM_SOURCES src/bloom.c src/utils.c include/greatest.h tests/test_blo
 set(TEST_MIX_SOURCES ${MIX_SOURCE_FILES} include/greatest.h tests/test_mix.c)
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath /usr/local/lib")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath /usr/local/lib")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -lcurl -pthread -Werror -lmpfr -D THPOOL_DEBUG")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -lcurl -pthread -Werror -lmpfr")
 set(DP_TEST_FILES tests/dp_tests.c)
 
 add_executable(client_example ${CLIENT_SOURCE_FILES} src/client_example.c)

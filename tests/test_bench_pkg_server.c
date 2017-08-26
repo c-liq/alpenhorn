@@ -16,6 +16,7 @@ struct thread_args
 };
 
 pkg_server server;
+int *indexes;
 void *
 cl_init(void *args)
 {
@@ -23,6 +24,7 @@ cl_init(void *args)
 	uint8_t *data = th_args->data;
 
 	for (int i = th_args->begin; i < th_args->end; i++) {
+		indexes[i] = i;
 		sign_keypair sig_kp;
 		client_s *client = &clients[i];
 		memcpy(sig_kp.public_key, data + user_id_BYTES, crypto_sign_PUBLICKEYBYTES);
@@ -118,7 +120,7 @@ int main(int argc, char **argv)
 	num_clients = (uint32_t) strtol(argv[1], NULL, 10);
 	num_threads = (uint32_t) strtol(argv[2], NULL, 10);
 	pkg_server_init(&server, 0, num_clients, num_threads, argv[3]);
-
+	indexes = calloc(num_clients, sizeof(int));
 	clients = calloc(num_clients, sizeof *clients);
 
 	FILE *user_file = fopen(argv[3], "r");
@@ -137,11 +139,9 @@ int main(int argc, char **argv)
 
 	double start = get_time();
 	for (int i = 0; i < server.num_clients; i++) {
-		int *tmp = calloc(1, sizeof(int));
-		*tmp = i;
-		thpool_sim_auth_client(tmp);
+		thpool_add_work(server.thread_pool, thpool_sim_auth_client, &indexes[i]);
 	}
-	//thpool_wait(server.thread_pool);
+	thpool_wait(server.thread_pool);
 	printf("Responded to %d requests in %f\n", num_clients, get_time() - start);
 
 
