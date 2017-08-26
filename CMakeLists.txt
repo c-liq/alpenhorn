@@ -5,6 +5,10 @@ set(CMAKE_VERBOSE_MAKEFILE on)
 
 set(USE_PBC FALSE)
 
+if (USE_PBC)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D USE_PBC")
+endif ()
+
 set(BN256_SOURCE_FILES lib/bn256/fpe.c lib/bn256/fp2e.c lib/bn256/scalar.c lib/bn256/parameters.c
         lib/bn256/twistpoint_fp2.c lib/bn256/mul.c lib/bn256/mydouble.c lib/bn256/curvepoint_fp.c
         lib/bn256/heap_rootreplaced.s lib/bn256/index_heap.c lib/bn256/scalar_sub_nored.s
@@ -61,4 +65,3 @@ add_executable(bench_pkg ${TEST_PKG_SOURCE_FILES})
 add_executable(bench_mix_dist ${MIX_SOURCE_FILES} tests/bench_mix_distribution.c)
 add_executable(bench_mix_clientsim src/utils.c src/net_common.c tests/bench_mail_distribution_clientsim.c)
 add_executable(user_gen src/user_generator.c)
-add_executable(mpfr_test ${DP_TEST_FILES})

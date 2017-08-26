@@ -10,7 +10,12 @@
 
 
 // Server parameters
+#ifdef USE_PBC
+#define USE_PBC 1
+#else
 #define USE_PBC 0
+#endif
+
 #define LOG 1
 #define num_pkg_servers 1U
 #define num_mix_servers 2U

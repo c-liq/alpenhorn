@@ -141,7 +141,7 @@ int main(int argc, char **argv)
 		*tmp = i;
 		thpool_sim_auth_client(tmp);
 	}
-	thpool_wait(server.thread_pool);
+	//thpool_wait(server.thread_pool);
 	printf("Responded to %d requests in %f\n", num_clients, get_time() - start);
 
 
