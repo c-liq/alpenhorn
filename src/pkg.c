@@ -1,8 +1,7 @@
 #include "pkg.h"
 #include "pkg_config.h"
 #include <curl/curl.h>
-#include <pthread.h>
-
+#include <thpool/thpool.h>
 
 typedef struct pkg_thread_args pkg_thread_args;
 
@@ -11,6 +10,7 @@ struct pkg_thread_args
 	pkg_server *server;
 	int begin;
 	int end;
+	uint8_t *data;
 };
 
 struct upload_status
@@ -20,6 +20,10 @@ struct upload_status
 	uint8_t *data;
 };
 
+void *
+pkg_client_auth_data(void *args);
+void *
+pkg_client_parallel_init(void *args);
 static size_t
 payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 {
@@ -233,25 +237,24 @@ pkg_server_init(pkg_server *server,
 	server->num_threads = num_threads;
 	server->srv_id = server_id;
 	server->clients = calloc(server->client_buf_capacity, sizeof(pkg_client));
-	for (int i = 0; i < 2; i++) {
-		pkg_client_init(
-			&server->clients[i], server, user_ids[i], user_publickeys[i], true);
-	}
 	if (user_data_path) {
 		FILE *user_file = fopen(user_data_path, "r");
+		uint64_t data_size = num_clients * (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_SECRETKEYBYTES);
+		uint8_t *client_data_buffer = calloc(1, data_size);
 		if (!user_file) {
 			fprintf(stderr, "failed to open user data file, terminating\n");
 			exit(EXIT_FAILURE);
 		}
-		for (int i = 2; i < server->num_clients; i++) {
-			uint8_t user_id[user_id_BYTES];
-			uint8_t pk[crypto_sign_PUBLICKEYBYTES];
-			uint8_t sk[crypto_sign_SECRETKEYBYTES];
-			fread(user_id, user_id_BYTES, 1, user_file);
-			fread(pk, crypto_sign_PUBLICKEYBYTES, 1, user_file);
-			fread(sk, crypto_sign_SECRETKEYBYTES, 1, user_file);
-			pkg_client_init(&server->clients[i], server, user_id, pk, false);
-		}
+		uint64_t x = fread(client_data_buffer,
+		                   user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_SECRETKEYBYTES,
+		                   num_clients,
+		                   user_file);
+
+		pkg_parallel_operation(server,
+		                       pkg_client_parallel_init,
+		                       client_data_buffer,
+		                       user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_SECRETKEYBYTES);
+
 		fclose(user_file);
 
 	}
@@ -269,9 +272,44 @@ pkg_server_init(pkg_server *server,
 	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
 	// Extract secret keys and generate signatures for each client_s
 
-	pkg_parallel_extract(server);
+	pkg_parallel_operation(server, pkg_client_auth_data, NULL, 0);
+	server->thread_pool = thpool_init(32);
 
 	return 0;
+}
+
+void thpool_auth_client(void *arg)
+{
+	if (!arg) {
+		fprintf(stderr, "null pointer passed to auth\n");
+		return;
+	}
+	connection *conn = (connection *) arg;
+	pkg_client *client = conn->client_state;
+
+	if (!client) {
+		pkg_server *srv = (pkg_server *) conn->srv_state;
+		uint8_t *user_id = conn->read_buf.data + net_header_BYTES + round_BYTES;
+
+		int index = pkg_client_lookup(srv, user_id);
+		if (index == -1) {
+			fprintf(stderr, "could not find username %s\n", user_id);
+			return;
+		}
+		conn->client_state = &srv->clients[index];
+		client = conn->client_state;
+	}
+
+	int authed = pkg_auth_client(client->server, client, conn->read_buf.data + net_header_BYTES);
+
+	if (!authed) {
+		client->last_auth = time(0);
+		memcpy(conn->write_buf.data + conn->bytes_written,
+		       client->eph_client_data,
+		       net_header_BYTES + pkg_enc_auth_res_BYTES);
+		conn->write_remaining += net_header_BYTES + pkg_enc_auth_res_BYTES;
+		net_epoll_send(client->server, conn, conn->sock_fd);
+	}
 }
 
 void *
@@ -288,8 +326,25 @@ pkg_client_auth_data(void *args)
 	return NULL;
 }
 
+void *
+pkg_client_parallel_init(void *args)
+{
+	pkg_thread_args *th_args = (pkg_thread_args *) args;
+	pkg_server *srv = th_args->server;
+	uint8_t *data = th_args->data;
+	// printf("Thread %d processing clients from %d to %d\n", th_args->thread_id,
+	// th_args->begin, th_args->end);
+	for (int i = th_args->begin; i < th_args->end; i++) {
+		//pkg_extract_client_sk(srv, &srv->clients[i]);
+		//pkg_sign_for_client(srv, &srv->clients[i]);
+		pkg_client_init(&srv->clients[i], srv, data, data + user_id_BYTES, false);
+		data += (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_SECRETKEYBYTES);
+	}
+	return NULL;
+}
+
 int
-pkg_parallel_extract(pkg_server *server)
+pkg_parallel_operation(pkg_server *server, void *(*operator)(void *), uint8_t *data_ptr, uint64_t data_elem_length)
 {
 	double start_timer = get_time();
 	uint32_t num_threads = server->num_threads;
@@ -301,6 +356,9 @@ pkg_parallel_extract(pkg_server *server)
 		args[i].server = server;
 		args[i].begin = curindex;
 		args[i].end = curindex + num_per_thread;
+		if (data_ptr) {
+			args[i].data = data_ptr + (curindex * data_elem_length);
+		}
 		curindex += num_per_thread;
 
 	}
@@ -308,9 +366,12 @@ pkg_parallel_extract(pkg_server *server)
 	args[num_threads - 1].server = server;
 	args[num_threads - 1].begin = curindex;
 	args[num_threads - 1].end = server->num_clients;
+	if (data_ptr) {
+		args[num_threads - 1].data = data_ptr + (curindex * data_elem_length);
+	}
 
 	for (int i = 0; i < num_threads; i++) {
-		int res = pthread_create(&threads[i], NULL, pkg_client_auth_data, &args[i]);
+		int res = pthread_create(&threads[i], NULL, operator, &args[i]);
 		if (res) {
 			fprintf(stderr, "fatal pthread creation error\n");
 			exit(EXIT_FAILURE);
@@ -327,7 +388,6 @@ pkg_parallel_extract(pkg_server *server)
 	        time_buffer,
 	        get_time() - start_timer,
 	        server->num_clients);
-	printf("Keys updated for round %lu\n", server->current_round);
 	return 0;
 }
 
@@ -392,6 +452,7 @@ pkg_client_init(pkg_client *client,
                 const uint8_t *lt_sig_key,
                 bool is_key_hex)
 {
+	client->server = server;
 	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + g1_serialized_bytes;
 	serialize_uint32(client->eph_client_data, PKG_AUTH_RES_MSG);
 	memcpy(client->user_id, user_id, user_id_BYTES);
@@ -443,7 +504,7 @@ pkg_new_round(pkg_server *server)
 	                     pkg_broadcast_msg_BYTES,
 	                     server->current_round,
 	                     0UL);
-	pkg_parallel_extract(server);
+	pkg_parallel_operation(server, pkg_client_auth_data, NULL, 0);
 }
 
 int
@@ -458,7 +519,6 @@ pkg_auth_client(pkg_server *server, pkg_client *client, uint8_t *auth_msg_buf)
 		        server->current_round);
 		return -1;
 	}
-
 	int s = crypto_sign_verify_detached(
 		auth_msg_buf + cli_pkg_single_auth_req_BYTES - crypto_sign_BYTES,
 		auth_msg_buf,
@@ -655,12 +715,13 @@ pkg_net_process_client_msg(void *srv, connection *conn)
 	if (conn->msg_type == CLIENT_AUTH_REQ) {
 		printf("Authentication request received from %s\n",
 		       conn->read_buf.data + net_header_BYTES + round_BYTES);
-		int res = pkg_net_auth_client(s, conn);
+		/*int res = pkg_net_auth_client(s, conn);
 		if (!res) {
 			fprintf(stderr,
 			        "Authentication failed for %s\n",
 			        conn->read_buf.data + net_header_BYTES + round_BYTES);
-		}
+		}*/
+		thpool_add_work(s->thread_pool, thpool_auth_client, conn);
 	}
 
 	else if (conn->msg_type == CLIENT_REG_REQUEST) {

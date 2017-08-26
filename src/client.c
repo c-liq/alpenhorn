@@ -414,6 +414,7 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round,
 		}
 		curr_kw = curr_kw->next;
 	}
+
 	LOG_OUT(c->log_file,
 	        "[Info] Time taken for dial round %lu: %f | Number of tokens: %lu\n",
 	        c->dialling_round,
@@ -436,8 +437,6 @@ int af_create_pkg_auth_request(client_s *c)
 
 	for (int i = 0; i < num_pkg_servers; i++) {
 		auth_request = c->pkg_auth_requests[i];
-
-
 		net_serialize_header(auth_request,
 		                     CLIENT_AUTH_REQ,
 		                     cli_pkg_single_auth_req_BYTES,
@@ -446,8 +445,7 @@ int af_create_pkg_auth_request(client_s *c)
 
 		serialize_uint64(auth_request + net_header_BYTES, c->af_round);
 		client_pk = auth_request + net_header_BYTES + round_BYTES + user_id_BYTES;
-		client_sig = auth_request + net_header_BYTES + round_BYTES + user_id_BYTES +
-			crypto_pk_BYTES;
+		client_sig = client_pk + crypto_pk_BYTES;
 		pkg_pub_key_ptr = c->pkg_broadcast_msgs[i] + g1_serialized_bytes;
 		symmetric_key_ptr = c->pkg_eph_symmetric_keys[i];
 

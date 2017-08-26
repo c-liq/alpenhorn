@@ -22,6 +22,7 @@ void mix_af_distribute(mix_s *mix)
 {
 	afmb_container_s *c = &mix->af_mb_container;
 	c->num_mailboxes = mix->af_data.num_mailboxes;
+	printf("num mb: %lu\n", mix->af_data.num_mailboxes);
 	c->mailboxes = calloc(c->num_mailboxes, sizeof *c->mailboxes);
 	c->round = mix->af_data.round;
 
@@ -174,7 +175,7 @@ int mix_init(mix_s *mix, uint32_t server_id)
 	mix->dial_data.round = 1;
 	mix->dial_data.round_duration = 9;
 	mix->dial_data.accept_window_duration = 3;
-	mix->af_data.laplace.mu = 500;
+	mix->af_data.laplace.mu = 2;
 	mix->af_data.laplace.b = 0;
 	mix->dial_data.laplace.mu = 1000;
 	mix->dial_data.laplace.b = 0;
@@ -314,7 +315,10 @@ void mix_dial_add_noise(mix_s *mix)
 {
 	byte_buffer_put_virtual(&mix->dial_data.out_buf, net_header_BYTES);
 	mix->dial_data.last_noise_count = 0;
-	for (uint64_t i = 0; i < mix->dial_data.num_mailboxes; i++) {
+	uint64_t num_mailboxes = mix->dial_data.num_mailboxes + 1;
+	if (mix->is_last)
+		num_mailboxes--;
+	for (uint64_t i = 0; i < num_mailboxes; i++) {
 		uint32_t noise = laplace_rand(&mix->dial_data.laplace);
 		for (int j = 0; j < noise; j++) {
 			uint8_t *curr_ptr = mix->dial_data.out_buf.pos;
@@ -341,7 +345,11 @@ void mix_af_add_noise(mix_s *mix)
 #endif
 	byte_buffer_put_virtual(&mix->af_data.out_buf, net_header_BYTES);
 	mix->af_data.last_noise_count = 0;
-	for (uint64_t i = 0; i < mix->af_data.num_mailboxes; i++) {
+	uint64_t num_mailboxes = mix->af_data.num_mailboxes + 1;
+	if (mix->is_last)
+		num_mailboxes--;
+	for (uint64_t i = 0; i < num_mailboxes; i++) {
+
 		uint32_t noise = laplace_rand(&mix->af_data.laplace);
 		for (int j = 0; j < noise; j++) {
 			uint8_t *curr_ptr = mix->af_data.out_buf.pos;
@@ -416,8 +424,9 @@ int mix_update_mailbox_counts(uint64_t n,
 	if (n >= num_mailboxes) {
 		return -1;
 	}
-	else
+	else {
 		mailbox_counts[n]++;
+	}
 
 	return 0;
 }
@@ -725,7 +734,6 @@ int mix_connect_neighbour(int srv_id)
 	if (sock_fd == -1) {
 		return -1;
 	}
-	printf("Connected to neighbour on socket %d\n", sock_fd);
 	return sock_fd;
 }
 

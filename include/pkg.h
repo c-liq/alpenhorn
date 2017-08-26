@@ -1,6 +1,7 @@
 #ifndef ALPENHORN_PKG_H
 #define ALPENHORN_PKG_H
 
+#include <thpool/thpool.h>
 #include "config.h"
 #include "utils.h"
 #include "net_common.h"
@@ -63,6 +64,7 @@ struct pkg_server
 	pkg_pending_client *pending_registration_requests;
 	net_server_state net_state;
 	FILE *log_file;
+	threadpool thread_pool;
 };
 
 struct pkg_client
@@ -74,6 +76,7 @@ struct pkg_client
 	uint8_t eph_client_data[net_header_BYTES + pkg_enc_auth_res_BYTES];
 	uint8_t *auth_response_ibe_key_ptr;
 	time_t last_auth;
+	pkg_server *server;
 #if USE_PBC
 	element_t hashed_id_elem_g2;
 	element_t eph_sig_elem_G1;
@@ -98,7 +101,7 @@ void pkg_client_free(pkg_client *client);
 void pkg_new_round(pkg_server *server);
 int pkg_auth_client(pkg_server *server, pkg_client *client, uint8_t *auth_msg_buf);
 int pkg_client_lookup(pkg_server *server, uint8_t *user_id);
-int pkg_parallel_extract(pkg_server *server);
+int pkg_parallel_operation(pkg_server *server, void *(*operator)(void *), uint8_t *data_ptr, uint64_t data_elem_length);
 int pkg_registration_request(pkg_server *server,
                              const uint8_t *user_id,
                              uint8_t *sig_key);

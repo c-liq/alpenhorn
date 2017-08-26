@@ -40,6 +40,7 @@ struct connection
 	send_item *send_queue_tail;
 	pthread_mutex_t send_queue_lock;
 	void *client_state;
+	void *srv_state;
 };
 
 typedef struct net_server_state net_server_state;

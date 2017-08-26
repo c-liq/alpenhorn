@@ -33,21 +33,21 @@ set(SOURCE_FILES tests/test_bench_pkg_server.c include/mixnet.h src/mixnet.c inc
         include/pkg.h src/utils.c include/utils.h include/config.h include/bloom.h src/net_common.c include/net_common.h src/bn256_ibe.c include/pkg_config.h
         include/bn256_ibe.h include/bn256.h src/bn256_bls.c include/bn256_bls.h tests/test_bn256_ibe.c tests/test_bn256_bls.c
         src/bn256_keygen.c src/client_example.c tests/test.c tests/test_utils.c tests/test_utils.h include/constants.h
-        include/utest.h include/greatest.h tests/test_mix.c src/mixnet_run.c src/pkg_run.c src/dequeue.c tests/bench_mix_distribution.c tests/bench_mail_distribution_clientsim.c include/pbc_cfg.h src/user_generator.c)
+        include/utest.h include/greatest.h tests/test_mix.c src/mixnet_run.c src/pkg_run.c src/dequeue.c tests/bench_mix_distribution.c tests/bench_mail_distribution_clientsim.c include/pbc_cfg.h src/user_generator.c tests/dp_tests.c)
 
 set(CLIENT_SOURCE_FILES ${PBC_SOURCE_FILES}
         include/config.h src/client.c src/bloom.c src/prime_gen.c src/keywheel_table.c src/net_common.c src/utils.c lib/xxhash/xxhash.c include/client_config.h)
 
 set(MIX_SOURCE_FILES ${PBC_SOURCE_FILES} src/mixnet.c src/utils.c src/prime_gen.c lib/xxhash/xxhash.c src/bloom.c src/net_common.c)
-set(PKG_SOURCE_FILES ${PBC_SOURCE_FILES} src/pkg.c src/utils.c lib/xxhash/xxhash.c src/net_common.c)
+set(PKG_SOURCE_FILES ${PBC_SOURCE_FILES} src/pkg.c src/utils.c lib/xxhash/xxhash.c src/net_common.c lib/thpool/thpool.c)
 set(TEST_BN256_SOURCES ${BN256_SOURCE_FILES} tests/test_bn256_ibe.c include/greatest.h src/utils.c)
-set(TEST_PKG_SOURCE_FILES ${PKG_SOURCE_FILES} tests/test_bench_pkg_server.c include/greatest.h)
+set(TEST_PKG_SOURCE_FILES ${PKG_SOURCE_FILES} ${CLIENT_SOURCE_FILES} tests/test_bench_pkg_server.c include/greatest.h)
 set(TEST_BLOOM_SOURCES src/bloom.c src/utils.c include/greatest.h tests/test_bloom.c lib/xxhash/xxhash.c src/prime_gen.c)
 set(TEST_MIX_SOURCES ${MIX_SOURCE_FILES} include/greatest.h tests/test_mix.c)
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath /usr/local/lib")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath /usr/local/lib")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -lcurl -pthread -Werror")
-
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -lcurl -pthread -Werror -lmpfr -D THPOOL_DEBUG")
+set(DP_TEST_FILES tests/dp_tests.c)
 
 add_executable(client_example ${CLIENT_SOURCE_FILES} src/client_example.c)
 add_executable(mixnet_server ${MIX_SOURCE_FILES} src/mixnet_run.c)
@@ -58,7 +58,7 @@ add_executable(test_bn256_ibe ${TEST_BN256_SOURCES})
 add_executable(test_bloom ${TEST_BLOOM_SOURCES})
 add_executable(test_mix ${TEST_MIX_SOURCES})
 add_executable(bench_pkg ${TEST_PKG_SOURCE_FILES})
-add_executable(dequeue src/dequeue.c)
 add_executable(bench_mix_dist ${MIX_SOURCE_FILES} tests/bench_mix_distribution.c)
 add_executable(bench_mix_clientsim src/utils.c src/net_common.c tests/bench_mail_distribution_clientsim.c)
 add_executable(user_gen src/user_generator.c)
+add_executable(mpfr_test ${DP_TEST_FILES})

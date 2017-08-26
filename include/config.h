@@ -12,7 +12,7 @@
 // Server parameters
 #define USE_PBC 0
 #define LOG 1
-#define num_pkg_servers 2U
+#define num_pkg_servers 1U
 #define num_mix_servers 2U
 #define num_INTENTS 5
 #define mix_num_dial_mbs_stored 5
