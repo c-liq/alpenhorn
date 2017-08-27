@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 2.8)
 project(Alpenhorn)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_VERBOSE_MAKEFILE on)
@@ -50,7 +50,7 @@ set(TEST_BLOOM_SOURCES src/bloom.c src/utils.c include/greatest.h tests/test_blo
 set(TEST_MIX_SOURCES ${MIX_SOURCE_FILES} include/greatest.h tests/test_mix.c)
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath /usr/local/lib")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath /usr/local/lib")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -lcurl -pthread -Werror -lmpfr")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -I /usr/local/include -L /usr/local/lib -lgmp -lsodium -lm -lcurl -pthread -Werror -lmpfr")
 
 add_executable(client_example ${CLIENT_SOURCE_FILES} src/client_example.c)
 add_executable(mixnet_server ${MIX_SOURCE_FILES} src/mixnet_run.c)

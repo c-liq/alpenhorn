@@ -82,7 +82,6 @@ void mix_dial_distribute(mix_s *mix)
 		mb->id = i;
 		mb->num_messages = mix->dial_data.mailbox_counts[i];
 		printf("MAILBOX COUNT %d: %lu\n", i, mb->num_messages);
-		mb->num_messages = 1000;
 		bloom_init(&mb->bloom, mix->dial_data.bloom_p_val, mb->num_messages, 0,
 		           NULL, net_header_BYTES);
 		net_serialize_header(mb->bloom.base_ptr, DIAL_MB, (uint32_t) mb->bloom.size_bytes,
@@ -1225,8 +1224,6 @@ void mix_entry_new_af_round(mix_s *mix)
 
 void mix_entry_process_af_batch(mix_s *mix)
 {
-	mix_af_decrypt_messages(mix);
-	byte_buffer_clear(&mix->af_data.in_buf);
 
 	mix_af_s *af_data = &mix->af_data;
 	char time_buffer[40];
@@ -1234,6 +1231,12 @@ void mix_entry_process_af_batch(mix_s *mix)
 	LOG_OUT(stdout, "[Entry] AF Round %ld: Received %d msgs, added %d noise -> Forwarding %d at %s\n",
 	        af_data->round, af_data->num_inc_msgs, af_data->last_noise_count,
 	        af_data->num_out_msgs, time_buffer);
+	LOG_OUT(mix->log_file, "[Entry] AF Round %ld: Received %d msgs, added %d noise -> Forwarding %d at %s\n",
+	        af_data->round, af_data->num_inc_msgs, af_data->last_noise_count,
+	        af_data->num_out_msgs, time_buffer);
+	mix_af_decrypt_messages(mix);
+	byte_buffer_clear(&mix->af_data.in_buf);
+
 	mix->af_data.num_inc_msgs = 0;
 	mix_af_calc_num_mbs(mix);
 	net_serialize_header(mix->af_data.out_buf.data,
@@ -1249,13 +1252,16 @@ void mix_entry_process_af_batch(mix_s *mix)
 
 void mix_entry_process_dial_batch(mix_s *mix)
 {
-	mix_dial_decrypt_messages(mix);
-	byte_buffer_clear(&mix->dial_data.in_buf);
 	mix_dial_s *dd = &mix->dial_data;
 	char time_buffer[40];
 	get_current_time(time_buffer);
 	LOG_OUT(stdout, "Dial Round %ld: Received %d msgs, added %u noise -> Forwarding %d at %s\n",
 	        dd->round, dd->num_inc_msgs, dd->last_noise_count, dd->num_out_msgs, time_buffer);
+	LOG_OUT(mix->log_file, "Dial Round %ld: Received %d msgs, added %u noise -> Forwarding %d at %s\n",
+	        dd->round, dd->num_inc_msgs, dd->last_noise_count, dd->num_out_msgs, time_buffer);
+	mix_dial_decrypt_messages(mix);
+	byte_buffer_clear(&mix->dial_data.in_buf);
+
 
 	mix->dial_data.num_inc_msgs = 0;
 	mix_dial_calc_num_mbs(mix);
@@ -1398,8 +1404,8 @@ sim_mix_parallel_fake_client_traffic(mix_s *server, int p)
 	uint32_t num_threads = server->num_threads;
 	pthread_t threads[num_threads];
 	mix_thread_args args[num_threads];
-	uint32_t num_real_msgs = (uint32_t) ((1000000 / 100) * 5);
-	uint32_t num_cover_msgs = (uint32_t) ((1000000 / 100) * 95);
+	uint32_t num_real_msgs = (uint32_t) ((100000 / 100) * 5);
+	uint32_t num_cover_msgs = (uint32_t) ((100000 / 100) * 95);
 
 	uint32_t num_real_per_thread = num_real_msgs / num_threads;
 	uint32_t num_cover_per_thread = num_cover_msgs / num_threads;

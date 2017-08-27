@@ -1,10 +1,10 @@
 #ifndef ALPENHORN_MIXNET_CONFIG_H
 #define ALPENHORN_MIXNET_CONFIG_H
 
-#define dial_mu 39500
+#define dial_mu 100
 #define dial_b 0
 
-#define af_mu 100
+#define af_mu 50
 #define af_b 0
 
 #define af_duration 5
