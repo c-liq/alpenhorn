@@ -130,7 +130,7 @@ int byte_buffer_resize(byte_buffer_s *buf, uint64_t new_capacity)
 int byte_buffer_put(byte_buffer_s *buf, uint8_t *data, size_t size)
 {
 	if (size > buf->capacity - buf->used) {
-		uint64_t new_capacity = buf->capacity + size;
+		uint64_t new_capacity = buf->capacity + (2 * size);
 		int res = byte_buffer_resize(buf, new_capacity);
 		if (res)
 			return -1;
@@ -165,7 +165,7 @@ void get_current_time(char *out_buffer)
 int byte_buffer_put_virtual(byte_buffer_s *buf, size_t size)
 {
 	if (size > buf->capacity - buf->used) {
-		int res = byte_buffer_resize(buf, buf->capacity * 2);
+		int res = byte_buffer_resize(buf, buf->capacity + (2 * size));
 		if (res)
 			return -1;
 	}

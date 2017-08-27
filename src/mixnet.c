@@ -936,7 +936,7 @@ int mix_net_sync(mix_s *mix)
 			fprintf(stderr, "fatal error on listening socket %s\n", mix_listen_ports[srv_id]);
 			return -1;
 		}
-		connection_init(&net_state->next_mix, read_buf_SIZE, write_buf_SIZE,
+		connection_init(&net_state->next_mix, 540000000, 540000000,
 		                mix_process_mix_msg, net_state->epoll_fd, next_mix_sfd);
 		int res = net_read_blocking(
 			net_state->next_mix.sock_fd, net_state->next_mix.read_buf.data,
@@ -977,7 +977,7 @@ int mix_net_sync(mix_s *mix)
 			return -1;
 		}
 
-		connection_init(&net_state->prev_mix, read_buf_SIZE, write_buf_SIZE,
+		connection_init(&net_state->prev_mix, 540000000, 540000000,
 		                mix_process_mix_msg, net_state->epoll_fd, neighbour_sockfd);
 
 		int res = net_send_blocking(net_state->prev_mix.sock_fd, net_state->bc_buf.data,
@@ -1341,7 +1341,7 @@ void mix_run(mix_s *mix,
 			mix_entry_check_timers(mix);
 		}
 
-		int num_events = epoll_wait(es->epoll_fd, es->events, 2000, 500);
+		int num_events = epoll_wait(es->epoll_fd, es->events, 2000, 10000);
 		for (int i = 0; i < num_events; i++) {
 			connection *conn = events[i].data.ptr;
 			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {
