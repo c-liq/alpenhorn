@@ -6,6 +6,7 @@
 #include "utils.h"
 #include "bloom.h"
 #include "net_common.h"
+#include "mixnet_config.h"
 
 static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
 static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
@@ -14,6 +15,17 @@ static const char mix_entry_pkg_listenport[] = "6666";
 
 struct mix_s;
 typedef struct mix_s mix_s;
+
+typedef struct mix_thread_args mix_thread_args;
+struct mix_thread_args
+{
+	mix_s *mix;
+	uint8_t *data;
+	uint32_t num_msgs;
+	uint32_t num_fake_msgs;
+	pthread_mutex_t *mutex;
+};
+
 
 struct dial_mailbox
 {
@@ -56,7 +68,7 @@ struct af_mailbox_container
 {
 	uint64_t round;
 	uint64_t num_mailboxes;
-	af_mailbox_s *mailboxes;
+	af_mailbox_s mailboxes[10];
 };
 
 typedef struct af_mailbox_container afmb_container_s;
@@ -125,9 +137,12 @@ struct mix_s
 	struct element_s af_noise_G1_elem;
 	#endif
 	bool pkg_preprocess_check;
+	pthread_mutex_t *af_mutex;
+	pthread_mutex_t *dial_mutex;
+	uint32_t num_threads;
 };
 
-int mix_init(mix_s *mix, uint32_t server_id);
+int mix_init(mix_s *mix, uint32_t server_id, uint32_t num_threads, uint32_t num_servers);
 void mix_af_decrypt_messages(mix_s *mix);
 void mix_af_shuffle(mix_s *mix);
 void mix_dial_shuffle(mix_s *mix);
@@ -155,4 +170,6 @@ void mix_run(mix_s *mix,
              int on_read(void *, connection *));
 int mix_entry_sync(mix_s *mix);
 int mix_main(int argc, char **argv);
+int sim_mix_main(int argc, char **argv);
+
 #endif //ALPENHORN_MIX_H

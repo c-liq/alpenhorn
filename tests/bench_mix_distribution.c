@@ -240,7 +240,7 @@ int main()
 	bn256_init();
 #endif
 	mix_s *mix = calloc(1, sizeof *mix);
-	mix_init(mix, 1);
+	mix_init(mix, 1, 0, 0);
 	mix_af_add_noise(mix);
 	mix_net_init(mix);
 	mix_distrib_sim(mix, NULL, mix_dist_sim_process_client);

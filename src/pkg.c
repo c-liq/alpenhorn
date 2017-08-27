@@ -1,7 +1,6 @@
 #include "pkg.h"
 #include "pkg_config.h"
 #include <curl/curl.h>
-#include <thpool/thpool.h>
 
 typedef struct pkg_thread_args pkg_thread_args;
 
@@ -233,7 +232,8 @@ pkg_server_init(pkg_server *server,
 	}
 	server->current_round = 1;
 	server->num_clients = num_clients;
-	server->client_buf_capacity = num_clients * 2;
+	server->client_buf_capacity = num_clients * 2 + 10;
+
 	server->num_threads = num_threads;
 	server->srv_id = server_id;
 	server->clients = calloc(server->client_buf_capacity, sizeof(pkg_client));
@@ -256,11 +256,11 @@ pkg_server_init(pkg_server *server,
 		                       user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_SECRETKEYBYTES);
 
 		fclose(user_file);
+		pkg_parallel_operation(server, pkg_client_auth_data, NULL, 0);
 
 	}
 
-	server->broadcast_dh_pkey_ptr =
-		server->eph_broadcast_message + net_header_BYTES + g1_serialized_bytes;
+	server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_serialized_bytes;
 
 	server->pending_registration_requests = NULL;
 
@@ -272,7 +272,7 @@ pkg_server_init(pkg_server *server,
 	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
 	// Extract secret keys and generate signatures for each client_s
 
-	pkg_parallel_operation(server, pkg_client_auth_data, NULL, 0);
+
 	server->thread_pool = thpool_init(server->num_threads);
 
 	return 0;
@@ -396,8 +396,7 @@ pkg_client_lookup(pkg_server *server, uint8_t *user_id)
 {
 	int index = -1;
 	for (int i = 0; i < server->num_clients; i++) {
-		if (!(strncmp(
-			(char *) user_id, (char *) server->clients[i].user_id, user_id_BYTES))) {
+		if (!(strncmp((char *) user_id, (char *) server->clients[i].user_id, user_id_BYTES))) {
 			index = i;
 			break;
 		}

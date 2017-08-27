@@ -13,7 +13,7 @@ TEST test_mix_shuffle(void)
 {
 
 	mix_s mix1;
-	mix_init(&mix1, 0);
+	mix_init(&mix1, 0, 0, 0);
 
 
 		PASS();

@@ -43,7 +43,7 @@ int net_epoll_client_accept(net_server_state *srv_state,
 		}
 
 		int status = connection_init(new_conn, read_buf_SIZE, write_buf_SIZE, on_read, srv_state->epoll_fd, new_sockfd);
-
+		new_conn->srv_state = srv_state->owner;
 		if (status == -1) {
 			perror("epoll_ctl");
 			return -1;
@@ -154,14 +154,18 @@ void net_epoll_send_queue(net_server_state *net_state, connection *conn)
 			}
 		}
 	}
+
 	if (close_connection) {
 		return;
 	}
 
 	if (conn->send_queue_head && !(conn->event.events & EPOLLOUT)) {
 		conn->event.events = EPOLLOUT | EPOLLET;
-		epoll_ctl(net_state->epoll_fd, EPOLL_CTL_MOD, conn->sock_fd,
-		          &conn->event);
+		int res = epoll_ctl(net_state->epoll_fd, EPOLL_CTL_MOD, conn->sock_fd,
+		                    &conn->event);
+		if (res) {
+			fprintf(stderr, "epoll_ctl failed: %d\n", res);
+		}
 	}
 
 	else if (!conn->send_queue_head && conn->event.events & EPOLLOUT) {

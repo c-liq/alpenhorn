@@ -300,7 +300,7 @@ int af_confirm_friend(client_s *c, const char *user_id)
 	}
 
 	if (!req) {
-		fprintf(stderr, "could not find pending friend request matching id\n");
+		fprintf(stderr, "could not find pending friend request matching id %s\n", user_id);
 		return -1;
 	}
 
@@ -843,6 +843,7 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 	if (!c || !request_buf)
 		return -1;
 
+	printhex("decrypt buf", request_buf, af_ibeenc_request_BYTES);
 	uint8_t serialized_g2[g2_serialized_bytes];
 	bn256_serialize_g2(serialized_g2, c->pkg_ibe_secret_combined_g2);
 	uint8_t request_buffer[af_request_BYTES];
@@ -1003,6 +1004,7 @@ int af_build_request(client_s *c)
 
 	c->friend_request_queue = request->next;
 	free(request);
+	printhex("req buf", c->friend_request_buf + net_header_BYTES + mb_BYTES, af_ibeenc_request_BYTES);
 	af_onion_encrypt_request(c);
 
 	return 0;
