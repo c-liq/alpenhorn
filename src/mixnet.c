@@ -181,7 +181,7 @@ int mix_init(mix_s *mix, uint32_t server_id, uint32_t num_threads, uint32_t num_
 	mix->dial_data.laplace.mu = dial_mu;
 	mix->dial_data.laplace.b = dial_b;
 	mix->af_data.num_mailboxes = 1;
-	mix->dial_data.num_mailboxes = 2;
+	mix->dial_data.num_mailboxes = 7;
 	memset(&mix->af_mb_container, 0, sizeof mix->af_mb_container);
 	memset(mix->dial_data.mailbox_counts, 0,
 	       sizeof mix->dial_data.mailbox_counts);
@@ -639,8 +639,8 @@ mix_af_parallel_dispatch(mix_s *server)
 
 void mix_af_decrypt_messages(mix_s *mix)
 {
-	//mix_af_parallel_dispatch(mix);
-	uint8_t *in_ptr = mix->af_data.in_buf.data;
+	mix_af_parallel_dispatch(mix);
+	/*uint8_t *in_ptr = mix->af_data.in_buf.data;
 	uint8_t *out_ptr = mix->af_data.out_buf.pos;
 
 	int n = mix_decrypt_messages(
@@ -651,7 +651,8 @@ void mix_af_decrypt_messages(mix_s *mix)
 
 	mix->af_data.num_out_msgs += n;
 	byte_buffer_put_virtual(&mix->af_data.out_buf,
-	                        n * mix->af_data.out_msg_length);
+	                        n * mix->af_data.out_msg_length);*/
+
 }
 
 void mix_pkg_broadcast(mix_s *s, uint32_t msg_type)
@@ -906,9 +907,6 @@ int mix_net_sync(mix_s *mix)
 	net_server_state *net_state = &mix->net_state;
 
 	if (mix->is_last) {
-		mix_dial_add_noise(mix);
-		mix_af_add_noise(mix);
-
 		int listen_socket = net_start_listen_socket(mix_listen_ports[srv_id], 1);
 		if (listen_socket == -1) {
 			fprintf(stderr, "failed to start listen socket %s\n", mix_listen_ports[srv_id]);
@@ -959,9 +957,6 @@ int mix_net_sync(mix_s *mix)
 			ptr += crypto_pk_BYTES;
 		}
 
-		mix_dial_add_noise(mix);
-		mix_af_add_noise(mix);
-
 		close(listen_socket);
 		net_state->listen_socket = -1;
 		res = socket_set_nonblocking(net_state->next_mix.sock_fd);
@@ -998,7 +993,8 @@ int mix_net_sync(mix_s *mix)
 		mix->dial_data.round++;
 	}
 	printf("[Mix server %d: initialised]\n", mix->server_id);
-
+	mix_dial_add_noise(mix);
+	mix_af_add_noise(mix);
 	return 0;
 }
 
@@ -1391,8 +1387,8 @@ sim_mix_parallel_fake_client_traffic(mix_s *server, int p)
 	uint32_t num_threads = server->num_threads;
 	pthread_t threads[num_threads];
 	mix_thread_args args[num_threads];
-	uint32_t num_real_msgs = (uint32_t) ((100000 / 100) * 5);
-	uint32_t num_cover_msgs = (uint32_t) ((100000 / 100) * 95);
+	uint32_t num_real_msgs = (uint32_t) ((1000000 / 100) * 5);
+	uint32_t num_cover_msgs = (uint32_t) ((1000000 / 100) * 95);
 
 	uint32_t num_real_per_thread = num_real_msgs / num_threads;
 	uint32_t num_cover_per_thread = num_cover_msgs / num_threads;
@@ -1440,7 +1436,6 @@ void sim_mix_entry_dial_add_noise(void *args)
 	uint32_t num_cover_msgs = targs->num_fake_msgs;
 	mix_s *mix = targs->mix;
 	uint64_t num_mailboxes = mix->dial_data.num_mailboxes + 1;
-	printf("Num mailbxes..%lu\n", num_mailboxes);
 	uint8_t
 		*buf = calloc(mix->dial_data.inc_msg_length, (num_real_msgs * mix->dial_data.num_mailboxes) + num_cover_msgs);
 	uint8_t *curr_ptr = buf;
