@@ -327,12 +327,13 @@ void mix_dial_add_noise(mix_s *mix)
 		uint32_t noise = laplace_rand(&mix->dial_data.laplace);
 		for (int j = 0; j < noise; j++) {
 			uint8_t *curr_ptr = mix->dial_data.out_buf.pos;
+			byte_buffer_put_virtual(&mix->dial_data.out_buf,
+			                        mix->dial_data.out_msg_length);
 			serialize_uint64(curr_ptr, i);
 			randombytes_buf(curr_ptr + sizeof i, dialling_token_BYTES);
 			mix_onion_encrypt_msg(mix, curr_ptr, dialling_token_BYTES + mb_BYTES,
 			                      mix->mix_dial_dh_pks);
-			byte_buffer_put_virtual(&mix->dial_data.out_buf,
-			                        mix->dial_data.out_msg_length);
+
 			mix->dial_data.num_out_msgs++;
 		}
 		mix->dial_data.last_noise_count += noise;
@@ -358,6 +359,8 @@ void mix_af_add_noise(mix_s *mix)
 		uint32_t noise = laplace_rand(&mix->af_data.laplace);
 		for (int j = 0; j < noise; j++) {
 			uint8_t *curr_ptr = mix->af_data.out_buf.pos;
+			byte_buffer_put_virtual(&mix->af_data.out_buf,
+			                        mix->af_data.out_msg_length);
 			serialize_uint64(curr_ptr, i);
 #if USE_PBC
 			element_random(&mix->af_noise_Zr_elem);
@@ -376,8 +379,7 @@ void mix_af_add_noise(mix_s *mix)
 			mix_onion_encrypt_msg(mix, curr_ptr, af_ibeenc_request_BYTES + mb_BYTES,
 			                      mix->mix_af_dh_pks);
 			mix->af_data.num_out_msgs++;
-			byte_buffer_put_virtual(&mix->af_data.out_buf,
-			                        mix->af_data.out_msg_length);
+
 		}
 		mix->af_data.last_noise_count += noise;
 		if (mix->num_out_onion_layers == 0) {
@@ -1345,7 +1347,7 @@ void mix_run(mix_s *mix,
 			mix_entry_check_timers(mix);
 		}
 
-		int num_events = epoll_wait(es->epoll_fd, es->events, 2000, 10000);
+		int num_events = epoll_wait(es->epoll_fd, es->events, 2000, 200);
 		for (int i = 0; i < num_events; i++) {
 			connection *conn = events[i].data.ptr;
 			if (events[i].events & EPOLLERR || events[i].events & EPOLLHUP) {

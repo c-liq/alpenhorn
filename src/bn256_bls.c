@@ -27,7 +27,7 @@ void bn256_bls_sign_message(uint8_t *out_buf, uint8_t *msg, uint32_t msg_len, sc
 	bn256_hash_g1(sig_g1, msg, msg_len);
 	curvepoint_fp_scalarmult_vartime(sig_g1, sig_g1, secret_key);
 	curvepoint_fp_makeaffine(sig_g1);
-	bn256_serialize_g1(out_buf, sig_g1);
+	bn256_serialize_g1_xonly(out_buf, sig_g1);
 }
 
 int bn256_bls_verify_message(twistpoint_fp2_t p, uint8_t *signature, uint8_t *msg, size_t msg_len)
@@ -36,11 +36,14 @@ int bn256_bls_verify_message(twistpoint_fp2_t p, uint8_t *signature, uint8_t *ms
 	bn256_hash_g1(h, msg, msg_len);
 	curvepoint_fp_makeaffine(h);
 	curvepoint_fp_t sig2;
-	bn256_deserialize_g1(sig2, signature);
+	bn256_deserialize_g1_xonly(sig2, signature);
 	fp12e_t u, v;
 	bn256_pair(u, twistgen, sig2);
 	bn256_pair(v, p, h);
-	return fp12e_iseq(u, v);
+	int v1 = fp12e_iseq(u, v);
+	fp12e_invert(v, v);
+	int v2 = fp12e_iseq(u, v);
+	return v1 || v2;
 }
 
 int bn256_bls_verify_from_point(twistpoint_fp2_t public_key, curvepoint_fp_t signature,

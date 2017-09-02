@@ -421,6 +421,22 @@ size_t bn256_serialize_g1(uint8_t *out, curvepoint_fp_t g1_elem)
 	return total_count;
 }
 
+size_t bn256_serialize_g1_xonly(uint8_t *out, curvepoint_fp_t g1_elem)
+{
+	size_t total_count = 0;
+	total_count = serialize_fpe(out, g1_elem->m_x);
+	return total_count;
+}
+
+void bn256_deserialize_g1_xonly(curvepoint_fp_t out, uint8_t *in)
+{
+	deserialize_fpe(out->m_x, in);
+	fpe_get_weierstrass(out->m_y, out->m_x);
+	fpe_sqrt(out->m_y, out->m_x);
+	fpe_setone(out->m_z);
+	fpe_setzero(out->m_t);
+}
+
 size_t bn256_serialize_gt(uint8_t *out, fp12e_t gt_elem)
 {
 	fpe_t fpe_elems[12];
@@ -446,7 +462,7 @@ void bn256_deserialize_and_sum_g1(curvepoint_fp_t out, uint8_t *in,
 	if (count < 1) return;
 
 	uint8_t *ptr = in;
-	curvepoint_fp_t tmp = {};
+	curvepoint_fp_t tmp;
 	bn256_deserialize_g1(tmp, ptr);
 	curvepoint_fp_set(out, tmp);
 	ptr += g1_bytes;

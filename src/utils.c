@@ -24,6 +24,7 @@ void crypto_shared_secret(uint8_t *shared_secret,
 	crypto_generichash_update(&hash_state, client_pub, crypto_pk_BYTES);
 	crypto_generichash_update(&hash_state, server_pub, crypto_pk_BYTES);
 	crypto_generichash_final(&hash_state, shared_secret, output_size);
+	sodium_memzero(&hash_state, sizeof hash_state);
 }
 
 void serialize_uint32(uint8_t *out, uint32_t in)

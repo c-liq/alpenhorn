@@ -260,7 +260,7 @@ pkg_server_init(pkg_server *server,
 
 	}
 
-	server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + g1_serialized_bytes;
+	server->broadcast_dh_pkey_ptr = server->eph_broadcast_message + net_header_BYTES + bn256_ibe_pkg_pk_bytes;
 
 	server->pending_registration_requests = NULL;
 
@@ -452,7 +452,7 @@ pkg_client_init(pkg_client *client,
                 bool is_key_hex)
 {
 	client->server = server;
-	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + g1_serialized_bytes;
+	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + bn256_bls_sig_message_bytes;
 	serialize_uint32(client->eph_client_data, PKG_AUTH_RES_MSG);
 	memcpy(client->user_id, user_id, user_id_BYTES);
 	if (is_key_hex) {
@@ -496,7 +496,6 @@ pkg_new_round(pkg_server *server)
 {
 	pkg_new_ibe_keypair(server);
 	crypto_box_keypair(server->broadcast_dh_pkey_ptr, server->eph_secret_dh_key);
-
 	server->current_round++;
 	net_serialize_header(server->eph_broadcast_message,
 	                     PKG_BR_MSG,
@@ -552,7 +551,7 @@ pkg_encrypt_client_response(pkg_server *server, pkg_client *client)
 	                 pkg_enc_auth_res_BYTES);
 	serialize_uint64(client->eph_client_data + 8, server->current_round);
 	uint8_t *nonce_ptr = client->eph_client_data + net_header_BYTES +
-		g1_serialized_bytes + g2_serialized_bytes +
+		bn256_bls_sig_message_bytes + bn256_ibe_client_sk_bytes +
 		crypto_MACBYTES;
 	randombytes_buf(nonce_ptr, crypto_aead_chacha20poly1305_IETF_NPUBBYTES);
 	crypto_aead_chacha20poly1305_ietf_encrypt(

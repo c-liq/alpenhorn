@@ -25,6 +25,8 @@ void bn256_deserialize_g1(curvepoint_fp_t out, uint8_t *in);
 void bn256_deserialize_g2(twistpoint_fp2_t out, uint8_t *in);
 void bn256_deserialize_gt(fp12e_t out, void *in);
 size_t bn256_serialize_g1(uint8_t *out, curvepoint_fp_t in);
+size_t bn256_serialize_g1_xonly(uint8_t *out, curvepoint_fp_t g1_elem);
+void bn256_deserialize_g1_xonly(curvepoint_fp_t out, uint8_t *in);
 size_t bn256_serialize_g2(uint8_t *out, twistpoint_fp2_t in);
 size_t bn256_serialize_gt(uint8_t *out, fp12e_t gt_elem);
 void bn256_pair(fp12e_t rop, twistpoint_fp2_t op1, curvepoint_fp_t op2);

@@ -446,7 +446,7 @@ int af_create_pkg_auth_request(client_s *c)
 		serialize_uint64(auth_request + net_header_BYTES, c->af_round);
 		client_pk = auth_request + net_header_BYTES + round_BYTES + user_id_BYTES;
 		client_sig = client_pk + crypto_pk_BYTES;
-		pkg_pub_key_ptr = c->pkg_broadcast_msgs[i] + g1_serialized_bytes;
+		pkg_pub_key_ptr = c->pkg_broadcast_msgs[i] + bn256_ibe_pkg_pk_bytes;
 		symmetric_key_ptr = c->pkg_eph_symmetric_keys[i];
 
 		uint8_t secret_key[crypto_box_SECRETKEYBYTES];
@@ -822,19 +822,13 @@ int af_create_request(client_s *c, uint8_t *friend_user_id)
 	                                dr_ptr, af_request_BYTES, c->pkg_eph_pub_combined_g1,
 	                                friend_user_id, user_id_BYTES);
 
-	uint8_t serialized_g1[g1_serialized_bytes];
-	bn256_serialize_g1(serialized_g1, c->pkg_eph_pub_combined_g1);
-
 	if (res < 0) {
 		fprintf(stderr, "failure during ibe encryption\n");
 		return -1;
 	}
 
-	// Only information identifying the destination of a request, the mailbox
-	// number of the recipient
 	uint64_t mb = af_calc_mailbox_num(c, friend_user_id);
 	serialize_uint64(c->friend_request_buf + net_header_BYTES, mb);
-
 	return 0;
 }
 
@@ -843,7 +837,6 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 	if (!c || !request_buf)
 		return -1;
 
-	printhex("decrypt buf", request_buf, af_ibeenc_request_BYTES);
 	uint8_t serialized_g2[g2_serialized_bytes];
 	bn256_serialize_g2(serialized_g2, c->pkg_ibe_secret_combined_g2);
 	uint8_t request_buffer[af_request_BYTES];
@@ -969,7 +962,7 @@ int af_process_auth_responses(client_s *c)
 			return -1;
 		}
 		bn256_deserialize_g1(g1_tmp, auth_response);
-		bn256_deserialize_g2(g2_tmp, auth_response + g1_serialized_bytes);
+		bn256_deserialize_g2(g2_tmp, auth_response + g1_xonly_serialized_bytes);
 		curvepoint_fp_add_vartime(c->pkg_multisig_combined_g1,
 		                          c->pkg_multisig_combined_g1, g1_tmp);
 		twistpoint_fp2_add_vartime(c->pkg_ibe_secret_combined_g2,
@@ -1004,7 +997,6 @@ int af_build_request(client_s *c)
 
 	c->friend_request_queue = request->next;
 	free(request);
-	printhex("req buf", c->friend_request_buf + net_header_BYTES + mb_BYTES, af_ibeenc_request_BYTES);
 	af_onion_encrypt_request(c);
 
 	return 0;

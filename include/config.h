@@ -18,7 +18,7 @@
 
 #define LOG 1
 #define num_pkg_servers 1U
-#define num_mix_servers 3U
+#define num_mix_servers 2U
 #define num_INTENTS 5
 #define mix_num_dial_mbs_stored 5
 #define read_buf_SIZE 512
@@ -32,6 +32,11 @@
 #include "bn256.h"
 #define g1_serialized_bytes 64U
 #define g2_serialized_bytes 128U
+#define g1_xonly_serialized_bytes 32U
+#define bn256_bls_sig_message_bytes g1_xonly_serialized_bytes
+#define bn256_ibe_pkg_pk_bytes g1_serialized_bytes
+#define bn256_ibe_client_sk_bytes g2_serialized_bytes
+
 #endif
 
 #define user_id_BYTES 60U
@@ -43,7 +48,7 @@
 #define net_client_connect_BYTES (num_mix_servers * crypto_pk_BYTES)
 #define af_request_BYTES                                            \
   (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + crypto_sign_BYTES + \
-   g1_serialized_bytes + crypto_pk_BYTES + round_BYTES)
+   bn256_bls_sig_message_bytes + crypto_pk_BYTES + round_BYTES)
 #define af_ibeenc_request_BYTES \
   (af_request_BYTES + g1_serialized_bytes + crypto_MACBYTES + crypto_NBYTES)
 #define onion_layer_BYTES (crypto_NBYTES + crypto_pk_BYTES + crypto_MACBYTES)
@@ -55,10 +60,10 @@
   (round_BYTES + user_id_BYTES + crypto_sign_BYTES + crypto_pk_BYTES)
 #define cli_pkg_reg_request_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES)
 #define cli_pkg_reg_confirm_BYTES (user_id_BYTES + crypto_sign_BYTES)
-#define pkg_auth_res_BYTES (g1_serialized_bytes + g2_serialized_bytes)
+#define pkg_auth_res_BYTES (bn256_bls_sig_message_bytes + bn256_ibe_client_sk_bytes)
 #define pkg_enc_auth_res_BYTES \
   (pkg_auth_res_BYTES + crypto_MACBYTES + crypto_NBYTES)
-#define pkg_broadcast_msg_BYTES (g1_serialized_bytes + crypto_pk_BYTES)
+#define pkg_broadcast_msg_BYTES (bn256_ibe_pkg_pk_bytes + crypto_pk_BYTES)
 #define pkg_sig_message_BYTES (user_id_BYTES + crypto_sign_PUBLICKEYBYTES + round_BYTES)
 
 #if LOG
