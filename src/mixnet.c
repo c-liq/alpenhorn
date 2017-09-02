@@ -2,7 +2,6 @@
 #include "xxhash.h"
 #include <math.h>
 #include <signal.h>
-#include <pkg_config.h>
 
 void *sim_mix_af_entry_add_noise(void *args);
 void sim_mix_entry_dial_add_noise(void *args);
@@ -365,7 +364,7 @@ void mix_af_add_noise(mix_s *mix)
 #if USE_PBC
 			element_random(&mix->af_noise_Zr_elem);
 			element_pow_zn(&mix->af_noise_G1_elem, &mix->ibe_gen_elem,
-			               &mix->af_noise_Zr_elem);
+						   &mix->af_noise_Zr_elem);
 			element_to_bytes_compressed(curr_ptr + mb_BYTES, &mix->af_noise_G1_elem);
 #else
 			bn256_scalar_random(random);
@@ -638,7 +637,6 @@ mix_af_parallel_dispatch(mix_s *server)
 	return 0;
 }
 
-
 void mix_af_decrypt_messages(mix_s *mix)
 {
 	mix_af_parallel_dispatch(mix);
@@ -811,7 +809,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 			mix_af_s *af = &mix->af_data;
 			LOG_OUT(stdout,
 			        "AF Round %lu: Received %d msgs, added %d noise, discarded %d "
-					"cover msgs -> Distributing %d\n",
+				        "cover msgs -> Distributing %d\n",
 			        af->round, af->num_inc_msgs, af->last_noise_count,
 			        af->num_inc_msgs + af->last_noise_count - af->num_out_msgs,
 			        af->num_out_msgs);
@@ -851,7 +849,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 			uint32_t discarded = dd->num_inc_msgs + dd->last_noise_count - dd->num_out_msgs;
 			LOG_OUT(stdout,
 			        "Dial Round %lu: Received %d msgs, added %u noise, discarded %u "
-					"noise -> Distributing %d\n",
+				        "noise -> Distributing %d\n",
 			        dd->round, dd->num_inc_msgs, dd->last_noise_count, discarded,
 			        dd->num_out_msgs);
 			char time_buffer[40];
@@ -1431,7 +1429,7 @@ sim_mix_parallel_fake_client_traffic(mix_s *server, int p)
 	return 0;
 }
 
-void sim_mix_entry_dial_add_noise(void *args)
+void sim_mix_entry_dial_add_noise2(void *args)
 {
 	mix_thread_args *targs = (mix_thread_args *) args;
 	uint32_t num_real_msgs = targs->num_msgs;
@@ -1461,7 +1459,83 @@ void sim_mix_entry_dial_add_noise(void *args)
 	free(buf);
 }
 
+void sim_mix_entry_dial_add_noise(void *args)
+{
+	mix_thread_args *targs = (mix_thread_args *) args;
+	uint32_t num_real_msgs = targs->num_msgs;
+	uint32_t num_cover_msgs = targs->num_fake_msgs;
+	mix_s *mix = targs->mix;
+	uint64_t num_mailboxes = mix->dial_data.num_mailboxes + 1;
+	uint8_t
+		*buf = calloc(mix->dial_data.inc_msg_length, (num_real_msgs * mix->dial_data.num_mailboxes) + num_cover_msgs);
+	uint8_t *curr_ptr = buf;
+	for (uint64_t i = 0; i < num_mailboxes; i++) {
+		uint32_t noise = num_real_msgs;
+		if (i == num_mailboxes - 1) {
+			noise = num_cover_msgs;
+		}
+		for (int j = 0; j < noise; j++) {
+			serialize_uint64(curr_ptr, i);
+			//randombytes_buf(curr_ptr + sizeof i, dialling_token_BYTES);
+			sim_mix_onion_encrypt_msg(mix, curr_ptr, dialling_token_BYTES + mb_BYTES, mix->mix_dial_dh_pks);
+			curr_ptr += mix->dial_data.inc_msg_length;
+		}
+	}
+
+	pthread_mutex_lock(targs->mutex);
+	byte_buffer_put(&mix->dial_data.in_buf, buf, mix->dial_data.inc_msg_length * (num_real_msgs + num_cover_msgs));
+	mix->dial_data.num_inc_msgs += num_real_msgs + num_cover_msgs;
+	pthread_mutex_unlock(targs->mutex);
+	free(buf);
+}
+
 void *sim_mix_af_entry_add_noise(void *args)
+{
+#if !USE_PBC
+	scalar_t random;
+	curvepoint_fp_t tmp;
+#endif
+
+	mix_thread_args *targs = (mix_thread_args *) args;
+	uint32_t num_noise_msgs = targs->num_msgs;
+	uint32_t num_cover_msgs = targs->num_fake_msgs;
+	mix_s *mix = targs->mix;
+
+	uint8_t *buf = calloc(mix->af_data.inc_msg_length, num_noise_msgs + num_cover_msgs);
+	uint8_t *curr_ptr = buf;
+	uint64_t num_mailboxes = mix->af_data.num_mailboxes + 1;
+	for (uint64_t i = 0; i < num_mailboxes; i++) {
+		uint32_t noise = num_noise_msgs;
+		if (i == num_mailboxes - 1) {
+			noise = num_cover_msgs;
+		}
+		printf("Adding %d msgs to mailbox %ld\n", noise, i);
+		for (int j = 0; j < noise; j++) {
+
+			serialize_uint64(curr_ptr, i);
+/*#if USE_PBC
+			element_random(&mix->af_noise_Zr_elem);
+		element_pow_zn(&mix->af_noise_G1_elem, &mix->ibe_gen_elem,
+					   &mix->af_noise_Zr_elem);
+		element_to_bytes_compressed(curr_ptr + mb_BYTES, &mix->af_noise_G1_elem);
+#else
+			bn256_scalar_random(random);
+			bn256_scalarmult_base_g1(tmp, random);
+			bn256_serialize_g1(curr_ptr + mb_BYTES, tmp);
+#endif*/
+			//randombytes_buf(curr_ptr + mb_BYTES + g1_serialized_bytes, af_ibeenc_request_BYTES - g1_serialized_bytes);
+			sim_mix_onion_encrypt_msg(mix, curr_ptr, af_ibeenc_request_BYTES + mb_BYTES, mix->mix_af_dh_pks);
+			curr_ptr += mix->af_data.inc_msg_length;
+		}
+	}
+	pthread_mutex_lock(targs->mutex);
+	byte_buffer_put(&mix->af_data.in_buf, buf, mix->af_data.inc_msg_length * (num_noise_msgs + num_cover_msgs));
+	mix->af_data.num_inc_msgs += num_noise_msgs + num_cover_msgs;
+	pthread_mutex_unlock(targs->mutex);
+	free(buf);
+}
+
+void *sim_mix_af_entry_add_noise2(void *args)
 {
 #if !USE_PBC
 	scalar_t random;
