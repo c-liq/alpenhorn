@@ -123,7 +123,7 @@ void run_main(int argc, char **argv)
 				fprintf(stderr, "Invalid intent\n");
 				break;
 			}
-			client_call_friend(c, (uint8_t *) buf, (uint32_t) i);
+			client_call_friend(c, (uint8_t *) buf, (uint64_t) i);
 			fflush(stdin);
 			break;
 		}
@@ -169,7 +169,7 @@ void run_confirm_registration(int argc, char **argv)
 		fprintf(stderr, "error initing byte buffer\n");
 	}
 
-	for (uint32_t i = 0; i < num_pkg_servers; i++) {
+	for (uint64_t i = 0; i < num_pkg_servers; i++) {
 		uint64_t msg_size = sizeof_serialized_bytes(crypto_ghash_BYTES);
 		char msg_hex[msg_size];
 		printf("Enter value from pkg %u: ", i);

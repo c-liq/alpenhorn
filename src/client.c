@@ -45,7 +45,7 @@ int client_register(sign_keypair *sig_keys, char *user_id)
 	memcpy(register_buf + net_header_BYTES + user_id_BYTES, sig_keys->public_key,
 	       crypto_sign_PUBLICKEYBYTES);
 
-	for (uint32_t i = 0; i < num_pkg_servers; i++) {
+	for (uint64_t i = 0; i < num_pkg_servers; i++) {
 		int sock_fd = net_connect(pkg_server_ips[i], pkg_cl_listen_ports[i], 0);
 		if (sock_fd == -1) {
 			fprintf(stderr, "server connection failure\n");
@@ -78,7 +78,7 @@ int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key,
                                 uint8_t *msgs_buf)
 {
 
-	uint32_t net_msg_size_bytes = net_header_BYTES + cli_pkg_reg_confirm_BYTES;
+	uint64_t net_msg_size_bytes = net_header_BYTES + cli_pkg_reg_confirm_BYTES;
 	uint8_t reg_confirm_msg[net_msg_size_bytes];
 	memset(reg_confirm_msg, 0, net_msg_size_bytes);
 	net_serialize_header(reg_confirm_msg, CLIENT_REG_CONFIRM, cli_pkg_reg_confirm_BYTES, 0, 0);
@@ -98,7 +98,7 @@ int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key,
 	const uint64_t msg_length_hex = crypto_ghash_BYTES * 2;
 	uint64_t sig_offset = net_header_BYTES + user_id_BYTES;
 
-	for (uint32_t i = 0; i < num_pkg_servers; i++) {
+	for (uint64_t i = 0; i < num_pkg_servers; i++) {
 		crypto_sign(reg_confirm_msg + sig_offset, NULL,
 		            msgs_buf + (i * msg_length_hex), crypto_ghash_BYTES * 2,
 		            sig_key);
@@ -136,7 +136,7 @@ uint8_t *client_get_public_key(client_s *c)
 	return c->lt_sig_keypair.public_key;
 }
 
-int client_call_friend(client_s *c, uint8_t *user_id, uint32_t intent)
+int client_call_friend(client_s *c, uint8_t *user_id, uint64_t intent)
 {
 	if (!c || !user_id)
 		return -1;
@@ -183,7 +183,7 @@ int client_confirm_friend(client_s *c, uint8_t *user_id)
 }
 
 int dial_queue_call(client_s *c, const uint8_t *user_id,
-                    const uint32_t intent)
+                    const uint64_t intent)
 {
 	if (!c || !user_id || intent > c->num_intents)
 		return -1;
@@ -230,7 +230,7 @@ int dial_build_call(client_s *c)
 }
 
 int dial_call_friend(client_s *c, const uint8_t *user_id,
-                     const uint32_t intent)
+                     const uint64_t intent)
 {
 	if (!c || !user_id || intent > c->num_intents)
 		return -1;
@@ -397,7 +397,7 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round,
 
 	keywheel_s *curr_kw = c->keywheel.keywheels;
 	while (curr_kw) {
-		for (uint32_t j = 0; j < c->num_intents; j++) {
+		for (uint64_t j = 0; j < c->num_intents; j++) {
 			kw_dialling_token(dial_token_buf, &c->keywheel, curr_kw->user_id, j);
 			found = bloom_lookup(&bloom, dial_token_buf, dialling_token_BYTES);
 
@@ -1002,13 +1002,13 @@ int af_build_request(client_s *c)
 	return 0;
 }
 
-int onion_encrypt_message(client_s *c, uint8_t *msg, uint32_t base_msg_length,
+int onion_encrypt_message(client_s *c, uint8_t *msg, uint64_t base_msg_length,
                           bool is_dial)
 {
 	if (!c || !msg)
 		return -1;
 
-	for (uint32_t i = 0; i < num_mix_servers; i++) {
+	for (uint64_t i = 0; i < num_mix_servers; i++) {
 		int res = add_onion_encryption_layer(c, msg, base_msg_length, i, is_dial);
 		if (res) {
 			fprintf(stderr, "Client: Error while onion encrypting message\n");
@@ -1039,13 +1039,13 @@ int dial_onion_encrypt_request(client_s *client)
 }
 
 int add_onion_encryption_layer(client_s *client, uint8_t *msg,
-                               uint32_t base_msg_len, uint32_t srv_id,
+                               uint64_t base_msg_len, uint64_t srv_id,
                                bool is_dial)
 {
 	if (!client || !msg)
 		return -1;
 
-	uint32_t msg_len = base_msg_len + mb_BYTES + (onion_layer_BYTES * srv_id);
+	uint64_t msg_len = base_msg_len + mb_BYTES + (onion_layer_BYTES * srv_id);
 	uint8_t *message_end = msg + msg_len;
 	uint8_t *dh_pk = message_end + crypto_MACBYTES;
 	uint8_t *nonce = dh_pk + crypto_pk_BYTES;
@@ -1259,7 +1259,7 @@ int action_stack_push(client_s *c, action *new_action)
 }
 
 int net_send_message(client_s *s, connection *conn, uint8_t *msg,
-                     uint32_t msg_size_bytes)
+                     uint64_t msg_size_bytes)
 {
 	if (!s || !conn || !msg)
 		return -1;
@@ -1525,7 +1525,7 @@ int client_run(client_s *client)
 		return -1;
 	}
 
-	for (uint32_t i = 0; i < num_pkg_servers; i++) {
+	for (uint64_t i = 0; i < num_pkg_servers; i++) {
 		int new_pkg_sockfd = net_connect(pkg_server_ips[i], pkg_cl_listen_ports[i], 1);
 		if (new_pkg_sockfd == -1) {
 			return -1;

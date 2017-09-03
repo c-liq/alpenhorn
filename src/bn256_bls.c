@@ -21,7 +21,7 @@ void bn256_bls_keygen(bn256_bls_keypair *kp)
 	twistpoint_fp2_makeaffine(kp->public_key);
 }
 
-void bn256_bls_sign_message(uint8_t *out_buf, uint8_t *msg, uint32_t msg_len, scalar_t secret_key)
+void bn256_bls_sign_message(uint8_t *out_buf, uint8_t *msg, uint64_t msg_len, scalar_t secret_key)
 {
 	curvepoint_fp_t sig_g1;
 	bn256_hash_g1(sig_g1, msg, msg_len);

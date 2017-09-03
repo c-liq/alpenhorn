@@ -33,8 +33,8 @@ typedef struct pkg_client pkg_client;
 struct pkg_server
 {
 	int srv_id;
-	uint32_t num_clients;
-	uint32_t client_buf_capacity;
+	uint64_t num_clients;
+	uint64_t client_buf_capacity;
 	uint64_t current_round;
 	pkg_client *clients;
 	// Long term BLS signatures, used to sign messages aiding verifying friend
@@ -60,7 +60,7 @@ struct pkg_server
 	curvepoint_fp_t eph_pub_key_elem_g1;
 	scalar_t eph_secret_key_elem_zr;
 #endif
-	uint32_t num_threads;
+	uint64_t num_threads;
 	pkg_pending_client *pending_registration_requests;
 	net_server_state net_state;
 	FILE *log_file;
@@ -92,7 +92,7 @@ void pkg_client_init(pkg_client *client,
                      const uint8_t *user_id,
                      const uint8_t *lt_sig_key, bool is_key_hex);
 void pkg_new_ibe_keypair(pkg_server *server);
-int pkg_server_init(pkg_server *server, uint32_t id, uint32_t num_clients, uint32_t num_threads, char *user_data_path);
+int pkg_server_init(pkg_server *server, uint64_t id, uint64_t num_clients, uint64_t num_threads, char *user_data_path);
 void pkg_new_ibe_keypair(pkg_server *server);
 void pkg_extract_client_sk(pkg_server *server, pkg_client *client);
 void pkg_sign_for_client(pkg_server *server, pkg_client *client);

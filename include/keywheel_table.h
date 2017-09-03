@@ -42,7 +42,7 @@ struct keywheel_unsynced
 };
 
 int kw_table_init(keywheel_table_s *table, uint64_t dial_round, char *table_file);
-int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint32_t intent);
+int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint64_t intent);
 int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id);
 void kw_advance_table(keywheel_table_s *table);
 int kw_new_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *pk, uint8_t *sk, uint64_t round_sentt);

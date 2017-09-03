@@ -212,8 +212,8 @@ int connection_init(connection *conn,
 }
 
 int net_serialize_header(uint8_t *header,
-                         uint32_t msg_type,
-                         uint32_t msg_length,
+                         uint64_t msg_type,
+                         uint64_t msg_length,
                          uint64_t af_round,
                          uint64_t dial_round)
 {
@@ -343,7 +343,7 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 			conn->process(owner, conn);
 		}
 
-		uint32_t read_remaining = (conn->bytes_read - conn->curr_msg_len - net_header_BYTES);
+		uint64_t read_remaining = (conn->bytes_read - conn->curr_msg_len - net_header_BYTES);
 
 		if (read_remaining > 0) {
 			memcpy(conn->read_buf.data, conn->read_buf.data + net_header_BYTES + conn->curr_msg_len, read_remaining);

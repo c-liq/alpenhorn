@@ -16,7 +16,7 @@ void crypto_shared_secret(uint8_t *shared_secret,
                           uint8_t *scalar_mult,
                           uint8_t *client_pub,
                           uint8_t *server_pub,
-                          uint32_t output_size)
+                          uint64_t output_size)
 {
 	crypto_generichash_state hash_state;
 	crypto_generichash_init(&hash_state, NULL, 0U, output_size);
@@ -27,15 +27,15 @@ void crypto_shared_secret(uint8_t *shared_secret,
 	sodium_memzero(&hash_state, sizeof hash_state);
 }
 
-void serialize_uint32(uint8_t *out, uint32_t in)
+void serialize_uint32(uint8_t *out, uint64_t in)
 {
-	uint32_t network_in = htonl(in);
+	uint64_t network_in = htonl(in);
 	memcpy(out, &network_in, sizeof network_in);
 }
 
-uint32_t deserialize_uint32(uint8_t *in)
+uint64_t deserialize_uint32(uint8_t *in)
 {
-	uint32_t *ptr = (uint32_t *) in;
+	uint64_t *ptr = (uint64_t *) in;
 	return ntohl(*ptr);
 }
 
@@ -216,7 +216,8 @@ void byte_buffer_clear(byte_buffer_s *buf)
 	buf->used = 0;
 }
 
-uint32_t laplace_rand(laplace_s *l) {
+uint64_t laplace_rand(laplace_s *l)
+{
 	double rand = ((double)(randombytes_random() % 10000) / 10000) - 0.5;
 	int sign;
 	double abs;
@@ -235,7 +236,7 @@ uint32_t laplace_rand(laplace_s *l) {
 	if (lv < 0) {
 		return laplace_rand(l);
 	}
-	return (uint32_t) lv;
+	return (uint64_t) lv;
 }
 
 double get_time()

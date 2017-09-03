@@ -19,7 +19,7 @@ int main(int argc, char **argv)
 	}
 	pkg_server *s = calloc(1, sizeof(struct pkg_server));
 
-	pkg_server_init(s, (uint32_t) sid, 10, 4, "users");
+	pkg_server_init(s, (uint64_t) sid, 10, 4, "users");
 	int res = pkg_server_startup(s);
 	if (res) {
 		fprintf(stderr, "failed to connect to mix entry server\n");

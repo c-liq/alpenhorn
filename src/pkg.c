@@ -201,9 +201,9 @@ pkg_confirm_registration(pkg_server *server, uint8_t *user_id, uint8_t *sig)
 
 int
 pkg_server_init(pkg_server *server,
-                uint32_t server_id,
-                uint32_t num_clients,
-                uint32_t num_threads,
+                uint64_t server_id,
+                uint64_t num_clients,
+                uint64_t num_threads,
                 char *user_data_path)
 {
 #if USE_PBC
@@ -347,7 +347,7 @@ int
 pkg_parallel_operation(pkg_server *server, void *(*operator)(void *), uint8_t *data_ptr, uint64_t data_elem_length)
 {
 	double start_timer = get_time();
-	uint32_t num_threads = server->num_threads;
+	uint64_t num_threads = server->num_threads;
 	pthread_t threads[num_threads];
 	pkg_thread_args args[num_threads];
 	int num_per_thread = server->num_clients / num_threads;

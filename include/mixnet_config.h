@@ -4,7 +4,7 @@
 #define dial_mu 1000
 #define dial_b 0
 
-#define af_mu 200
+#define af_mu 6200
 #define af_b 0
 
 #define af_duration 10

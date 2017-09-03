@@ -52,7 +52,7 @@ struct action
 {
 	enum actions type;
 	char user_id[user_id_BYTES];
-	uint32_t intent;
+	uint64_t intent;
 	action *next;
 };
 
@@ -66,7 +66,7 @@ struct pending_friend_req
 struct pending_call
 {
 	uint8_t user_id[user_id_BYTES];
-	uint32_t intent;
+	uint64_t intent;
 	pending_call *next;
 };
 
@@ -104,7 +104,7 @@ struct client
 	uint8_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
 	uint8_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES];
 	double bloom_p_val;
-	uint32_t num_intents;
+	uint64_t num_intents;
 	friend_request_s *friend_requests;
 	client_net net_state;
 	bool running;
@@ -152,7 +152,7 @@ struct incoming_call
 	uint8_t user_id[user_id_BYTES];
 	uint8_t session_key[crypto_ghash_BYTES];
 	uint64_t round;
-	uint32_t intent;
+	uint64_t intent;
 };
 
 client_s *client_alloc(const uint8_t *user_id,
@@ -172,16 +172,16 @@ int af_process_auth_responses(client_s *c);
 int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
-int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint32_t base_msg_len, uint32_t srv_id, bool is_dial);
+int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint64_t base_msg_len, uint64_t srv_id, bool is_dial);
 int af_add_friend(client_s *c, const uint8_t *user_id);
 int af_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages, uint64_t round);
 int af_accept_request(client_s *c, friend_request_s *pRequest);
-int dial_call_friend(client_s *c, const uint8_t *user_id, uint32_t intent);
+int dial_call_friend(client_s *c, const uint8_t *user_id, uint64_t intent);
 int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint64_t num_tokens);
 int dial_fake_request(client_s *c);
 int af_fake_request(client_s *c);
 int client_net_init(client_s *c);
-int net_send_message(client_s *s, struct connection *conn, uint8_t *msg, uint32_t msg_size_bytes);
+int net_send_message(client_s *s, struct connection *conn, uint8_t *msg, uint64_t msg_size_bytes);
 int mix_entry_process_msg(void *client, struct connection *conn);
 int client_net_pkg_auth(client_s *cn);
 int client_net_process_pkg(void *c, connection *conn);
@@ -192,7 +192,7 @@ int action_stack_push(client_s *c, action *new_action);
 action *action_stack_pop(client_s *c);
 int client_confirm_friend(client_s *c, uint8_t *user_id);
 int client_add_friend(client_s *c, uint8_t *user_id);
-int client_call_friend(client_s *c, uint8_t *user_id, uint32_t intent);
+int client_call_friend(client_s *c, uint8_t *user_id, uint64_t intent);
 uint8_t *client_get_public_key(client_s *c);
 int af_confirm_friend(client_s *c, const char *user_id);
 int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key, uint8_t *msgs_buf);

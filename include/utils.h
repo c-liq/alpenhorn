@@ -33,7 +33,7 @@ void crypto_shared_secret(uint8_t *shared_secret,
                           uint8_t *scalar_mult,
                           uint8_t *client_pub,
                           uint8_t *server_pub,
-                          uint32_t output_size);
+                          uint64_t output_size);
 
 ssize_t crypto_secret_nonce_seal(uint8_t *out,
                                  uint8_t *c,
@@ -42,10 +42,10 @@ ssize_t crypto_secret_nonce_seal(uint8_t *out,
 int crypto_secret_nonce_open(uint8_t *out, uint8_t *c, size_t clen, uint8_t *k);
 void printhex(char *msg, uint8_t *data, size_t len);
 uint64_t deserialize_uint64(uint8_t *in);
-void serialize_uint64(uint8_t *out, const uint64_t input);
-uint32_t deserialize_uint32(uint8_t *in);
+void serialize_uint64(uint8_t *out, uint64_t input);
+uint64_t deserialize_uint32(uint8_t *in);
 uint64_t sizeof_serialized_bytes(uint64_t size);
-void serialize_uint32(uint8_t *out, uint32_t in);
+void serialize_uint32(uint8_t *out, uint64_t in);
 void print_b64(char *msg, uint8_t *data, size_t input_length);
 
 int crypto_chacha_decrypt(unsigned char *m,
@@ -64,7 +64,7 @@ int byte_buffer_resize(byte_buffer_s *buf, uint64_t new_capacity);
 void byte_buffer_clear(byte_buffer_s *buf);
 int byte_buffer_put(byte_buffer_s *buf, uint8_t *data, size_t size);
 int byte_buffer_put_virtual(byte_buffer_s *buf, size_t size);
-uint32_t laplace_rand(laplace_s *l);
+uint64_t laplace_rand(laplace_s *l);
 void get_current_time(char *out_buffer);
 double get_time();
 

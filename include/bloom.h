@@ -17,7 +17,7 @@ struct bloomfilter_s
 	uint64_t *partition_offsets;
 	double target_falsepos_rate;
 	uint64_t total_size_bytes;
-	uint32_t prefix_len;
+	uint64_t prefix_len;
 };
 
 void bloom_calc_partitions(const long m_target,
@@ -28,14 +28,14 @@ void bloom_calc_partitions(const long m_target,
                            const uint64_t *ptable,
                            const uint64_t ptable_size);
 
-void bloom_add_elem(struct bloomfilter_s *bf, uint8_t *data, uint32_t data_len);
-int bloom_lookup(struct bloomfilter_s *bf, uint8_t *data, uint32_t data_len);
+void bloom_add_elem(struct bloomfilter_s *bf, uint8_t *data, uint64_t data_len);
+int bloom_lookup(struct bloomfilter_s *bf, uint8_t *data, uint64_t data_len);
 int bloom_init(bloomfilter_s *bf,
                double p,
                uint64_t n,
                uint64_t hash_key,
                uint8_t *data,
-               uint32_t prefix_len);
+               uint64_t prefix_len);
 void bloom_clear(struct bloomfilter_s *bf);
 void bloom_free(struct bloomfilter_s *bf);
 void bloom_print_stats(bloomfilter_s *bf);
@@ -43,5 +43,5 @@ bloomfilter_s *bloom_alloc(double p,
                            uint64_t n,
                            uint64_t hash_key,
                            uint8_t *data,
-                           uint32_t prefix_len);
+                           uint64_t prefix_len);
 #endif  // ALPENHORN_BLOOM_H

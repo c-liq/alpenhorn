@@ -1,7 +1,7 @@
 #include <pbc/pbc.h>
 #include "pbc_bls.h"
 
-bls_instance *bls_alloc(char *params, uint32_t params_len, char *gen_string)
+bls_instance *bls_alloc(char *params, uint64_t params_len, char *gen_string)
 {
 	bls_instance *bls = calloc(1, sizeof(*bls));
 	if (!bls) {
@@ -31,7 +31,7 @@ bls_instance *bls_alloc(char *params, uint32_t params_len, char *gen_string)
 	return bls;
 }
 
-void bls_sum_bytes_G1_compressed(bls_instance *bls_inst, uint8_t *elem_bytes_ar, uint32_t n)
+void bls_sum_bytes_G1_compressed(bls_instance *bls_inst, uint8_t *elem_bytes_ar, uint64_t n)
 {
 	element_s *tmp = &bls_inst->g1_tmp;
 	element_s *sum_elem = &bls_inst->g1_elem_sum;
@@ -42,7 +42,7 @@ void bls_sum_bytes_G1_compressed(bls_instance *bls_inst, uint8_t *elem_bytes_ar,
 	}
 }
 
-void bls_sum_bytes_G2_compressed(bls_instance *bls_inst, uint8_t *elem_bytes_ar, uint32_t n)
+void bls_sum_bytes_G2_compressed(bls_instance *bls_inst, uint8_t *elem_bytes_ar, uint64_t n)
 {
 	element_s *tmp = &bls_inst->g2_tmp;
 	element_s *sum_elem = &bls_inst->g2_elem_sum;
@@ -57,7 +57,7 @@ void bls_sum_bytes_G2_compressed(bls_instance *bls_inst, uint8_t *elem_bytes_ar,
 void bls_inst_sign_message(uint8_t *out_buf,
                            bls_instance *bls_inst,
                            uint8_t *msg,
-                           uint32_t msg_len,
+                           uint64_t msg_len,
                            element_s *secret_key)
 {
 	uint8_t msg_hash[crypto_ghash_BYTES];
@@ -67,7 +67,7 @@ void bls_inst_sign_message(uint8_t *out_buf,
 	element_to_bytes_compressed(out_buf, &bls_inst->sig_elem);
 }
 
-int bls_inst_verify(bls_instance *bls_inst, uint8_t *sig_buf, uint8_t *msg, uint32_t msg_len, element_s *public_key)
+int bls_inst_verify(bls_instance *bls_inst, uint8_t *sig_buf, uint8_t *msg, uint64_t msg_len, element_s *public_key)
 {
 	uint8_t msg_hash[crypto_ghash_BYTES];
 	crypto_generichash(msg_hash, crypto_ghash_BYTES, msg, msg_len, NULL, 0);
@@ -116,7 +116,7 @@ void pbc_sum_bytes_G2_compressed(element_s *elem_sum,
 }
 
 void bls_sign_message(uint8_t *out_buf, element_s *sig_elem, element_s *hash_elem, uint8_t *msg,
-                      uint32_t msg_len, element_s *secret_key)
+                      uint64_t msg_len, element_s *secret_key)
 {
 
 	uint8_t msg_hash[crypto_ghash_BYTES];
@@ -127,7 +127,7 @@ void bls_sign_message(uint8_t *out_buf, element_s *sig_elem, element_s *hash_ele
 	element_to_bytes_compressed(out_buf, sig_elem);
 }
 
-int bls_verify_signature(element_s *sig, element_s *hash_elem, uint8_t *sig_buf, uint8_t *msg, uint32_t msg_len,
+int bls_verify_signature(element_s *sig, element_s *hash_elem, uint8_t *sig_buf, uint8_t *msg, uint64_t msg_len,
                          element_s *public_key, element_s *g2, pairing_t pairing)
 {
 

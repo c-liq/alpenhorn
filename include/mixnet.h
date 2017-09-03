@@ -8,8 +8,8 @@
 #include "net_common.h"
 #include "mixnet_config.h"
 
-//static const char *mix_server_ips[] = {"52.56.191.146", "52.56.95.46", "52.56.99.122"};
-static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
+static const char *mix_server_ips[] = {"52.56.191.146", "52.56.95.46", "52.56.99.122"};
+//static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
 static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
 static const char mix_entry_client_listenport[] = "7000";
 static const char mix_entry_pkg_listenport[] = "6666";
@@ -22,15 +22,15 @@ struct mix_thread_args
 {
 	mix_s *mix;
 	uint8_t *data;
-	uint32_t num_msgs;
-	uint32_t num_fake_msgs;
+	uint64_t num_msgs;
+	uint64_t num_fake_msgs;
 	pthread_mutex_t *mutex;
 };
 
 
 struct dial_mailbox
 {
-	uint32_t id;
+	uint64_t id;
 	bloomfilter_s bloom;
 	uint64_t num_messages;
 };
@@ -48,7 +48,7 @@ typedef struct dial_mailbox_container dmb_container_s;
 
 struct af_mailbox
 {
-	uint32_t id;
+	uint64_t id;
 	uint8_t *data;
 	uint8_t *next_msg_ptr;
 	uint64_t num_messages;
@@ -79,14 +79,14 @@ struct mix_af
 	uint64_t num_mailboxes;
 	byte_buffer_s in_buf;
 	byte_buffer_s out_buf;
-	uint32_t num_inc_msgs;
-	uint32_t num_out_msgs;
-	uint32_t inc_msg_length;
-	uint32_t out_msg_length;
+	uint64_t num_inc_msgs;
+	uint64_t num_out_msgs;
+	uint64_t inc_msg_length;
+	uint64_t out_msg_length;
 	laplace_s laplace;
-	uint32_t last_noise_count;
+	uint64_t last_noise_count;
 	uint64_t round;
-	uint32_t round_duration;
+	uint64_t round_duration;
 	int32_t accept_window_duration;
 	uint64_t mb_counts[50];
 };
@@ -97,16 +97,16 @@ struct mix_dial
 {
 	uint64_t num_mailboxes;
 	byte_buffer_s in_buf;
-	uint32_t num_inc_msgs;
-	uint32_t num_out_msgs;
-	uint32_t inc_msg_length;
-	uint32_t out_msg_length;
+	uint64_t num_inc_msgs;
+	uint64_t num_out_msgs;
+	uint64_t inc_msg_length;
+	uint64_t out_msg_length;
 	byte_buffer_s out_buf;
 	uint64_t round;
-	uint32_t round_duration;
+	uint64_t round_duration;
 	int32_t accept_window_duration;
 	laplace_s laplace;
-	uint32_t last_noise_count;
+	uint64_t last_noise_count;
 	uint64_t mailbox_counts[20];
 	double bloom_p_val;
 };
@@ -115,11 +115,11 @@ typedef struct mix_dial mix_dial_s;
 
 struct mix_s
 {
-	uint32_t server_id;
-	uint32_t num_servers;
+	uint64_t server_id;
+	uint64_t num_servers;
 	FILE *log_file;
-	uint32_t num_inc_onion_layers;
-	uint32_t num_out_onion_layers;
+	uint64_t num_inc_onion_layers;
+	uint64_t num_out_onion_layers;
 	bool is_last;
 	uint8_t af_dh_sk[crypto_box_SECRETKEYBYTES];
 	uint8_t dial_dh_sk[crypto_box_SECRETKEYBYTES];
@@ -127,7 +127,7 @@ struct mix_s
 	uint8_t *mix_dial_dh_pks[crypto_pk_BYTES];
 	afmb_container_s af_mb_container;
 	dmb_container_s dial_mb_containers[mix_num_dial_mbs_stored];
-	uint32_t dial_cont_stack_head;
+	uint64_t dial_cont_stack_head;
 	mix_af_s af_data;
 	mix_dial_s dial_data;
 	net_server_state net_state;
@@ -140,10 +140,10 @@ struct mix_s
 	bool pkg_preprocess_check;
 	pthread_mutex_t *af_mutex;
 	pthread_mutex_t *dial_mutex;
-	uint32_t num_threads;
+	uint64_t num_threads;
 };
 
-int mix_init(mix_s *mix, uint32_t server_id, uint32_t num_threads, uint32_t num_servers);
+int mix_init(mix_s *mix, uint64_t server_id, uint64_t num_threads, uint64_t num_servers);
 void mix_af_decrypt_messages(mix_s *mix);
 void mix_af_shuffle(mix_s *mix);
 void mix_dial_shuffle(mix_s *mix);

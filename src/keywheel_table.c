@@ -189,7 +189,7 @@ int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id
 	return 0;
 }
 
-int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint32_t intent)
+int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint64_t intent)
 {
 
 	keywheel_s *entry = kw_lookup(table, userid);

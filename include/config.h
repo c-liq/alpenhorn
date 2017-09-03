@@ -40,9 +40,9 @@
 #endif
 
 #define user_id_BYTES 60U
-#define intent_BYTES 4U
-#define mb_BYTES 8U
-#define round_BYTES 8U
+#define intent_BYTES sizeof(uint64_t)
+#define mb_BYTES sizeof(uint64_t)
+#define round_BYTES sizeof(uint64_t)
 #define dialling_token_BYTES 32U
 
 #define net_client_connect_BYTES (num_mix_servers * crypto_pk_BYTES)

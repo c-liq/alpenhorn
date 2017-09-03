@@ -44,7 +44,7 @@ int bn256_ibe_decrypt(uint8_t *out, uint8_t *c, size_t clen, uint8_t *pk, twistp
 
 ssize_t bn256_ibe_encrypt(uint8_t *out,
                           uint8_t *msg,
-                          uint32_t msg_len,
+                          uint64_t msg_len,
                           curvepoint_fp_struct_t *master_pk,
                           uint8_t *recv_id,
                           size_t recv_id_len)

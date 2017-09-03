@@ -32,7 +32,7 @@ void bn256_ibe_keygen(struct ibe_identity *id, uint8_t *identity, uint8_t identi
 
 ssize_t bn256_ibe_encrypt(uint8_t *out,
                           uint8_t *msg,
-                          uint32_t msg_len,
+                          uint64_t msg_len,
                           curvepoint_fp_t master_pk,
                           uint8_t *recv_id,
                           size_t recv_id_len);

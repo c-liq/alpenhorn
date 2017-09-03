@@ -25,12 +25,12 @@ struct connection
 	int sock_fd;
 	int id;
 	byte_buffer_s read_buf;
-	uint32_t curr_msg_len;
-	uint32_t bytes_read;
-	uint32_t msg_type;
+	uint64_t curr_msg_len;
+	uint64_t bytes_read;
+	uint64_t msg_type;
 	byte_buffer_s write_buf;
-	uint32_t bytes_written;
-	uint32_t write_remaining;
+	uint64_t bytes_written;
+	uint64_t write_remaining;
 	struct epoll_event event;
 	int (*process)(void *owner, connection *conn);
 	connection *next;
@@ -83,8 +83,8 @@ int connection_init(connection *conn,
 void net_process_read(void *owner, connection *conn, ssize_t count);
 int net_epoll_client_accept(net_server_state *srv_state, void on_accept(void *, connection *), int on_read(void *, connection *));
 int net_serialize_header(uint8_t *header,
-                         uint32_t msg_type,
-                         uint32_t msg_length,
+                         uint64_t msg_type,
+                         uint64_t msg_length,
                          uint64_t af_round,
                          uint64_t dial_round);
 void net_epoll_send_queue(net_server_state *net_state, connection *conn);

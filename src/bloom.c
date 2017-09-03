@@ -61,7 +61,7 @@ void bloom_calc_partitions(const long m_target,
 	}
 
 	uint64_t bits_size = 0;
-	for (uint32_t i = 0; i < num_partitions; i++) {
+	for (uint64_t i = 0; i < num_partitions; i++) {
 		partition_lengths_bits[i] = ptable[j - num_partitions + i];
 		partition_lengths_bytes[i] = (uint64_t) ceil((double) partition_lengths_bits[i] / 8);
 		bits_size += partition_lengths_bits[i];
@@ -69,18 +69,18 @@ void bloom_calc_partitions(const long m_target,
 	}
 }
 
-void bloom_add_elem(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
+void bloom_add_elem(bloomfilter_s *bf, uint8_t *data, uint64_t data_len)
 {
 	uint64_t hash = XXH64(data, data_len, bf->hash_key);
 
-	for (uint32_t i = 0; i < bf->num_partitions; i++) {
+	for (uint64_t i = 0; i < bf->num_partitions; i++) {
 		uint64_t mod_result = hash % bf->partition_lengths_bits[i];
 		uint8_t *partition = bf->bloom_ptr + bf->partition_offsets[i];
 		partition[mod_result / 8] |= 1 << (mod_result % 8);
 	}
 }
 
-int bloom_lookup(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
+int bloom_lookup(bloomfilter_s *bf, uint8_t *data, uint64_t data_len)
 {
 	if (!bf | !data) {
 		fprintf(stderr, "invalid argument to bloom_lookup\n");
@@ -89,7 +89,7 @@ int bloom_lookup(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
 
 	uint64_t hash = XXH64(data, data_len, bf->hash_key);
 
-	for (uint32_t i = 0; i < bf->num_partitions; i++) {
+	for (uint64_t i = 0; i < bf->num_partitions; i++) {
 		uint64_t mod_result = hash % bf->partition_lengths_bits[i];
 		uint8_t *partition = bf->bloom_ptr + bf->partition_offsets[i];
 		if (!(partition[mod_result / 8] & 1 << mod_result % 8)) {
@@ -99,7 +99,7 @@ int bloom_lookup(bloomfilter_s *bf, uint8_t *data, uint32_t data_len)
 	return 1;
 }
 
-bloomfilter_s *bloom_alloc(double p, uint64_t n, uint64_t hash_key, uint8_t *bloom_data, uint32_t prefix_len)
+bloomfilter_s *bloom_alloc(double p, uint64_t n, uint64_t hash_key, uint8_t *bloom_data, uint64_t prefix_len)
 {
 	if (p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
 		fprintf(stderr, "invalid parameters to bloom allocator\n");
@@ -121,7 +121,7 @@ bloomfilter_s *bloom_alloc(double p, uint64_t n, uint64_t hash_key, uint8_t *blo
 	return bf;
 }
 
-int bloom_init(bloomfilter_s *bf, double p, uint64_t n, uint64_t hash_key, uint8_t *bloom_data, uint32_t prefix_len)
+int bloom_init(bloomfilter_s *bf, double p, uint64_t n, uint64_t hash_key, uint8_t *bloom_data, uint64_t prefix_len)
 {
 	if (!bf || p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
 		fprintf(stderr, "invalid parameters to bloom allocator\n");
