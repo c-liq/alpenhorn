@@ -179,7 +179,7 @@ int mix_init(mix_s *mix, uint32_t server_id, uint32_t num_threads, uint32_t num_
 	mix->af_data.laplace.b = af_b;
 	mix->dial_data.laplace.mu = dial_mu;
 	mix->dial_data.laplace.b = dial_b;
-	mix->af_data.num_mailboxes = 1;
+	mix->af_data.num_mailboxes = 24;
 	mix->dial_data.num_mailboxes = 7;
 	memset(&mix->af_mb_container, 0, sizeof mix->af_mb_container);
 	memset(mix->dial_data.mailbox_counts, 0,
@@ -217,7 +217,7 @@ void mix_af_newround(mix_s *mix)
 	mix->af_data.num_inc_msgs = 0;
 	mix->af_data.num_out_msgs = 0;
 	if (mix->is_last) {
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < 50; i++) {
 			mix->af_data.mb_counts[i] = 0;
 		}
 	}
@@ -233,7 +233,7 @@ void mix_dial_newround(mix_s *mix)
 
 	mix->dial_data.round++;
 	if (mix->is_last) {
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < 50; i++) {
 			mix->dial_data.mailbox_counts[i] = 0;
 		}
 	}
@@ -489,7 +489,7 @@ void *mix_dial_parallel_decrypt(void *args)
 	mix_s *mix = targs->mix;
 	uint8_t *in_ptr = targs->data;
 	uint8_t *buf = calloc(targs->num_msgs, mix->dial_data.out_msg_length);
-	uint64_t mb_counts[20];
+	uint64_t mb_counts[50];
 	memset(mb_counts, 0, sizeof mb_counts);
 
 	int n = mix_decrypt_messages(
@@ -583,8 +583,9 @@ void *mix_af_parallel_decrypt(void *args)
 	mix_thread_args *targs = (mix_thread_args *) args;
 	mix_s *mix = targs->mix;
 	uint8_t *in_ptr = targs->data;
+	printf("num: %d\n", targs->num_msgs);
 	uint8_t *buf = calloc(targs->num_msgs, mix->af_data.out_msg_length);
-	uint64_t mb_counts[20];
+	uint64_t mb_counts[50];
 	memset(mb_counts, 0, sizeof mb_counts);
 
 	int n = mix_decrypt_messages(
@@ -1402,8 +1403,8 @@ sim_mix_parallel_fake_client_traffic(mix_s *server, int p)
 
 	uint64_t num_mailboxes;
 	num_mailboxes = p == 0 ? server->af_data.num_mailboxes : server->dial_data.num_mailboxes;
-	uint32_t num_real_msgs = (uint32_t) ((10000000 / 100) * 5 / num_mailboxes);
-	uint32_t num_cover_msgs = (uint32_t) ((10000000 / 100) * 95);
+	uint32_t num_real_msgs = (uint32_t) ((10000 / 100) * 5 / num_mailboxes);
+	uint32_t num_cover_msgs = (uint32_t) ((10000 / 100) * 95);
 
 	uint32_t num_real_per_thread = num_real_msgs / num_threads;
 	uint32_t num_cover_per_thread = num_cover_msgs / num_threads;
@@ -1506,6 +1507,41 @@ void sim_mix_entry_dial_add_noise(void *args)
 	free(buf);
 }
 
+void *mix_parallel_add_noise(void *args)
+{
+#if !USE_PBC
+	scalar_t random;
+	curvepoint_fp_t tmp;
+#endif
+
+	mix_thread_args *targs = (mix_thread_args *) args;
+	uint32_t num_noise_msgs = targs->num_msgs;
+
+	mix_s *mix = targs->mix;
+
+	uint8_t *buf = calloc(mix->af_data.out_msg_length, num_noise_msgs * mix->af_data.num_mailboxes);
+	uint8_t *curr_ptr = buf;
+	uint64_t num_mailboxes = mix->af_data.num_mailboxes + 1;
+	for (uint64_t i = 0; i < num_mailboxes; i++) {
+		uint32_t noise = num_noise_msgs;
+
+		printf("Adding %d msgs to mailbox %ld\n", noise, i);
+		for (int j = 0; j < noise; j++) {
+			serialize_uint64(curr_ptr, i);
+			sim_mix_onion_encrypt_msg(mix, curr_ptr, af_ibeenc_request_BYTES + mb_BYTES, mix->mix_af_dh_pks);
+			curr_ptr += mix->af_data.inc_msg_length;
+		}
+	}
+	pthread_mutex_lock(targs->mutex);
+	byte_buffer_put(&mix->af_data.in_buf,
+	                buf,
+	                mix->af_data.inc_msg_length * (num_noise_msgs * mix->af_data.num_mailboxes));
+	mix->af_data.num_inc_msgs += num_noise_msgs * mix->af_data.num_mailboxes;
+	pthread_mutex_unlock(targs->mutex);
+	free(buf);
+}
+
+
 void *sim_mix_af_entry_add_noise(void *args)
 {
 #if !USE_PBC
@@ -1518,7 +1554,7 @@ void *sim_mix_af_entry_add_noise(void *args)
 	uint32_t num_cover_msgs = targs->num_fake_msgs;
 	mix_s *mix = targs->mix;
 
-	uint8_t *buf = calloc(mix->af_data.inc_msg_length, num_noise_msgs + num_cover_msgs);
+	uint8_t *buf = calloc(mix->af_data.inc_msg_length, (num_noise_msgs * mix->af_data.num_mailboxes) + num_cover_msgs);
 	uint8_t *curr_ptr = buf;
 	uint64_t num_mailboxes = mix->af_data.num_mailboxes + 1;
 	for (uint64_t i = 0; i < num_mailboxes; i++) {
@@ -1526,28 +1562,18 @@ void *sim_mix_af_entry_add_noise(void *args)
 		if (i == num_mailboxes - 1) {
 			noise = num_cover_msgs;
 		}
-		printf("Adding %d msgs to mailbox %ld\n", noise, i);
+		printf("Adding %d msgs to AF mailbox %ld\n", noise, i);
 		for (int j = 0; j < noise; j++) {
-
 			serialize_uint64(curr_ptr, i);
-/*#if USE_PBC
-			element_random(&mix->af_noise_Zr_elem);
-		element_pow_zn(&mix->af_noise_G1_elem, &mix->ibe_gen_elem,
-					   &mix->af_noise_Zr_elem);
-		element_to_bytes_compressed(curr_ptr + mb_BYTES, &mix->af_noise_G1_elem);
-#else
-			bn256_scalar_random(random);
-			bn256_scalarmult_base_g1(tmp, random);
-			bn256_serialize_g1(curr_ptr + mb_BYTES, tmp);
-#endif*/
-			//randombytes_buf(curr_ptr + mb_BYTES + g1_serialized_bytes, af_ibeenc_request_BYTES - g1_serialized_bytes);
 			sim_mix_onion_encrypt_msg(mix, curr_ptr, af_ibeenc_request_BYTES + mb_BYTES, mix->mix_af_dh_pks);
 			curr_ptr += mix->af_data.inc_msg_length;
 		}
 	}
 	pthread_mutex_lock(targs->mutex);
-	byte_buffer_put(&mix->af_data.in_buf, buf, mix->af_data.inc_msg_length * (num_noise_msgs + num_cover_msgs));
-	mix->af_data.num_inc_msgs += num_noise_msgs + num_cover_msgs;
+	byte_buffer_put(&mix->af_data.in_buf,
+	                buf,
+	                mix->af_data.inc_msg_length * ((num_noise_msgs * mix->af_data.num_mailboxes) + num_cover_msgs));
+	mix->af_data.num_inc_msgs += (num_noise_msgs * mix->af_data.num_mailboxes) + num_cover_msgs;
 	pthread_mutex_unlock(targs->mutex);
 	free(buf);
 }

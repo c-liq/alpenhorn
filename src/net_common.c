@@ -360,8 +360,8 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 int net_epoll_read(void *owner, connection *conn)
 {
 	int close_client_connection = 0;
+	ssize_t count;
 	for (;;) {
-		ssize_t count;
 		byte_buffer_s *read_buf = &conn->read_buf;
 		size_t buf_space = read_buf->capacity - read_buf->used;
 
@@ -388,7 +388,7 @@ int net_epoll_read(void *owner, connection *conn)
 	}
 
 	if (close_client_connection) {
-		fprintf(stderr, "Epoll read: closing client_connection on sock %d\n", conn->sock_fd);
+		fprintf(stderr, "Epoll read: closing client_connection on sock %d | count: %lu\n", conn->sock_fd, count);
 		return -1;
 	}
 	return 0;
