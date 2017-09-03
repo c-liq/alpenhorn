@@ -266,8 +266,8 @@ pkg_server_init(pkg_server *server,
 
 	pkg_new_ibe_keypair(server);
 	crypto_box_keypair(server->broadcast_dh_pkey_ptr, server->eph_secret_dh_key);
-	serialize_uint32(server->eph_broadcast_message, PKG_BR_MSG);
-	serialize_uint32(server->eph_broadcast_message + net_msg_type_BYTES,
+	serialize_uint64(server->eph_broadcast_message, PKG_BR_MSG);
+	serialize_uint64(server->eph_broadcast_message + net_msg_type_BYTES,
 	                 pkg_broadcast_msg_BYTES);
 	serialize_uint64(server->eph_broadcast_message + (net_msg_len_BYTES + net_msg_type_BYTES), server->current_round);
 	// Extract secret keys and generate signatures for each client_s
@@ -413,7 +413,7 @@ pkg_client_init(pkg_client* client,
 {
   client->auth_response_ibe_key_ptr =
 	client->eph_client_data + net_header_BYTES + g1_serialized_bytes;
-  serialize_uint32(client->eph_client_data, PKG_AUTH_RES_MSG);
+  serialize_uint64(client->eph_client_data, PKG_AUTH_RES_MSG);
   memcpy(client->user_id, user_id, user_id_BYTES);
 
   if (is_key_hex) {
@@ -453,7 +453,7 @@ pkg_client_init(pkg_client *client,
 {
 	client->server = server;
 	client->auth_response_ibe_key_ptr = client->eph_client_data + net_header_BYTES + bn256_bls_sig_message_bytes;
-	serialize_uint32(client->eph_client_data, PKG_AUTH_RES_MSG);
+	serialize_uint64(client->eph_client_data, PKG_AUTH_RES_MSG);
 	memcpy(client->user_id, user_id, user_id_BYTES);
 	if (is_key_hex) {
 		sodium_hex2bin(client->lt_sig_pk,
@@ -547,7 +547,7 @@ pkg_auth_client(pkg_server *server, pkg_client *client, uint8_t *auth_msg_buf)
 void
 pkg_encrypt_client_response(pkg_server *server, pkg_client *client)
 {
-	serialize_uint32(client->eph_client_data + net_msg_type_BYTES,
+	serialize_uint64(client->eph_client_data + net_msg_type_BYTES,
 	                 pkg_enc_auth_res_BYTES);
 	serialize_uint64(client->eph_client_data + (net_msg_len_BYTES + net_msg_type_BYTES), server->current_round);
 	uint8_t *nonce_ptr = client->eph_client_data + net_header_BYTES +
@@ -730,7 +730,7 @@ pkg_net_process_client_msg(void *srv, connection *conn)
 
 		uint8_t header[net_header_BYTES];
 		memset(header, 0, sizeof header);
-		serialize_uint32(header, PKG_REG_REQUEST_RECEIVED);
+		serialize_uint64(header, PKG_REG_REQUEST_RECEIVED);
 		memcpy(
 			conn->write_buf.data + conn->bytes_written, header, net_header_BYTES);
 		conn->write_remaining += net_header_BYTES;

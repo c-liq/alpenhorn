@@ -33,7 +33,7 @@ void serialize_uint32(uint8_t *out, uint64_t in)
 	memcpy(out, &network_in, sizeof network_in);
 }
 
-uint64_t deserialize_uint32(uint8_t *in)
+uint64_t deserialize_uint64(uint8_t *in)
 {
 	uint64_t *ptr = (uint64_t *) in;
 	return ntohl(*ptr);
@@ -91,7 +91,7 @@ void serialize_uint64(uint8_t *out, const uint64_t input)
 	out[7] = (uint8_t) (input >> 0);
 }
 
-uint64_t deserialize_uint64(uint8_t *in)
+uint64_t deserialize_uint32(uint8_t *in)
 {
 	uint64_t *ptr = (uint64_t *) in;
 	return be64toh(*ptr);

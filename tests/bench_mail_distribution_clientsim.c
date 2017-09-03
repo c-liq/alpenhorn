@@ -1,8 +1,8 @@
 #include <net_common.h>
 #include <client_config.h>
-#include <time.h>
 
-#define sim_num_clients 1800
+
+#define sim_num_clients 400
 
 static int num_completed_connections = 0;
 static int num_responses = 0;
@@ -14,9 +14,12 @@ int mix_clientsim_process(void *client_ptr, connection *conn)
 	case DIAL_MB:
 //
 		break;
-	case AF_MB:
-		num_responses++;
+	case AF_MB: {
+		char time_buffer[40];
+		get_current_time(time_buffer);
+		LOG_OUT(stdout, "MB received at %s\n", time_buffer);
 		break;
+	}
 	case NEW_AFMB_AVAIL: {
 		net_epoll_send(NULL, conn, conn->sock_fd);
 		break;
@@ -26,7 +29,7 @@ int mix_clientsim_process(void *client_ptr, connection *conn)
 		break;
 	}
 	default:
-		fprintf(stderr, "Invalid message from Mix distribution server\n");
+		fprintf(stderr, "Invalid message from Mix distribution server %lu\n", conn->msg_type);
 		return -1;
 	}
 	return 0;
@@ -40,7 +43,7 @@ int main()
 	memset(&event, 0, sizeof event);
 	event.events = EPOLLIN | EPOLLET;
 	while (num_completed_connections < sim_num_clients) {
-		int sock_fd = net_connect("127.0.0.1", mix_listen_ports[num_mix_servers - 1], 1);
+		int sock_fd = net_connect(mix_server_ips[num_mix_servers - 1], mix_listen_ports[num_mix_servers - 1], 1);
 		if (sock_fd <= 0) {
 			printf("Connection failed, sleeping..\n");
 			struct timespec spec;
