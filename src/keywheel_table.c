@@ -199,7 +199,7 @@ int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *user
 		return -1;
 	}
 
-	serialize_uint32(entry->key_state, intent);
+	serialize_uint64(entry->key_state, intent);
 	crypto_generichash_blake2b_salt_personal(out, crypto_ghash_BYTES,
 	                                         entry->key_state, intent_BYTES + crypto_maxhash_BYTES,
 	                                         NULL, 0, saltbytes_1, NULL

@@ -746,7 +746,7 @@ void mix_pkg_broadcast(mix_s *s, uint64_t msg_type)
 	uint8_t buf[net_header_BYTES];
 	memset(buf, 0, net_header_BYTES);
 	serialize_uint32(buf, msg_type);
-	serialize_uint64(buf + 8, s->af_data.round);
+	serialize_uint64(buf + (net_msg_len_BYTES + net_msg_type_BYTES), s->af_data.round);
 	for (int i = 0; i < num_pkg_servers; i++) {
 		send(s->net_state.pkg_conns[i].sock_fd, buf, net_header_BYTES, 0);
 	}
@@ -756,7 +756,7 @@ int mix_exit_process_client_msg(void *owner, connection *conn)
 {
 	mix_s *mix = (mix_s *) owner;
 	if (conn->msg_type == CLIENT_DIAL_MB_REQUEST) {
-		uint64_t mb_round = deserialize_uint64(conn->read_buf.data + 8);
+		uint64_t mb_round = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
 		/*printf("Received Dial mailbox download request for round %ld from %.60s\n",
 		       mb_round, conn->read_buf.data + net_header_BYTES);*/
 		dial_mailbox_s *request_mb = mix_dial_get_mailbox_buffer(
@@ -767,7 +767,7 @@ int mix_exit_process_client_msg(void *owner, connection *conn)
 		}
 	}
 	else if (conn->msg_type == CLIENT_AF_MB_REQUEST) {
-		//uint64_t round_num = deserialize_uint64(conn->read_buf.data + 8);
+		//uint64_t round_num = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
 		/*	printf("Received AF mailbox download request for round %ld from %.60s\n",
 				   round_num, conn->read_buf.data + net_header_BYTES);*/
 		uint64_t index =
@@ -829,7 +829,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 		serialize_uint32(net_state->af_client_broadcast.data, NEW_AF_ROUND);
 		serialize_uint32(net_state->af_client_broadcast.data + net_msg_type_BYTES,
 		                 conn->curr_msg_len + crypto_pk_BYTES);
-		serialize_uint64(net_state->af_client_broadcast.data + 8,
+		serialize_uint64(net_state->af_client_broadcast.data + (net_msg_len_BYTES + net_msg_type_BYTES),
 		                 mix->af_data.round + 1);
 		byte_buffer_put_virtual(&net_state->af_client_broadcast, net_header_BYTES);
 		byte_buffer_put(&net_state->af_client_broadcast, mix->mix_af_dh_pks[0],
@@ -859,7 +859,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 		byte_buffer_s *dial_broadcast_buf = &net_state->dial_client_broadcast;
 		byte_buffer_clear(dial_broadcast_buf);
 		serialize_uint32(dial_broadcast_buf->data, NEW_DIAL_ROUND);
-		serialize_uint64(dial_broadcast_buf->data + 16, mix->dial_data.round + 1);
+		serialize_uint64(dial_broadcast_buf->data + net_header_BYTES, mix->dial_data.round + 1);
 		serialize_uint32(dial_broadcast_buf->data + net_msg_type_BYTES,
 		                 conn->curr_msg_len + crypto_pk_BYTES);
 		byte_buffer_put_virtual(dial_broadcast_buf, net_header_BYTES);
@@ -905,7 +905,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 			char time_buffer[40];
 			get_current_time(time_buffer);
 			LOG_OUT(stdout, "[AF Round %lu] MB availability announced at %s\n", mix->af_data.round, time_buffer);
-			mix->af_data.num_mailboxes = deserialize_uint64(conn->read_buf.data + 16);
+			mix->af_data.num_mailboxes = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
 			mix_af_newround(mix);
 		}
 		else {
@@ -913,7 +913,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 			LOG_OUT(stdout,
 			        "AF Round %lu: Received %d msgs, added %d noise, forwarding %d\n",
 			        af->round, af->num_inc_msgs, af->last_noise_count, af->num_out_msgs);
-			mix->af_data.num_mailboxes = deserialize_uint64(conn->read_buf.data + 16);
+			mix->af_data.num_mailboxes = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
 			net_serialize_header(mix->af_data.out_buf.data,
 			                     MIX_AF_BATCH,
 			                     mix->af_data.num_out_msgs * mix->af_data.out_msg_length,
@@ -947,7 +947,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 			        time_buffer);
 			mix_exit_new_dial_key(mix);
 			mix_broadcast_new_dialmb(mix, mix->dial_data.round);
-			mix->dial_data.num_mailboxes = deserialize_uint64(conn->read_buf.data + 16);
+			mix->dial_data.num_mailboxes = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
 			mix_dial_newround(mix);
 		}
 		else {
@@ -957,7 +957,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 			        dd->round, dd->num_inc_msgs, dd->last_noise_count,
 			        dd->num_out_msgs);
 			byte_buffer_s *buf = &mix->dial_data.out_buf;
-			mix->dial_data.num_mailboxes = deserialize_uint64(conn->read_buf.data + 16);
+			mix->dial_data.num_mailboxes = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
 			net_serialize_header(mix->dial_data.out_buf.data,
 			                     MIX_DIAL_BATCH,
 			                     mix->dial_data.num_out_msgs * mix->dial_data.out_msg_length,
@@ -1106,11 +1106,11 @@ void mix_remove_client(mix_s *s, connection *conn)
 
 void mix_broadcast_dialround(mix_s *s)
 {
-	serialize_uint64(s->net_state.bc_buf.data + 16, s->dial_data.round);
+	serialize_uint64(s->net_state.bc_buf.data + net_header_BYTES, s->dial_data.round);
 	connection *conn = s->net_state.clients;
 	byte_buffer_s *dial_broadcast = &s->net_state.dial_client_broadcast;
-	serialize_uint64(dial_broadcast->data + 8, s->dial_data.round);
-	serialize_uint64(dial_broadcast->data + 16, s->dial_data.num_mailboxes);
+	serialize_uint64(dial_broadcast->data + (net_msg_len_BYTES + net_msg_type_BYTES), s->dial_data.round);
+	serialize_uint64(dial_broadcast->data + net_header_BYTES, s->dial_data.num_mailboxes);
 
 	while (conn) {
 		net_epoll_queue_write(&s->net_state, conn, dial_broadcast->data,
@@ -1123,9 +1123,9 @@ void mix_broadcast_new_dialmb(mix_s *s, uint64_t round)
 {
 	uint8_t bc_buff[net_header_BYTES];
 	serialize_uint32(bc_buff, NEW_DMB_AVAIL);
-	serialize_uint32(bc_buff + 4, 0);
+
 	serialize_uint32(bc_buff + net_msg_type_BYTES, 0);
-	serialize_uint64(bc_buff + 8, round);
+	serialize_uint64(bc_buff + net_msg_type_BYTES + net_msg_len_BYTES, round);
 	connection *conn = s->net_state.clients;
 	while (conn) {
 		send(conn->sock_fd, bc_buff, sizeof bc_buff, 0);
@@ -1138,8 +1138,8 @@ void mix_broadcast_new_afmb(mix_s *s, uint64_t round)
 	uint8_t bc_buff[net_header_BYTES];
 	memset(bc_buff, 0, sizeof bc_buff);
 	serialize_uint32(bc_buff, NEW_AFMB_AVAIL);
-	serialize_uint32(bc_buff + 4, 0);
-	serialize_uint64(bc_buff + 8, round);
+	serialize_uint32(bc_buff + net_msg_type_BYTES, 0);
+	serialize_uint64(bc_buff + net_msg_type_BYTES + net_msg_len_BYTES, round);
 	connection *conn = s->net_state.clients;
 	while (conn) {
 		send(conn->sock_fd, bc_buff, sizeof bc_buff, 0);
@@ -1151,7 +1151,7 @@ void mix_broadcast_new_afr(mix_s *s)
 {
 	connection *conn = s->net_state.clients;
 	byte_buffer_s *af_broadcast = &s->net_state.af_client_broadcast;
-	serialize_uint64(af_broadcast->data + 16, s->af_data.num_mailboxes);
+	serialize_uint64(af_broadcast->data + net_header_BYTES, s->af_data.num_mailboxes);
 	while (conn) {
 		net_epoll_queue_write(&s->net_state, conn, af_broadcast->data, af_broadcast->capacity,
 		                      0);
@@ -1187,8 +1187,8 @@ int mix_entry_sync(mix_s *mix)
 	byte_buffer_clear(bc_buf);
 	serialize_uint32(bc_buf->data, MIX_SYNC);
 	serialize_uint32(bc_buf->data + net_msg_type_BYTES, 0);
-	serialize_uint64(bc_buf->data + 8, mix->af_data.round);
-	serialize_uint64(bc_buf->data + 16, mix->dial_data.round);
+	serialize_uint64(bc_buf->data + (net_msg_len_BYTES + net_msg_type_BYTES), mix->af_data.round);
+	serialize_uint64(bc_buf->data + net_header_BYTES, mix->dial_data.round);
 
 	mix->af_data.round++;
 	mix->dial_data.round++;
@@ -1199,8 +1199,9 @@ int mix_entry_sync(mix_s *mix)
 	serialize_uint32(
 		net_state->dial_client_broadcast.data + net_msg_type_BYTES,
 		(uint64_t) net_state->dial_client_broadcast.capacity - net_header_BYTES);
-	serialize_uint64(net_state->af_client_broadcast.data + 8, mix->af_data.round);
-	serialize_uint64(net_state->dial_client_broadcast.data + 16,
+	serialize_uint64(net_state->af_client_broadcast.data + (net_msg_len_BYTES + net_msg_type_BYTES),
+	                 mix->af_data.round);
+	serialize_uint64(net_state->dial_client_broadcast.data + net_header_BYTES,
 	                 mix->dial_data.round);
 	byte_buffer_put_virtual(&net_state->af_client_broadcast, net_header_BYTES);
 	byte_buffer_put_virtual(&net_state->dial_client_broadcast, net_header_BYTES);
@@ -1265,8 +1266,8 @@ int mix_net_init(mix_s *mix)
 	                 net_header_BYTES + buffer_size / 2);
 	serialize_uint32(net_state->bc_buf.data, MIX_SYNC);
 	serialize_uint32(net_state->bc_buf.data + net_msg_type_BYTES, buffer_size);
-	serialize_uint64(net_state->bc_buf.data + 8, mix->af_data.round);
-	serialize_uint64(net_state->bc_buf.data + 16, mix->dial_data.round);
+	serialize_uint64(net_state->bc_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES), mix->af_data.round);
+	serialize_uint64(net_state->bc_buf.data + net_header_BYTES, mix->dial_data.round);
 	byte_buffer_put_virtual(&net_state->bc_buf, net_header_BYTES);
 
 	byte_buffer_put(&net_state->bc_buf, mix->mix_af_dh_pks[0], crypto_pk_BYTES);
@@ -1297,7 +1298,7 @@ void mix_dial_calc_num_mbs(mix_s *mix)
 
 void mix_entry_new_af_round(mix_s *mix)
 {
-	serialize_uint64(mix->net_state.bc_buf.data + 8, mix->af_data.round);
+	serialize_uint64(mix->net_state.bc_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES), mix->af_data.round);
 	mix_broadcast_new_afr(mix);
 	mix_pkg_broadcast(mix, NEW_AF_ROUND);
 	char time_buffer[40];
@@ -1476,8 +1477,8 @@ sim_mix_parallel_fake_client_traffic(mix_s *server, int p)
 
 	uint64_t num_mailboxes;
 	num_mailboxes = p == 0 ? server->af_data.num_mailboxes : server->dial_data.num_mailboxes;
-	uint64_t num_real_msgs = ((1000000 / 100) * 5 / num_mailboxes);
-	uint64_t num_cover_msgs = ((1000000 / 100) * 95);
+	uint64_t num_real_msgs = ((10000000 / 100) * 5 / num_mailboxes);
+	uint64_t num_cover_msgs = ((10000000 / 100) * 95);
 
 	uint64_t num_real_per_thread = num_real_msgs / num_threads;
 	uint64_t num_cover_per_thread = num_cover_msgs / num_threads;
@@ -1533,7 +1534,7 @@ void sim_mix_entry_dial_add_noise2(void *args)
 		if (i == num_mailboxes - 1) {
 			noise = num_cover_msgs;
 		}
-		printf("Adding %d msgs to mailbox %ld\n", noise, i);
+		printf("Adding %ld msgs to mailbox %ld\n", noise, i);
 		for (int j = 0; j < noise; j++) {
 			serialize_uint64(curr_ptr, i);
 			randombytes_buf(curr_ptr + sizeof i, dialling_token_BYTES);
@@ -1564,7 +1565,7 @@ void sim_mix_entry_dial_add_noise(void *args)
 		if (i == num_mailboxes - 1) {
 			noise = num_cover_msgs;
 		}
-		printf("Adding %d msgs to mailbox %ld\n", noise, i);
+		printf("Adding %ld msgs to mailbox %ld\n", noise, i);
 		for (int j = 0; j < noise; j++) {
 			serialize_uint64(curr_ptr, i);
 			//randombytes_buf(curr_ptr + sizeof i, dialling_token_BYTES);
@@ -1598,7 +1599,7 @@ void *mix_parallel_add_noise(void *args)
 	for (uint64_t i = 0; i < num_mailboxes; i++) {
 		uint64_t noise = num_noise_msgs;
 
-		printf("Adding %d msgs to mailbox %ld\n", noise, i);
+		printf("Adding %ld msgs to mailbox %ld\n", noise, i);
 		for (int j = 0; j < noise; j++) {
 			serialize_uint64(curr_ptr, i);
 			sim_mix_onion_encrypt_msg(mix, curr_ptr, af_ibeenc_request_BYTES + mb_BYTES, mix->mix_af_dh_pks);

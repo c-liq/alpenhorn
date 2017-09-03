@@ -7,8 +7,8 @@ typedef struct pkg_thread_args pkg_thread_args;
 struct pkg_thread_args
 {
 	pkg_server *server;
-	int begin;
-	int end;
+	uint64_t begin;
+	uint64_t end;
 	uint8_t *data;
 };
 
@@ -269,7 +269,7 @@ pkg_server_init(pkg_server *server,
 	serialize_uint32(server->eph_broadcast_message, PKG_BR_MSG);
 	serialize_uint32(server->eph_broadcast_message + net_msg_type_BYTES,
 	                 pkg_broadcast_msg_BYTES);
-	serialize_uint64(server->eph_broadcast_message + 8, server->current_round);
+	serialize_uint64(server->eph_broadcast_message + (net_msg_len_BYTES + net_msg_type_BYTES), server->current_round);
 	// Extract secret keys and generate signatures for each client_s
 
 
@@ -350,7 +350,7 @@ pkg_parallel_operation(pkg_server *server, void *(*operator)(void *), uint8_t *d
 	uint64_t num_threads = server->num_threads;
 	pthread_t threads[num_threads];
 	pkg_thread_args args[num_threads];
-	int num_per_thread = server->num_clients / num_threads;
+	uint64_t num_per_thread = server->num_clients / num_threads;
 	int curindex = 0;
 	for (int i = 0; i < num_threads - 1; i++) {
 		args[i].server = server;
@@ -549,7 +549,7 @@ pkg_encrypt_client_response(pkg_server *server, pkg_client *client)
 {
 	serialize_uint32(client->eph_client_data + net_msg_type_BYTES,
 	                 pkg_enc_auth_res_BYTES);
-	serialize_uint64(client->eph_client_data + 8, server->current_round);
+	serialize_uint64(client->eph_client_data + (net_msg_len_BYTES + net_msg_type_BYTES), server->current_round);
 	uint8_t *nonce_ptr = client->eph_client_data + net_header_BYTES +
 		bn256_bls_sig_message_bytes + bn256_ibe_client_sk_bytes +
 		crypto_MACBYTES;

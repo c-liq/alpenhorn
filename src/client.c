@@ -1330,24 +1330,24 @@ int mix_entry_process_msg(void *client_ptr, connection *conn)
 		client_update_af_keys(client, conn->read_buf.data + net_header_BYTES);
 		net_state->num_broadcast_responses = 0;
 		net_state->num_auth_responses = 0;
-		client->af_round = deserialize_uint64(conn->read_buf.data + 8);
-		client->af_num_mailboxes = deserialize_uint64((conn->read_buf.data + 16));
+		client->af_round = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
+		client->af_num_mailboxes = deserialize_uint64((conn->read_buf.data + net_header_BYTES));
 		printf("AF round %ld started, %ld mailboxes\n", client->af_round, client->af_num_mailboxes);
 		break;
 	case NEW_DIAL_ROUND:
 		client->dial_start_round = get_time();
 		client_update_dial_keys(client, conn->read_buf.data + net_header_BYTES);
-		client->dial_num_mailboxes = deserialize_uint64(conn->read_buf.data + 16);
+		client->dial_num_mailboxes = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
 		dial_build_call(client);
 		net_send_message(client, conn, client->dial_request_buf, net_header_BYTES + onionenc_dial_token_BYTES);
-		client->dialling_round = deserialize_uint64(conn->read_buf.data + 8);
+		client->dialling_round = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
 
 		printf("Dial round %ld started, %ld mailboxes\n", client->dialling_round, client->dial_num_mailboxes);
 		dial_fake_request(client);
 		break;
 	case MIX_SYNC:
-		client->af_round = deserialize_uint64(conn->read_buf.data + 8);
-		client->dialling_round = deserialize_uint64(conn->read_buf.data + 16);
+		client->af_round = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
+		client->dialling_round = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
 		printf("AF round: %lu | Dial round: %lu\n", client->af_round, client->dialling_round);
 		break;
 	default:
@@ -1430,21 +1430,21 @@ int mix_last_process_msg(void *client_ptr, connection *conn)
 	switch (conn->msg_type) {
 	case DIAL_MB:
 		dial_process_mb(client, conn->read_buf.data + net_header_BYTES,
-		                deserialize_uint64(conn->read_buf.data + 8),
-		                deserialize_uint64(conn->read_buf.data + 16));
+		                deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES)),
+		                deserialize_uint64(conn->read_buf.data + net_header_BYTES));
 		kw_advance_table(&client->keywheel);
 		break;
 	case AF_MB:
 		byte_buffer_clear(&client->af_mb_buffer);
 		byte_buffer_put(&client->af_mb_buffer, conn->read_buf.data + net_header_BYTES, conn->curr_msg_len);
-		client->af_mb_num_messages = deserialize_uint64(conn->read_buf.data + 16);
+		client->af_mb_num_messages = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
 		af_process_mb(client, client->af_mb_buffer.data, client->af_mb_num_messages, client->af_round);
 		/*af_create_pkg_auth_request(client);
 		client_net_pkg_auth(client);
 		net_state->num_broadcast_responses = 0;*/
 		break;
 	case NEW_AFMB_AVAIL: {
-		uint64_t round = deserialize_uint64(conn->read_buf.data + 8);
+		uint64_t round = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
 		net_serialize_header(conn->write_buf.data + conn->bytes_written + conn->write_remaining,
 		                     CLIENT_AF_MB_REQUEST,
 		                     user_id_BYTES,
@@ -1457,7 +1457,7 @@ int mix_last_process_msg(void *client_ptr, connection *conn)
 		break;
 	}
 	case NEW_DMB_AVAIL: {
-		uint64_t round = deserialize_uint64(conn->read_buf.data + 8);
+		uint64_t round = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
 		net_serialize_header(conn->write_buf.data + conn->bytes_written + conn->write_remaining,
 		                     CLIENT_DIAL_MB_REQUEST,
 		                     user_id_BYTES,
@@ -1509,8 +1509,9 @@ int client_run(client_s *client)
 		return -1;
 	}
 
-	client->af_round = deserialize_uint64(net_state->mix_entry.read_buf.data + 8);
-	client->dialling_round = deserialize_uint64(net_state->mix_entry.read_buf.data + 16);
+	client->af_round =
+		deserialize_uint64(net_state->mix_entry.read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
+	client->dialling_round = deserialize_uint64(net_state->mix_entry.read_buf.data + net_header_BYTES);
 	client->keywheel.table_round = client->dialling_round;
 
 	printf("[Connected as %s: Dial round: %ld | Add friend round: %ld]\n",

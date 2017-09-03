@@ -221,10 +221,10 @@ int net_serialize_header(uint8_t *header,
 		return -1;
 	}
 
-	serialize_uint32(header, msg_type);
-	serialize_uint32(header + 4, msg_length);
-	serialize_uint64(header + 8, af_round);
-	serialize_uint64(header + 16, dial_round);
+	serialize_uint64(header, msg_type);
+	serialize_uint64(header + net_msg_type_BYTES, msg_length);
+	serialize_uint64(header + (net_msg_len_BYTES + net_msg_type_BYTES), af_round);
+	serialize_uint64(header + net_header_BYTES, dial_round);
 
 	return 0;
 }
@@ -327,8 +327,8 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 				return;
 			}
 
-			conn->msg_type = deserialize_uint32(conn->read_buf.data);
-			conn->curr_msg_len = deserialize_uint32(conn->read_buf.data + net_msg_type_BYTES);
+			conn->msg_type = deserialize_uint64(conn->read_buf.data);
+			conn->curr_msg_len = deserialize_uint64(conn->read_buf.data + net_msg_type_BYTES);
 		}
 		// Message hasn't been fully received
 		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {

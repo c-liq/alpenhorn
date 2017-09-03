@@ -31,9 +31,10 @@
 #define crypto_MACBYTES crypto_aead_chacha20poly1305_ietf_ABYTES
 #define crypto_NBYTES crypto_aead_chacha20poly1305_ietf_NPUBBYTES
 
-#define net_msg_type_BYTES 4U
+#define net_msg_type_BYTES 8U
+#define net_msg_len_BYTES 8U
 #define mix_num_buffer_elems 1000000U
-#define net_header_BYTES 24U
+#define net_header_BYTES 32U
 
 
 
