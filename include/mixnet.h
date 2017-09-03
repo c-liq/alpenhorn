@@ -8,7 +8,7 @@
 #include "net_common.h"
 #include "mixnet_config.h"
 
-static const char *mix_server_ips[] = {"35.176.36.204", "35.177.16.248", "35.158.95.27"};
+static const char *mix_server_ips[] = {"52.56.191.146", "52.56.95.46", "52.56.99.122"};
 //static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
 static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
 static const char mix_entry_client_listenport[] = "7000";

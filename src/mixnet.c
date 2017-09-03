@@ -248,6 +248,7 @@ void mix_shuffle_messages(uint8_t *messages,
 		fprintf(stderr, "Cannot shuffle a set of less than 2 messages\n");
 		return;
 	}
+
 	uint8_t tmp_message[msg_length];
 	for (uint32_t i = msg_count - 1; i >= 1; i--) {
 		uint32_t j = randombytes_uniform(i);
@@ -255,20 +256,31 @@ void mix_shuffle_messages(uint8_t *messages,
 		memcpy(messages + (i * msg_length), messages + (j * msg_length), msg_length);
 		memcpy(messages + (j * msg_length), tmp_message, msg_length);
 	}
+
 }
 
 void mix_af_shuffle(mix_s *mix)
 {
+	double start_timer = get_time();
 	mix_shuffle_messages(mix->af_data.out_buf.data + net_header_BYTES,
 	                     mix->af_data.num_out_msgs,
 	                     mix->af_data.out_msg_length);
+	LOG_OUT(mix->log_file,
+	        "Time taken to shuffle %d AF msgs: %f\n",
+	        mix->af_data.num_out_msgs,
+	        get_time() - start_timer);
 }
 
 void mix_dial_shuffle(mix_s *mix)
 {
+	double start_timer = get_time();
 	mix_shuffle_messages(mix->dial_data.out_buf.data + net_header_BYTES,
 	                     mix->dial_data.num_out_msgs,
 	                     mix->dial_data.out_msg_length);
+	LOG_OUT(mix->log_file,
+	        "Time taken to shuffle %d Dial msgs: %f\n",
+	        mix->dial_data.num_out_msgs,
+	        get_time() - start_timer);
 }
 
 int mix_add_onion_layer(uint8_t *msg,
@@ -843,7 +855,7 @@ int mix_process_mix_msg(void *m, connection *conn)
 		byte_buffer_put(&mix->dial_data.in_buf,
 		                conn->read_buf.data + net_header_BYTES, conn->curr_msg_len);
 		mix_dial_decrypt_messages(mix);
-
+		mix_dial_shuffle(mix);
 		if (mix->is_last) {
 			mix_dial_s *dd = &mix->dial_data;
 			uint32_t discarded = dd->num_inc_msgs + dd->last_noise_count - dd->num_out_msgs;
@@ -870,7 +882,6 @@ int mix_process_mix_msg(void *m, connection *conn)
 			        "Dial Round %lu: Received %d msgs, added %u noise -> forwarding %d\n",
 			        dd->round, dd->num_inc_msgs, dd->last_noise_count,
 			        dd->num_out_msgs);
-			mix_dial_shuffle(mix);
 			byte_buffer_s *buf = &mix->dial_data.out_buf;
 			mix->dial_data.num_mailboxes = deserialize_uint64(conn->read_buf.data + 16);
 			net_serialize_header(mix->dial_data.out_buf.data,
@@ -1234,7 +1245,7 @@ void mix_entry_process_af_batch(mix_s *mix)
 	        af_data->num_out_msgs, time_buffer);
 	mix_af_decrypt_messages(mix);
 	byte_buffer_clear(&mix->af_data.in_buf);
-
+	mix_af_shuffle(mix);
 	mix->af_data.num_inc_msgs = 0;
 	mix_af_calc_num_mbs(mix);
 	net_serialize_header(mix->af_data.out_buf.data,
@@ -1258,6 +1269,7 @@ void mix_entry_process_dial_batch(mix_s *mix)
 	LOG_OUT(mix->log_file, "Dial Round %ld: Received %d msgs, added %u noise -> Forwarding %d at %s\n",
 	        dd->round, dd->num_inc_msgs, dd->last_noise_count, dd->num_out_msgs, time_buffer);
 	mix_dial_decrypt_messages(mix);
+	mix_dial_shuffle(mix);
 	byte_buffer_clear(&mix->dial_data.in_buf);
 
 
@@ -1387,8 +1399,11 @@ sim_mix_parallel_fake_client_traffic(mix_s *server, int p)
 	uint32_t num_threads = server->num_threads;
 	pthread_t threads[num_threads];
 	mix_thread_args args[num_threads];
-	uint32_t num_real_msgs = (uint32_t) ((1000000 / 100) * 5);
-	uint32_t num_cover_msgs = (uint32_t) ((1000000 / 100) * 95);
+
+	uint64_t num_mailboxes;
+	num_mailboxes = p == 0 ? server->af_data.num_mailboxes : server->dial_data.num_mailboxes;
+	uint32_t num_real_msgs = (uint32_t) ((10000000 / 100) * 5 / num_mailboxes);
+	uint32_t num_cover_msgs = (uint32_t) ((10000000 / 100) * 95);
 
 	uint32_t num_real_per_thread = num_real_msgs / num_threads;
 	uint32_t num_cover_per_thread = num_cover_msgs / num_threads;
@@ -1444,6 +1459,7 @@ void sim_mix_entry_dial_add_noise2(void *args)
 		if (i == num_mailboxes - 1) {
 			noise = num_cover_msgs;
 		}
+		printf("Adding %d msgs to mailbox %ld\n", noise, i);
 		for (int j = 0; j < noise; j++) {
 			serialize_uint64(curr_ptr, i);
 			randombytes_buf(curr_ptr + sizeof i, dialling_token_BYTES);
@@ -1474,6 +1490,7 @@ void sim_mix_entry_dial_add_noise(void *args)
 		if (i == num_mailboxes - 1) {
 			noise = num_cover_msgs;
 		}
+		printf("Adding %d msgs to mailbox %ld\n", noise, i);
 		for (int j = 0; j < noise; j++) {
 			serialize_uint64(curr_ptr, i);
 			//randombytes_buf(curr_ptr + sizeof i, dialling_token_BYTES);
@@ -1618,7 +1635,7 @@ int sim_mix_main(int argc, char **argv)
 			}
 		}
 		printf("Traffic forwarded, waiting for response\n");
-		sleep(30);
+		sleep(30000);
 	}
 	else if (sid == num_mix_servers - 1) {
 		mix_s mix;
@@ -1665,6 +1682,7 @@ int mix_main(int argc, char **argv)
 	else if (sid == num_mix_servers - 1) {
 		mix_s mix;
 		mix_init(&mix, (uint32_t) sid, num_threads, 0);
+		printf("mix %d | inc length: %d\n", mix.server_id, mix.dial_data.inc_msg_length);
 		mix_net_init(&mix);
 		mix_net_sync(&mix);
 		mix_run(&mix, NULL, mix_exit_process_client_msg);
@@ -1673,6 +1691,7 @@ int mix_main(int argc, char **argv)
 	else {
 		mix_s mix;
 		mix_init(&mix, (uint32_t) sid, num_threads, 0);
+		printf("mix %d | inc length: %d\n", mix.server_id, mix.dial_data.inc_msg_length);
 		mix_net_init(&mix);
 		mix_net_sync(&mix);
 		mix_run(&mix, NULL, mix_process_mix_msg);
