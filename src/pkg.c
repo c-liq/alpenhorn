@@ -758,7 +758,7 @@ pkg_server_startup(pkg_server *pkg)
 	s->owner = pkg;
 	s->clients = NULL;
 	s->epoll_fd = epoll_create1(0);
-	s->events = calloc(50000, sizeof *s->events);
+
 
 	int mix_fd = net_connect(mix_server_ip, mix_server_port, 1);
 	if (mix_fd == -1) {
@@ -794,7 +794,7 @@ pkg_server_run(pkg_server *s)
 	struct epoll_event *events = net_state->events;
 
 	for (;;) {
-		int n = epoll_wait(net_state->epoll_fd, net_state->events, 1000, 5000);
+		int n = epoll_wait(net_state->epoll_fd, net_state->events, epoll_num_events, 5000);
 		connection *conn = NULL;
 		// Error of some sort on the socket
 		for (int i = 0; i < n; i++) {

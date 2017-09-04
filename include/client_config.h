@@ -5,7 +5,7 @@ static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
 static const char mix_entry_client_listenport[] = "7000";
 static const char *pkg_cl_listen_ports[] = {"7500", "7501", "7502"};
 
-static const char *mix_server_ips[] = {"52.56.191.146", "52.56.95.46", "52.56.99.122"};
+static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1"};
 static const char *pkg_server_ips[] = {"127.0.0.1", "127.0.0.1"};
 #if USE_PBC
 #include "pbc_ibe.h"

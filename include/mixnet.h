@@ -8,8 +8,8 @@
 #include "net_common.h"
 #include "mixnet_config.h"
 
-static const char *mix_server_ips[] = {"52.56.191.146", "52.56.95.46", "52.56.99.122"};
-//static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
+//static const char *mix_server_ips[] = {"52.56.191.146", "52.56.95.46", "52.56.99.122"};
+static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
 static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
 static const char mix_entry_client_listenport[] = "7000";
 static const char mix_entry_pkg_listenport[] = "6666";
@@ -107,7 +107,7 @@ struct mix_dial
 	int32_t accept_window_duration;
 	laplace_s laplace;
 	uint64_t last_noise_count;
-	uint64_t mailbox_counts[20];
+	uint64_t mailbox_counts[50];
 	double bloom_p_val;
 };
 

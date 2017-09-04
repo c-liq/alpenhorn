@@ -66,3 +66,4 @@ add_executable(bench_mix_clientsim src/utils.c src/net_common.c tests/bench_mail
 add_executable(user_gen src/user_generator.c)
 add_executable(bench_mix_decrypt ${MIX_SOURCE_FILES} tests/bench_mix.c)
 add_executable(simulate_mix ${MIX_SOURCE_FILES} tests/simulate_mix_round.c)
+add_executable(test_client ${CLIENT_SOURCE_FILES} ${PKG_SOURCE_FILES} ${MIX_SOURCE_FILES} tests/test_client.c)

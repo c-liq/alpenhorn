@@ -9,6 +9,8 @@
 #include <errno.h>
 #include <pthread.h>
 
+#define epoll_num_events 200000
+
 typedef struct send_item send_item;
 struct send_item
 {
@@ -49,7 +51,8 @@ struct net_server_state
 {
 	int epoll_fd;
 	int listen_socket;
-	struct epoll_event *events;
+	struct epoll_event events[epoll_num_events];
+
 	int running;
 	connection prev_mix;
 	connection next_mix;

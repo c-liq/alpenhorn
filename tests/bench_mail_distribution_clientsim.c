@@ -2,30 +2,56 @@
 #include <client_config.h>
 
 
-#define sim_num_clients 400
+#define sim_num_clients 100
 
 static int num_completed_connections = 0;
 static int num_responses = 0;
-
+uint8_t uid[user_id_BYTES] = {};
 int mix_clientsim_process(void *client_ptr, connection *conn)
 {
 
 	switch (conn->msg_type) {
-	case DIAL_MB:
-//
+	case DIAL_MB: {
+		char time_buffer[40];
+		get_current_time(time_buffer);
+		LOG_OUT(stdout, "MB received at %s\n", time_buffer);
+		num_responses++;
+		struct timespec spec;
+		spec.tv_sec = 0;
+		spec.tv_nsec = 19999999;
+		nanosleep(&spec, NULL);
 		break;
+	}
 	case AF_MB: {
 		char time_buffer[40];
 		get_current_time(time_buffer);
 		LOG_OUT(stdout, "MB received at %s\n", time_buffer);
+		num_responses++;
+		struct timespec spec;
+		spec.tv_sec = 0;
+		spec.tv_nsec = 19999999;
+		nanosleep(&spec, NULL);
 		break;
 	}
 	case NEW_AFMB_AVAIL: {
 		net_epoll_send(NULL, conn, conn->sock_fd);
+		struct timespec spec;
+		spec.tv_sec = 0;
+		spec.tv_nsec = 19999999;
+		nanosleep(&spec, NULL);
 		break;
 	}
 	case NEW_DMB_AVAIL: {
-//
+		net_serialize_header(conn->write_buf.data,
+		                     CLIENT_DIAL_MB_REQUEST,
+		                     user_id_BYTES,
+		                     1,
+		                     1);
+		net_epoll_send(NULL, conn, conn->sock_fd);
+		struct timespec spec;
+		spec.tv_sec = 0;
+		spec.tv_nsec = 19999999;
+		nanosleep(&spec, NULL);
 		break;
 	}
 	default:
@@ -39,6 +65,10 @@ int main()
 {
 
 	int epoll_fd = epoll_create1(0);
+	uid[0] = 'u';
+	uid[1] = 's';
+	uid[2] = 'e';
+	uid[3] = 'r';
 	struct epoll_event event;
 	memset(&event, 0, sizeof event);
 	event.events = EPOLLIN | EPOLLET;
@@ -58,7 +88,9 @@ int main()
 		                     user_id_BYTES,
 		                     1,
 		                     1);
-		randombytes_buf(conn->write_buf.data + net_header_BYTES, user_id_BYTES);
+
+		serialize_uint64(&uid[5], num_completed_connections);
+		memcpy(conn->write_buf.data + net_header_BYTES, uid, user_id_BYTES);
 		conn->write_remaining += user_id_BYTES + net_header_BYTES;
 		struct timespec spec;
 		spec.tv_sec = 0;
@@ -67,10 +99,10 @@ int main()
 		num_completed_connections++;
 	}
 
-	struct epoll_event *events = calloc(sim_num_clients * 2, sizeof event);
+	struct epoll_event *events = calloc(epoll_num_events, sizeof event);
 	printf("Complected connections: %d\n", num_completed_connections);
 	while (num_responses < num_completed_connections) {
-		int num_events = epoll_wait(epoll_fd, events, 20000, 5000);
+		int num_events = epoll_wait(epoll_fd, events, epoll_num_events, 5000);
 		for (int i = 0; i < num_events; i++) {
 			connection *conn = events[i].data.ptr;
 			net_epoll_read(NULL, conn);

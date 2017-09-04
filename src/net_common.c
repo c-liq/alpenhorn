@@ -224,7 +224,7 @@ int net_serialize_header(uint8_t *header,
 	serialize_uint64(header, msg_type);
 	serialize_uint64(header + net_msg_type_BYTES, msg_length);
 	serialize_uint64(header + (net_msg_len_BYTES + net_msg_type_BYTES), af_round);
-	serialize_uint64(header + net_header_BYTES, dial_round);
+	serialize_uint64(header + 24, dial_round);
 
 	return 0;
 }
@@ -240,7 +240,6 @@ int net_send_blocking(int sock_fd, uint8_t *buf, size_t n)
 		}
 		bytes_sent += tmp_sent;
 	}
-	printf("Sent %ld bytes\n", bytes_sent);
 	return 0;
 }
 
@@ -332,17 +331,15 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 		}
 		// Message hasn't been fully received
 		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
-			/*printf("Msg type: %u | Remaining: %u | Msg len: %u\n",
+			printf("Msg type: %lu | Remaining: %lu | Msg len: %lu\n",
 			       conn->msg_type,
 			       conn->curr_msg_len - conn->bytes_read + net_header_BYTES,
-			       conn->curr_msg_len);*/
+			       conn->curr_msg_len);
 			return;
 		}
-
 		if (conn->process) {
 			conn->process(owner, conn);
 		}
-
 		uint64_t read_remaining = (conn->bytes_read - conn->curr_msg_len - net_header_BYTES);
 
 		if (read_remaining > 0) {

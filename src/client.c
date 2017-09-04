@@ -324,18 +324,17 @@ int af_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages,
 	if (!c || !mailbox)
 		return -1;
 
-	/*printf("Processing AF mailbox for round %lu, %ld messages\n", round,
-	       num_messages);*/
+	double start = get_time();
 	uint8_t *msg_ptr = mailbox;
 	for (int i = 0; i < num_messages; i++) {
 		af_decrypt_request(c, msg_ptr, round);
 		msg_ptr += af_ibeenc_request_BYTES;
 	}
+	char time_buffer[100];
+	get_current_time(time_buffer);
 	LOG_OUT(c->log_file,
-	        "[Info] Time taken for AF round %lu: %f | Number of tokens: %lu\n",
-	        c->af_round,
-	        get_time() - c->af_start_round,
-	        num_messages);
+	        "[Info] Time taken for AF mailbox with %ld tokens: %f | Time: %s\n", num_messages,
+	        get_time() - start, time_buffer);
 
 	return 0;
 }
@@ -381,7 +380,7 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round,
 {
 	if (!c || !mb_data)
 		return -1;
-
+	double start = get_time();
 	while (c->keywheel.table_round < round) {
 		kw_advance_table(&c->keywheel);
 	}
@@ -414,12 +413,12 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round,
 		}
 		curr_kw = curr_kw->next;
 	}
-
-	LOG_OUT(c->log_file,
-	        "[Info] Time taken for dial round %lu: %f | Number of tokens: %lu\n",
-	        c->dialling_round,
-	        get_time() - c->dial_start_round,
-	        num_tokens);
+	char time_buffer[100];
+	get_current_time(time_buffer);
+	LOG_OUT(stdout,
+	        "[Info] Time taken to process dial mb (%ld tokens):  %f: | Time: %s\n",
+	        num_tokens,
+	        get_time() - start, time_buffer);
 
 	return 0;
 }
@@ -836,7 +835,6 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
 {
 	if (!c || !request_buf)
 		return -1;
-
 	uint8_t serialized_g2[g2_serialized_bytes];
 	bn256_serialize_g2(serialized_g2, c->pkg_ibe_secret_combined_g2);
 	uint8_t request_buffer[af_request_BYTES];
@@ -1098,11 +1096,7 @@ int client_init(client_s *c,
 	}
 	char log_file_str[100];
 	sprintf(log_file_str, "%s.log", user_id1);
-	c->log_file = fopen(log_file_str, "a+");
-	if (!c->log_file) {
-		fprintf(stderr, "failed to open log file\n");
-		exit(EXIT_FAILURE);
-	}
+	c->log_file = stdout;
 	c->af_num_mailboxes = 1;
 	c->dial_num_mailboxes = 1;
 	c->dialling_round = 1;
@@ -1331,13 +1325,13 @@ int mix_entry_process_msg(void *client_ptr, connection *conn)
 		net_state->num_broadcast_responses = 0;
 		net_state->num_auth_responses = 0;
 		client->af_round = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
-		client->af_num_mailboxes = deserialize_uint64((conn->read_buf.data + net_header_BYTES));
+		client->af_num_mailboxes = deserialize_uint64((conn->read_buf.data + 24));
 		printf("AF round %ld started, %ld mailboxes\n", client->af_round, client->af_num_mailboxes);
 		break;
 	case NEW_DIAL_ROUND:
 		client->dial_start_round = get_time();
 		client_update_dial_keys(client, conn->read_buf.data + net_header_BYTES);
-		client->dial_num_mailboxes = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
+		client->dial_num_mailboxes = deserialize_uint64(conn->read_buf.data + 24);
 		dial_build_call(client);
 		net_send_message(client, conn, client->dial_request_buf, net_header_BYTES + onionenc_dial_token_BYTES);
 		client->dialling_round = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
@@ -1347,7 +1341,7 @@ int mix_entry_process_msg(void *client_ptr, connection *conn)
 		break;
 	case MIX_SYNC:
 		client->af_round = deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
-		client->dialling_round = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
+		client->dialling_round = deserialize_uint64(conn->read_buf.data + 24);
 		printf("AF round: %lu | Dial round: %lu\n", client->af_round, client->dialling_round);
 		break;
 	default:
@@ -1431,13 +1425,13 @@ int mix_last_process_msg(void *client_ptr, connection *conn)
 	case DIAL_MB:
 		dial_process_mb(client, conn->read_buf.data + net_header_BYTES,
 		                deserialize_uint64(conn->read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES)),
-		                deserialize_uint64(conn->read_buf.data + net_header_BYTES));
+		                deserialize_uint64(conn->read_buf.data + 24));
 		kw_advance_table(&client->keywheel);
 		break;
 	case AF_MB:
 		byte_buffer_clear(&client->af_mb_buffer);
 		byte_buffer_put(&client->af_mb_buffer, conn->read_buf.data + net_header_BYTES, conn->curr_msg_len);
-		client->af_mb_num_messages = deserialize_uint64(conn->read_buf.data + net_header_BYTES);
+		client->af_mb_num_messages = deserialize_uint64(conn->read_buf.data + 24);
 		af_process_mb(client, client->af_mb_buffer.data, client->af_mb_num_messages, client->af_round);
 		/*af_create_pkg_auth_request(client);
 		client_net_pkg_auth(client);
@@ -1511,7 +1505,7 @@ int client_run(client_s *client)
 
 	client->af_round =
 		deserialize_uint64(net_state->mix_entry.read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
-	client->dialling_round = deserialize_uint64(net_state->mix_entry.read_buf.data + net_header_BYTES);
+	client->dialling_round = deserialize_uint64(net_state->mix_entry.read_buf.data + 24);
 	client->keywheel.table_round = client->dialling_round;
 
 	printf("[Connected as %s: Dial round: %ld | Add friend round: %ld]\n",
