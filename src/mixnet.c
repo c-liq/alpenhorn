@@ -534,7 +534,7 @@ int mix_decrypt_messages(mix_s *mix,
 {
 	uint8_t *curr_in_ptr = in_ptr;
 	uint8_t *curr_out_ptr = out_ptr;
-	uint64_t decrypted_msg_count = 0;
+	int decrypted_msg_count = 0;
 
 	for (int i = 0; i < msg_count; i++) {
 		int result = mix_remove_encryption_layer(curr_out_ptr, curr_in_ptr,

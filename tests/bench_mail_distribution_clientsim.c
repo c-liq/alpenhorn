@@ -2,10 +2,10 @@
 #include <client_config.h>
 
 
-#define sim_num_clients 100
+#define sim_num_clients 500
 
-static int num_completed_connections = 0;
-static int num_responses = 0;
+static uint64_t num_completed_connections = 0;
+static uint64_t num_responses = 0;
 uint8_t uid[user_id_BYTES] = {};
 int mix_clientsim_process(void *client_ptr, connection *conn)
 {
@@ -100,7 +100,7 @@ int main()
 	}
 
 	struct epoll_event *events = calloc(epoll_num_events, sizeof event);
-	printf("Complected connections: %d\n", num_completed_connections);
+	printf("Completed connections: %ld\n", num_completed_connections);
 	while (num_responses < num_completed_connections) {
 		int num_events = epoll_wait(epoll_fd, events, epoll_num_events, 5000);
 		for (int i = 0; i < num_events; i++) {
@@ -108,8 +108,9 @@ int main()
 			net_epoll_read(NULL, conn);
 		}
 	}
-
-	printf("All responses received (%d of %d\n", num_completed_connections, sim_num_clients);
+	char time_buffer[100];
+	get_current_time(time_buffer);
+	printf("All responses received (%ld of %d) at %s\n", num_completed_connections, sim_num_clients, time_buffer);
 	return 0;
 }
 

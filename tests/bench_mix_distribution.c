@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include "mixnet.h"
 
-#define test_client_count 3600
+#define test_client_count 500
 
 static int num_responses_sent;
 int num_act_connections;
