@@ -90,8 +90,10 @@ int main()
 		                     1,
 		                     1);
 
-		serialize_uint64(&uid[5], num_completed_connections);
-		memcpy(conn->write_buf.data + net_header_BYTES, uid, user_id_BYTES);
+		char user_id[user_id_BYTES];
+		memset(user_id, 0, user_id_BYTES);
+		sprintf(user_id, "user%ld", num_completed_connections);
+		memcpy(conn->write_buf.data + net_header_BYTES, user_id, user_id_BYTES);
 		conn->write_remaining += user_id_BYTES + net_header_BYTES;
 		struct timespec spec;
 		spec.tv_sec = 0;
