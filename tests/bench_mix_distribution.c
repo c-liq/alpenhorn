@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include "mixnet.h"
 
-#define test_client_count 500
+#define test_client_count 800
 
 static int num_responses_sent;
 int num_act_connections;
@@ -92,6 +92,7 @@ void net_sim_send_queue(net_server_state *net_state, connection *conn)
 
 				pthread_mutex_unlock(&conn->send_queue_lock);
 				num_responses_sent++;
+				printf("%d mailboxes sent\n", num_responses_sent);
 				if (current_item->copied) {
 					free(current_item->buffer);
 				}
@@ -172,11 +173,11 @@ void mix_distrib_sim(mix_s *mix,
 	struct epoll_event *events = es->events;
 
 	es->running = 1;
-	int num_connections = 0;
+
 	double start_time = 0;
 	double end_time = 0;
 	bool conn_failed = false;
-	num_act_connections = -1;
+	num_act_connections = 0;
 	num_responses_sent = 0;
 	bool skip = false;
 	while (es->running) {
@@ -184,16 +185,14 @@ void mix_distrib_sim(mix_s *mix,
 			es->running = false;
 			break;
 		}
-		if (num_connections == test_client_count || conn_failed) {
+		if (num_act_connections >= test_client_count) {
 			if (!skip) {
-				printf("%d clients connected, sleeping\n", num_connections);
+				printf("%d clients connected, sleeping\n", num_act_connections);
 				printf("All clients connected, announcing AF mailbox availanility\n");
-
 
 				mix_af_distribute(mix);
 				start_time = get_time();
 				mix_broadcast_new_afmb(mix, mix->af_data.round);
-				num_act_connections = num_connections;
 				skip = true;
 			}
 		}
@@ -208,21 +207,13 @@ void mix_distrib_sim(mix_s *mix,
 				continue;
 			}
 			else if (es->listen_socket == conn->sock_fd) {
-
 				int res = net_epoll_client_accept(&mix->net_state, on_accept, on_read);
-				if (!res) {
-					num_connections++;
-				}
-				else {
-					//conn_failed = true;
-					break;
-				}
 			}
 			else if (events[i].events & EPOLLIN) {
 				net_epoll_read(mix, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
-				net_epoll_send(mix, conn, mix->net_state.epoll_fd);
+				net_epoll_send(conn, mix->net_state.epoll_fd);
 			}
 		}
 	}
@@ -231,6 +222,11 @@ void mix_distrib_sim(mix_s *mix,
 	printf("All mailbox requests responded to (%d)\n", num_responses_sent);
 	printf("Time taken: %f\n", end_time - start_time);
 	sleep(5);
+}
+
+void dummy(void *owner, connection *conn)
+{
+	num_act_connections++;
 }
 
 int main()
@@ -243,7 +239,7 @@ int main()
 	mix_init(mix, 1, 0, 0);
 	mix_af_add_noise(mix);
 	mix_net_init(mix);
-	mix_distrib_sim(mix, NULL, mix_dist_sim_process_client);
+	mix_distrib_sim(mix, dummy, mix_dist_sim_process_client);
 
 }
 

@@ -1262,7 +1262,7 @@ int net_send_message(client_s *s, connection *conn, uint8_t *msg,
 	       msg, msg_size_bytes);
 	conn->write_remaining += msg_size_bytes;
 
-	return net_epoll_send(s, conn, conn->sock_fd);
+	return net_epoll_send(conn, conn->sock_fd);
 }
 
 void client_update_dial_keys(client_s *client, uint8_t *buffer)
@@ -1447,7 +1447,7 @@ int mix_last_process_msg(void *client_ptr, connection *conn)
 		conn->write_remaining += net_header_BYTES;
 		memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining, client->user_id, user_id_BYTES);
 		conn->write_remaining += user_id_BYTES;
-		net_epoll_send(client, conn, conn->sock_fd);
+		net_epoll_send(conn, conn->sock_fd);
 		break;
 	}
 	case NEW_DMB_AVAIL: {
@@ -1460,7 +1460,7 @@ int mix_last_process_msg(void *client_ptr, connection *conn)
 		conn->write_remaining += net_header_BYTES;
 		memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining, client->user_id, user_id_BYTES);
 		conn->write_remaining += user_id_BYTES;
-		net_epoll_send(client, conn, conn->sock_fd);
+		net_epoll_send(conn, conn->sock_fd);
 		break;
 	}
 	default:
@@ -1571,7 +1571,7 @@ void *client_process_loop(void *clptr)
 				net_epoll_read(client, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
-				net_epoll_send(client, conn, client->net_state.epoll_fd);
+				net_epoll_send(conn, client->net_state.epoll_fd);
 			}
 		}
 	}

@@ -331,10 +331,10 @@ void net_process_read(void *owner, connection *conn, ssize_t count)
 		}
 		// Message hasn't been fully received
 		if (conn->bytes_read < conn->curr_msg_len + net_header_BYTES) {
-			printf("Msg type: %lu | Remaining: %lu | Msg len: %lu\n",
+			/*printf("Msg type: %lu | Remaining: %lu | Msg len: %lu\n",
 			       conn->msg_type,
 			       conn->curr_msg_len - conn->bytes_read + net_header_BYTES,
-			       conn->curr_msg_len);
+			       conn->curr_msg_len);*/
 			return;
 		}
 		if (conn->process) {
@@ -391,7 +391,7 @@ int net_epoll_read(void *owner, connection *conn)
 	return 0;
 }
 
-int net_epoll_send(void *c, connection *conn, int epoll_fd)
+int net_epoll_send(connection *conn, int epoll_fd)
 {
 	if (!conn) return -1;
 

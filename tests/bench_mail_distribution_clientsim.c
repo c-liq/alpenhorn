@@ -2,7 +2,7 @@
 #include <client_config.h>
 
 
-#define sim_num_clients 500
+#define sim_num_clients 200
 
 static uint64_t num_completed_connections = 0;
 static uint64_t num_responses = 0;
@@ -25,8 +25,9 @@ int mix_clientsim_process(void *client_ptr, connection *conn)
 	case AF_MB: {
 		char time_buffer[40];
 		get_current_time(time_buffer);
-		LOG_OUT(stdout, "MB received at %s\n", time_buffer);
 		num_responses++;
+		LOG_OUT(stdout, "MB received at %s (%ld of %ld)\n", time_buffer, num_completed_connections, num_responses);
+
 		struct timespec spec;
 		spec.tv_sec = 0;
 		spec.tv_nsec = 19999999;
@@ -34,7 +35,7 @@ int mix_clientsim_process(void *client_ptr, connection *conn)
 		break;
 	}
 	case NEW_AFMB_AVAIL: {
-		net_epoll_send(NULL, conn, conn->sock_fd);
+		net_epoll_send(conn, conn->sock_fd);
 		struct timespec spec;
 		spec.tv_sec = 0;
 		spec.tv_nsec = 19999999;
@@ -47,7 +48,7 @@ int mix_clientsim_process(void *client_ptr, connection *conn)
 		                     user_id_BYTES,
 		                     1,
 		                     1);
-		net_epoll_send(NULL, conn, conn->sock_fd);
+		net_epoll_send(conn, conn->sock_fd);
 		struct timespec spec;
 		spec.tv_sec = 0;
 		spec.tv_nsec = 19999999;

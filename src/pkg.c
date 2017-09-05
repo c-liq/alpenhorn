@@ -308,7 +308,7 @@ void thpool_auth_client(void *arg)
 		       client->eph_client_data,
 		       net_header_BYTES + pkg_enc_auth_res_BYTES);
 		conn->write_remaining += net_header_BYTES + pkg_enc_auth_res_BYTES;
-		net_epoll_send(client->server, conn, conn->sock_fd);
+		net_epoll_send(conn, conn->sock_fd);
 	}
 }
 
@@ -653,7 +653,7 @@ bool pkg_net_auth_client(pkg_server *s, connection *conn)
 		       client_state->eph_client_data,
 		       net_header_BYTES + pkg_enc_auth_res_BYTES);
 		conn->write_remaining += net_header_BYTES + pkg_enc_auth_res_BYTES;
-		net_epoll_send(s, conn, conn->sock_fd);
+		net_epoll_send(conn, conn->sock_fd);
 	}
 	return true;
 }
@@ -683,7 +683,7 @@ pkg_net_broadcast(void *s, connection *conn)
 	       pkg_server->eph_broadcast_message,
 	       net_header_BYTES + pkg_broadcast_msg_BYTES);
 	conn->write_remaining += net_header_BYTES + pkg_broadcast_msg_BYTES;
-	net_epoll_send(s, conn, conn->sock_fd);
+	net_epoll_send(conn, conn->sock_fd);
 }
 
 int
@@ -734,7 +734,7 @@ pkg_net_process_client_msg(void *srv, connection *conn)
 		memcpy(
 			conn->write_buf.data + conn->bytes_written, header, net_header_BYTES);
 		conn->write_remaining += net_header_BYTES;
-		net_epoll_send(s, conn, conn->sock_fd);
+		net_epoll_send(conn, conn->sock_fd);
 	}
 
 	else if (conn->msg_type == CLIENT_REG_CONFIRM) {
@@ -816,7 +816,7 @@ pkg_server_run(pkg_server *s)
 				net_epoll_read(s, conn);
 			}
 			else if (events[i].events & EPOLLOUT) {
-				net_epoll_send(s, conn, conn->sock_fd);
+				net_epoll_send(conn, conn->sock_fd);
 			}
 		}
 	}
