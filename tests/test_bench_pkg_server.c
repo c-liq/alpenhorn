@@ -1,5 +1,5 @@
-#include <pkg.h>
-#include <client.h>
+#include <alpenhorn/pkg.h>
+#include <alpenhorn/client.h>
 
 
 static uint32_t num_clients;

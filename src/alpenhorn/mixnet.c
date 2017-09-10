@@ -1,4 +1,4 @@
-#include "mixnet.h"
+#include "alpenhorn/mixnet.h"
 #include "xxhash.h"
 #include <math.h>
 #include <signal.h>
@@ -178,7 +178,7 @@ int mix_init(mix_s *mix, uint64_t server_id, uint64_t num_threads, uint64_t num_
 	mix->af_data.laplace.b = af_b;
 	mix->dial_data.laplace.mu = dial_mu;
 	mix->dial_data.laplace.b = dial_b;
-	mix->af_data.num_mailboxes = 3;
+  mix->af_data.num_mailboxes = 1;
 	mix->dial_data.num_mailboxes = 1;
 	memset(&mix->af_mb_container, 0, sizeof mix->af_mb_container);
 	memset(mix->dial_data.mailbox_counts, 0,
@@ -303,8 +303,7 @@ int mix_add_onion_layer(uint8_t *msg,
 		fprintf(stderr, "Mix: scalar mult error while encrypting onion request\n");
 		return -1;
 	}
-	crypto_shared_secret(shared_secret, scalar_mult, dh_pub_ptr, matching_pub_dh,
-	                     crypto_generichash_BYTES);
+  crypto_shared_secret(shared_secret, scalar_mult, dh_pub_ptr, matching_pub_dh, NULL, crypto_generichash_BYTES);
 	randombytes_buf(nonce_ptr, crypto_NBYTES);
 	crypto_aead_chacha20poly1305_ietf_encrypt(
 		msg, NULL, msg, message_length, dh_pub_ptr,
@@ -491,8 +490,7 @@ int mix_remove_encryption_layer(uint8_t *out,
 	}
 
 	uint8_t shared_secret[crypto_ghash_BYTES];
-	crypto_shared_secret(shared_secret, scalar_mult, client_pub_dh_ptr, pk,
-	                     crypto_ghash_BYTES);
+  crypto_shared_secret(shared_secret, scalar_mult, client_pub_dh_ptr, pk, NULL, crypto_ghash_BYTES);
 
 
 	result = crypto_chacha_decrypt(

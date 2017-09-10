@@ -12,30 +12,13 @@ void printhex(char *msg, uint8_t *data, size_t len)
 	printf("%s: %s\n", msg, hex_str);
 }
 
-void crypto_shared_secret(uint8_t *shared_secret,
-                          uint8_t *scalar_mult,
-                          uint8_t *client_pub,
-                          uint8_t *server_pub,
-                          uint64_t output_size)
-{
-	crypto_generichash_state hash_state;
-	crypto_generichash_init(&hash_state, NULL, 0U, output_size);
-	crypto_generichash_update(&hash_state, scalar_mult, crypto_scalarmult_BYTES);
-	crypto_generichash_update(&hash_state, client_pub, crypto_pk_BYTES);
-	crypto_generichash_update(&hash_state, server_pub, crypto_pk_BYTES);
-	crypto_generichash_final(&hash_state, shared_secret, output_size);
-	sodium_memzero(&hash_state, sizeof hash_state);
-}
-
-void serialize_uint32(uint8_t *out, uint64_t in)
-{
-	uint64_t network_in = htonl(in);
+void serialize_uint32(uint8_t *out, uint32_t in) {
+  uint32_t network_in = htonl(in);
 	memcpy(out, &network_in, sizeof network_in);
 }
 
-uint64_t deserialize_uint32(uint8_t *in)
-{
-	uint64_t *ptr = (uint64_t *) in;
+uint32_t deserialize_uint32(uint8_t *in) {
+  uint32_t *ptr = (uint32_t *) in;
 	return ntohl(*ptr);
 }
 
@@ -44,39 +27,7 @@ uint64_t sizeof_serialized_bytes(uint64_t size)
 	return size * 2 + 1;
 }
 
-ssize_t crypto_secret_nonce_seal(uint8_t *out, uint8_t *m, size_t mlen, uint8_t *k)
-{
-	randombytes_buf(out, crypto_NBYTES);
-	unsigned long long clen;
-	int res = crypto_aead_chacha20poly1305_ietf_encrypt(out + crypto_NBYTES,
-	                                                    &clen,
-	                                                    m,
-	                                                    mlen,
-	                                                    out,
-	                                                    crypto_NBYTES,
-	                                                    NULL,
-	                                                    out,
-	                                                    k);
-	if (res) {
-		return -1;
-	}
-	else {
-		return (size_t) clen + crypto_NBYTES;
-	}
-}
 
-int crypto_secret_nonce_open(uint8_t *out, uint8_t *c, size_t clen, uint8_t *k)
-{
-	return crypto_aead_chacha20poly1305_ietf_decrypt(out,
-	                                                 NULL,
-	                                                 NULL,
-	                                                 c + crypto_NBYTES,
-	                                                 clen - crypto_NBYTES,
-	                                                 c,
-	                                                 crypto_NBYTES,
-	                                                 c,
-	                                                 k);
-}
 
 void serialize_uint64(uint8_t *out, const uint64_t input)
 {

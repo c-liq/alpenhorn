@@ -1,7 +1,7 @@
 #include <time.h>
 #include <xxhash.h>
 #include <pthread.h>
-#include "mixnet.h"
+#include "alpenhorn/mixnet.h"
 
 #define test_client_count 800
 

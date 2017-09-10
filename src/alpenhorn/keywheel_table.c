@@ -1,6 +1,6 @@
 #include <sodium.h>
 #include <memory.h>
-#include "client.h"
+#include "alpenhorn/client.h"
 
 static const uint8_t saltbytes_0[16] = {0};
 static const uint8_t saltbytes_1[16] = {1};
@@ -204,8 +204,7 @@ int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *user
 	                                         entry->key_state, intent_BYTES + crypto_maxhash_BYTES,
 	                                         NULL, 0, saltbytes_1, NULL
 	);
-	//printhex("INACTIVE  ", entry->key_state[table->buffer_toggle], intent_BYTES + crypto_maxhash_BYTES);
-	//printhex("ACTIVE", entry->key_state[table->buffer_toggle], intent_BYTES + crypto_maxhash_BYTES);
+
 	return 0;
 }
 
@@ -266,7 +265,7 @@ keywheel_s *kw_from_request(keywheel_table_s *table,
 	}
 	memcpy(kw->user_id, user_id, user_id_BYTES);
 	kw->dialling_round = table->table_round;
-	crypto_shared_secret(kw->key_state + intent_BYTES, scalar_mult, friend_pk, dh_pk_out, crypto_maxhash_BYTES);
+  crypto_shared_secret(kw->key_state + intent_BYTES, scalar_mult, friend_pk, dh_pk_out, NULL, crypto_maxhash_BYTES);
 
 	kw->next = table->keywheels;
 	kw->prev = NULL;
@@ -344,10 +343,11 @@ int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_
 	}
 	memcpy(kw->user_id, entry->user_id, user_id_BYTES);
 	crypto_shared_secret(kw->key_state + intent_BYTES,
-	                     scalar_mult,
-	                     entry->public_key,
-	                     friend_pk,
-	                     crypto_maxhash_BYTES);
+						 scalar_mult,
+						 entry->public_key,
+						 friend_pk,
+						 NULL,
+						 crypto_maxhash_BYTES);
 	kw->dialling_round = round_sync;
 	while (kw->dialling_round < table->table_round) {
 		crypto_generichash(kw->key_state + intent_BYTES,

@@ -1,5 +1,5 @@
 #include <pbc/pbc.h>
-#include "pbc_bls.h"
+#include "alpenhorn/pbc_bls.h"
 
 bls_instance *bls_alloc(char *params, uint64_t params_len, char *gen_string)
 {

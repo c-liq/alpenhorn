@@ -1,4 +1,4 @@
-#include <mixnet.h>
+#include <alpenhorn/mixnet.h>
 int main(int argc, char **argv)
 {
 	mix_s *mix_servers = calloc(num_mix_servers, sizeof *mix_servers);

@@ -1,4 +1,4 @@
-#include "client.h"
+#include "alpenhorn/client.h"
 
 void print_friend_request(friend_request_s *req)
 {
@@ -56,20 +56,20 @@ void run_main(int argc, char **argv)
 		fprintf(stderr, "Invalid username: too long or too short\n");
 	}
 
-	size_t sk_hex_length = strlen(argv[3]);
-	size_t pk_hex_length = strlen(argv[4]);
+  size_t sk_hex_length = strlen(argv[4]);
+  size_t pk_hex_length = strlen(argv[3]);
 
 	if (sk_hex_length != crypto_sign_SECRETKEYBYTES * 2 || pk_hex_length != crypto_sign_PUBLICKEYBYTES * 2) {
-		fprintf(stderr, "invalid key\n");
+	  fprintf(stderr, "invalid key %ld %ld\n", sk_hex_length, pk_hex_length);
 		exit(EXIT_FAILURE);
 	}
 
 	sign_keypair sig_keys;
 
-	sodium_hex2bin(sig_keys.public_key, crypto_sign_PUBLICKEYBYTES, argv[4],
-	               64, NULL, NULL, NULL);
-	sodium_hex2bin(sig_keys.secret_key, crypto_sign_SECRETKEYBYTES, argv[3],
-	               128, NULL, NULL, NULL);
+  sodium_hex2bin(sig_keys.public_key, crypto_sign_PUBLICKEYBYTES, argv[3],
+				 64, NULL, NULL, NULL);
+  sodium_hex2bin(sig_keys.secret_key, crypto_sign_SECRETKEYBYTES, argv[4],
+				 128, NULL, NULL, NULL);
 
 
 	client_s *c = client_alloc((uint8_t *) argv[2], &sig_keys, print_call, print_friend_request, print_friend_request);

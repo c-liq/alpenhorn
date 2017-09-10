@@ -1,6 +1,6 @@
 #include "utils.h"
 #include "greatest.h"
-#include "mixnet.h"
+#include "alpenhorn/mixnet.h"
 
 #define test_num_shuffle_elems 10000;
 

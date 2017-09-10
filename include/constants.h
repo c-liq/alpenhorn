@@ -24,13 +24,6 @@
 #define PKG_REG_REQUEST_RECEIVED 66U
 #define AF_START_GEN_KEYS 99U
 
-
-#define crypto_ghash_BYTES crypto_generichash_BYTES
-#define crypto_pk_BYTES crypto_box_PUBLICKEYBYTES
-#define crypto_maxhash_BYTES crypto_generichash_BYTES_MAX
-#define crypto_MACBYTES crypto_aead_chacha20poly1305_ietf_ABYTES
-#define crypto_NBYTES crypto_aead_chacha20poly1305_ietf_NPUBBYTES
-
 #define net_msg_type_BYTES 8U
 #define net_msg_len_BYTES 8U
 #define mix_num_buffer_elems 1000000U

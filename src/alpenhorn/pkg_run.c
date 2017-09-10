@@ -1,4 +1,4 @@
-#include "pkg.h"
+#include "alpenhorn/pkg.h"
 
 int main(int argc, char **argv)
 {

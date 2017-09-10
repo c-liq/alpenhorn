@@ -2,6 +2,7 @@
 #define ALPENHORN_CLIENT_H
 
 #include "bloom.h"
+#include "crypto.h"
 #include "config.h"
 #include "keywheel_table.h"
 #include "net_common.h"
@@ -172,7 +173,6 @@ int af_process_auth_responses(client_s *c);
 int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round);
 int af_onion_encrypt_request(client_s *client);
 int dial_onion_encrypt_request(client_s *client);
-int add_onion_encryption_layer(client_s *client, uint8_t *msg, uint64_t base_msg_len, uint64_t srv_id, bool is_dial);
 int af_add_friend(client_s *c, const uint8_t *user_id);
 int af_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages, uint64_t round);
 int af_accept_request(client_s *c, friend_request_s *pRequest);

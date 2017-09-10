@@ -1,7 +1,7 @@
 #ifndef ALPENHORN_BN256_IBE_H
 #define ALPENHORN_BN256_IBE_H
 #include "bn256.h"
-#include "config.h"
+#include "alpenhorn/config.h"
 #include "utils.h"
 
 #define bn256_ibe_oh g1_bytes + crypto_NBYTES + crypto_MACBYTES

@@ -1,6 +1,6 @@
 #ifndef ALPENHORN_NET_COMMON_H
 #define ALPENHORN_NET_COMMON_H
-#include "config.h"
+#include "alpenhorn/config.h"
 #include "utils.h"
 #include <sys/epoll.h>
 #include <sys/socket.h>

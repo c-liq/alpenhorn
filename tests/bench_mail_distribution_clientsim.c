@@ -1,5 +1,5 @@
 #include <net_common.h>
-#include <client_config.h>
+#include <alpenhorn/client_config.h>
 
 
 #define sim_num_clients 200

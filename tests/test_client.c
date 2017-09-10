@@ -1,7 +1,7 @@
-#include <pkg.h>
-#include <mixnet.h>
+#include <alpenhorn/pkg.h>
+#include <alpenhorn/mixnet.h>
 
-#include "client.h"
+#include "alpenhorn/client.h"
 #include "greatest.h"
 
 

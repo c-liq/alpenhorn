@@ -1,7 +1,7 @@
 #ifndef ALPENHORN_BLOOM_H
 #define ALPENHORN_BLOOM_H
 
-#include "config.h"
+#include "alpenhorn/config.h"
 struct bloomfilter_s;
 
 typedef struct bloomfilter_s bloomfilter_s;

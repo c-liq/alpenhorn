@@ -1,4 +1,4 @@
-#include <config.h>
+#include <alpenhorn/config.h>
 
 static const uint8_t first_names[18][user_id_BYTES] = {
 	"chris", "alice", "bob", "eve", "charlie",

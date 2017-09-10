@@ -32,7 +32,7 @@ typedef struct pkg_server pkg_server;
 typedef struct pkg_client pkg_client;
 struct pkg_server
 {
-	int srv_id;
+  uint64_t srv_id;
 	uint64_t num_clients;
 	uint64_t client_buf_capacity;
 	uint64_t current_round;

@@ -1,5 +1,5 @@
-#include "pbc_ibe.h"
-#include "pbc_cfg.h"
+#include "alpenhorn/pbc_ibe.h"
+#include "alpenhorn/pbc_cfg.h"
 
 
 struct ibe_params

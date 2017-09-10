@@ -1,5 +1,5 @@
-#include "pkg.h"
-#include "pkg_config.h"
+#include "alpenhorn/pkg.h"
+#include "alpenhorn/pkg_config.h"
 #include <curl/curl.h>
 
 typedef struct pkg_thread_args pkg_thread_args;
@@ -224,7 +224,7 @@ pkg_server_init(pkg_server *server,
 	scalar_set_lluarray(server->lt_keypair.secret_key, pkg_lt_sks[server_id]);
 #endif
 	char log_file_str[20];
-	sprintf(log_file_str, "pkg_%d.log", server_id);
+  sprintf(log_file_str, "pkg_%ld.log", server_id);
 	server->log_file = fopen(log_file_str, "a+");
 	if (!server->log_file) {
 		fprintf(stderr, "fatal: couldn't open log file\n");
@@ -492,6 +492,16 @@ pkg_client_free(pkg_client *client)
 }
 
 void
+pkg_net_broadcast(void *s, connection *conn) {
+  pkg_server *pkg_server = s;
+
+  memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining,
+		 pkg_server->eph_broadcast_message,
+		 net_header_BYTES + pkg_broadcast_msg_BYTES);
+  conn->write_remaining += net_header_BYTES + pkg_broadcast_msg_BYTES;
+  net_epoll_send(conn, conn->sock_fd);
+}
+void
 pkg_new_round(pkg_server *server)
 {
 	pkg_new_ibe_keypair(server);
@@ -503,6 +513,14 @@ pkg_new_round(pkg_server *server)
 	                     server->current_round,
 	                     0UL);
 	pkg_parallel_operation(server, pkg_client_auth_data, NULL, 0);
+  connection *curr = server->net_state.clients;
+  char time_buffer[40];
+  get_current_time(time_buffer);
+  LOG_OUT(server->log_file, "[Info] Round %ld started at %s\n", server->current_round, time_buffer);
+  while (curr) {
+	pkg_net_broadcast(server, curr);
+	curr = curr->next;
+  }
 }
 
 int
@@ -535,10 +553,11 @@ pkg_auth_client(pkg_server *server, pkg_client *client, uint8_t *auth_msg_buf)
 		return -1;
 	}
 	crypto_shared_secret(client->eph_symmetric_key,
-	                     scalar_mult,
-	                     client_dh_ptr,
-	                     server->broadcast_dh_pkey_ptr,
-	                     crypto_ghash_BYTES);
+						 scalar_mult,
+						 client_dh_ptr,
+						 server->broadcast_dh_pkey_ptr,
+						 NULL,
+						 crypto_ghash_BYTES);
 
 	pkg_encrypt_client_response(server, client);
 	return 0;
@@ -674,31 +693,19 @@ void remove_client(pkg_server *s, connection *conn)
 	free(conn);
 }
 
-void
-pkg_net_broadcast(void *s, connection *conn)
-{
-	pkg_server *pkg_server = s;
-
-	memcpy(conn->write_buf.data + conn->bytes_written + conn->write_remaining,
-	       pkg_server->eph_broadcast_message,
-	       net_header_BYTES + pkg_broadcast_msg_BYTES);
-	conn->write_remaining += net_header_BYTES + pkg_broadcast_msg_BYTES;
-	net_epoll_send(conn, conn->sock_fd);
-}
-
 int
 pkg_mix_read(void *srv, connection *conn)
 {
 	pkg_server *pkg = (pkg_server *) srv;
 	if (conn->msg_type == NEW_AF_ROUND) {
-		connection *curr = pkg->net_state.clients;
-		char time_buffer[40];
-		get_current_time(time_buffer);
-		LOG_OUT(pkg->log_file, "[Info] Round %ld started at %s\n", pkg->current_round, time_buffer);
-		while (curr) {
-			pkg_net_broadcast(pkg, curr);
-			curr = curr->next;
-		}
+	  /*connection *curr = pkg->net_state.clients;
+	  char time_buffer[40];
+	  get_current_time(time_buffer);
+	  LOG_OUT(pkg->log_file, "[Info] Round %ld started at %s\n", pkg->current_round, time_buffer);
+	  while (curr) {
+		  pkg_net_broadcast(pkg, curr);
+		  curr = curr->next;
+	  }*/
 	}
 	else if (conn->msg_type == AF_START_GEN_KEYS) {
 		pkg_new_round(pkg);
