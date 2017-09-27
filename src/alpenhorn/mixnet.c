@@ -186,7 +186,6 @@ int mix_init(mix_s *mix, u64 server_id, u64 num_threads)
         return -1;
     }
 #endif
-    mix->num_servers = num_mix_servers;
     mix->id = server_id;
     mix->is_last = num_mix_servers - mix->id == 1;
     mix->num_inc_onion_layers = num_mix_servers - server_id;
@@ -204,6 +203,7 @@ int mix_init(mix_s *mix, u64 server_id, u64 num_threads)
         fprintf(stderr, "Entry Server: failure when creating epoll instance\n");
         return -1;
     }
+
     signal(SIGPIPE, SIG_IGN);
 
     return 0;
@@ -220,9 +220,13 @@ void mix_new_round(mix_s *mix, mixer_s *mixer)
     bb_clear(mixer->in_buf);
     bb_clear(mixer->out_buf);
     mixer->round++;
+
     if (mix->is_last) {
         mix_calc_mb_count(mix, mixer);
+        free(mixer->mb_counts);
+        calloc(mixer->num_boxes, sizeof *mixer->mb_counts);
     }
+
     mixer->inc_msg_count = 0;
     mixer->out_msg_count = 0;
     crypto_box_keypair(mixer->pk, mixer->sk);
@@ -321,7 +325,7 @@ int mix_decrypt_messages(mix_s *mix, mixer_s *mixer, uint8_t *in, uint8_t *out, 
     return decrypted_msg_count;
 }
 
-int mix_distribute(mix_s *mix, mixer_s *mixer)
+int mix_distribute(mixer_s *mixer)
 {
     mixer->clear_container(mixer);
     free(mixer->box_container.boxes);
@@ -451,16 +455,53 @@ void mix_process_batch(mix_s *mix, mixer_s *mixer, byte_buffer_s *buf)
         net_epoll_send(mix->next_mix, mix->net_state.epoll_fd);
     }
     else {
-        mix_distribute(mix, mixer);
+        mix_distribute(mixer);
     }
+}
+
+int mix_sign_and_verify_settings(mix_s *mix, mixer_s *mixer, u8 signatures[][crypto_sign_BYTES]) {
+    u64 keys_length = num_mix_servers * crypto_box_PUBLICKEYBYTES;
+    byte_buffer_t msg;
+    bb_init(msg, round_BYTES + sizeof(u64) + keys_length, false);
+    bb_write_u64(msg, mixer->round);
+    bb_write_u64(msg, mixer->num_boxes);
+    bb_write(msg, mixer->mix_pks[0], keys_length);
+
+    for (u64 i = 1; i < mix->num_out_onion_layers; i++) {
+        if (crypto_sign_verify_detached(signatures[i], msg->data, msg->read_limit, mix->mix_sig_pks[i])) {
+            fprintf(stderr, "failed to verify sig from server %lu\n", i);
+            return -1;
+        }
+    }
+
+    crypto_sign_detached(signatures[0], NULL, msg->data, msg->read_limit, mix->sig_sk);
+    return 0;
 }
 
 void mix_auth_settings(mix_s *mix, mixer_s *mixer, byte_buffer_t buf)
 {
-    bb_read(mixer->mix_pks[0], buf, num_mix_servers * crypto_box_PUBLICKEYBYTES);
+    u64 keys_length = num_mix_servers * crypto_box_PUBLICKEYBYTES;
+    bb_read(mixer->mix_pks[0], buf, keys_length);
     memcpy(mixer->mix_pks[mix->id], mixer->pk, crypto_box_PUBLICKEYBYTES);
 
+    u8 signatures[mix->num_inc_onion_layers][crypto_sign_BYTES];
 
+    if (mix_sign_and_verify_settings(mix, mixer, signatures)) {
+        return;
+    }
+
+    u64 msg_length = keys_length + (mix->num_inc_onion_layers * crypto_sign_BYTES);
+    byte_buffer_s *write_buf = mix->id == 0 ? mixer->broadcast : mix->prev_mix->write_buf;
+
+    alp_serialize_header(write_buf, mixer->auth_msg_type, msg_length, mixer->round, mixer->num_boxes);
+    bb_write(write_buf, mixer->mix_pks[0], keys_length);
+    bb_write(write_buf, signatures[0], mix->num_inc_onion_layers * crypto_sign_BYTES);
+
+    if (mix->id > 0) {
+        net_epoll_send(mix->prev_mix, mix->net_state.epoll_fd);
+    }
+
+    mix_add_noise(mixer);
 
 }
 
@@ -505,6 +546,7 @@ int mix_process_mix_msg(void *m, net_header *header, connection *conn, byte_buff
         break;
     default:break;
     }
+    (void) conn;
     return 0;
 }
 
@@ -637,6 +679,7 @@ int mix_entry_process_client(void *server, net_header *header, connection *conn,
     }
     else {
         fprintf(stderr, "Invalid client msg\n");
+        conn->connected = false;
     }
     return 0;
 }

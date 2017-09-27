@@ -10,30 +10,41 @@
 
 //static const char *mix_server_ips[] = {"52.56.191.146", "52.56.95.46", "52.56.99.122"};
 static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
+
 static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
+
 static const char mix_entry_client_listenport[] = "7000";
+
 static const char mix_entry_pkg_listenport[] = "6666";
 
 struct mix_s;
+
 typedef struct mix_s mix_s;
 
 typedef struct mailbox mailbox_s;
-struct mailbox {
+
+struct mailbox
+{
     u64 id;
     u64 size_bytes;
     u64 msg_count;
     u8 *box_data;
     void *box_struct;
 };
+
 typedef struct mailbox_container mailbox_container_s;
-struct mailbox_container {
+
+struct mailbox_container
+{
     u64 round;
     u64 num_boxes;
     mailbox_s *boxes;
 };
 
 typedef struct mixer mixer_s;
-struct mixer {
+
+struct mixer
+{
     uint64_t num_boxes;
     byte_buffer_t in_buf;
     byte_buffer_t out_buf;
@@ -56,7 +67,7 @@ struct mixer {
     void (*clear_container)(mixer_s *mixer);
     void (*init_container)(mixer_s *mixer);
     void (*distribute)(mixer_s *mixer);
-    void (*fill_noise_msg)(u8* msg);
+    void (*fill_noise_msg)(u8 *msg);
     time_t next_round;
     time_t window_remaining;
     u64 msg_length;
@@ -65,7 +76,8 @@ struct mixer {
     u64 auth_msg_type;
 };
 
-struct mixer_config {
+struct mixer_config
+{
     u64 msg_length;
     u64 laplace_mu;
     u64 laplace_b;
@@ -77,36 +89,34 @@ struct mixer_config {
     void (*clear_container)(mixer_s *mixer);
     void (*init_container)(mixer_s *mixer);
     void (*distribute)(mixer_s *mixer);
-    void (*fill_noise_msg)(u8* msg);
+    void (*fill_noise_msg)(u8 *msg);
 };
-
 
 struct mix_s
 {
-	uint64_t id;
-	uint64_t num_servers;
-	FILE *log_file;
-	uint64_t num_inc_onion_layers;
-	uint64_t num_out_onion_layers;
-	bool is_last;
+    uint64_t id;
+    FILE *log_file;
+    uint64_t num_inc_onion_layers;
+    uint64_t num_out_onion_layers;
+    bool is_last;
     mixer_s af_data;
-	mixer_s dial_data;
-	net_server_state net_state;
-    double bloom_p_val;
-	#if USE_PBC
-	struct pairing_s pairing;
-	struct element_s ibe_gen_elem;
-	struct element_s af_noise_Zr_elem;
-	struct element_s af_noise_G1_elem;
-	#endif
-	bool pkg_preprocess_check;
+    mixer_s dial_data;
+    net_server_state net_state;
+
+#if USE_PBC
+    struct pairing_s pairing;
+    struct element_s ibe_gen_elem;
+    struct element_s af_noise_Zr_elem;
+    struct element_s af_noise_G1_elem;
+#endif
+    bool pkg_preprocess_check;
     uint64_t num_threads;
     connection *next_mix;
     connection *prev_mix;
     connection pkg_conns[num_pkg_servers];
-    u8 sig_pk[crypto_sign_PUBLICKEYBYTES];
     u8 sig_sk[crypto_sign_SECRETKEYBYTES];
     u8 mix_sig_pks[num_mix_servers][crypto_sign_PUBLICKEYBYTES];
+    byte_buffer_t broadcast;
 };
 
 int mix_init(mix_s *mix, u64 server_id, u64 num_threads);
@@ -121,8 +131,8 @@ void mix_exit_broadcast_box(mix_s *s, mixer_s *mixer, u64 type);
 int mix_net_init(mix_s *mix);
 int mix_exit_process_client(void *owner, net_header *header, connection *conn, byte_buffer_s *buf);
 void mix_run(mix_s *mix,
-			 void on_accept(void *, connection *),
-			 int on_read(void *, net_header *, connection *pConnection, byte_buffer_s *pBuffer));
+             void on_accept(void *, connection *),
+             int on_read(void *, net_header *, connection *pConnection, byte_buffer_s *pBuffer));
 int mix_entry_sync(mix_s *mix);
 int mix_main(int argc, char **argv);
 int sim_mix_main(int argc, char **argv);

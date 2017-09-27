@@ -1253,7 +1253,6 @@ int mix_entry_process_msg(void *client_ptr, net_header *header, connection *conn
             dial_build_call(client);
             net_epoll_send(client->mix_entry, net_state->epoll_fd);
             break;
-
         case MIX_SYNC:
             client->af_round = header->round;
             client->dialling_round = header->misc;
