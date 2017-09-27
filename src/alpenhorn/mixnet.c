@@ -228,7 +228,7 @@ int mix_init(mix_s *mix, u64 server_id, long num_threads)
     mix_init_mixer(mix, &mix->af_data, &af_cfg);
     mix_init_mixer(mix, &mix->dial_data, &dial_cfg);
 
-    net_server_state *net_state = &mix->net_state;
+    nss_s *net_state = &mix->ns;
     net_state->owner = mix;
     net_state->epoll_fd = epoll_create1(0);
 
@@ -442,7 +442,7 @@ int mix_exit_process_client(void *owner, connection *conn, byte_buffer_s *buf)
         mailbox_s *request_mb = mix_exit_get_mailbox(&mix->dial_data, mb_num);
         if (request_mb) {
             bb_write(&conn->write_buf, request_mb->box_data, request_mb->size_bytes);
-            net_epoll_send(conn, mix->net_state.epoll_fd);
+            net_epoll_send(conn, mix->ns.epoll_fd);
         }
     }
     else if (header->type == CLIENT_AF_MB_REQUEST) {
@@ -451,7 +451,7 @@ int mix_exit_process_client(void *owner, connection *conn, byte_buffer_s *buf)
         mailbox_s *request_mb = mix_exit_get_mailbox(&mix->af_data, mb_num);
         if (request_mb) {
             bb_write(&conn->write_buf, request_mb->box_data, request_mb->size_bytes);
-            net_epoll_send(conn, mix->net_state.epoll_fd);
+            net_epoll_send(conn, mix->ns.epoll_fd);
         }
     }
     else {
@@ -474,7 +474,7 @@ void mix_process_batch(mix_s *mix, mixer_s *mixer, byte_buffer_s *buf)
                              mixer->round,
                              mixer->out_msg_count);
         bb_to_bb(&mix->next_mix->write_buf, mixer->out_buf, mixer->out_buf->read_limit);
-        net_epoll_send(mix->next_mix, mix->net_state.epoll_fd);
+        net_epoll_send(mix->next_mix, mix->ns.epoll_fd);
     }
     else {
         mix_distribute(mixer);
@@ -518,14 +518,14 @@ void mix_auth_settings(mix_s *mix, mixer_s *mixer, byte_buffer_t buf)
     }
 
     u64 msg_length = keys_length + (mix->num_inc_onion_layers * crypto_sign_BYTES);
-    byte_buffer_s *write_buf = mix->id == 0 ? mixer->broadcast : mix->prev_mix->write_buf;
+    byte_buffer_s *write_buf = mix->id == 0 ? mixer->broadcast : &mix->prev_mix->write_buf;
 
     alp_serialize_header(write_buf, mixer->auth_msg_type, msg_length, mixer->round, mixer->num_boxes);
     bb_write(write_buf, mixer->mix_pks[0], keys_length);
     bb_write(write_buf, signatures[0], mix->num_inc_onion_layers * crypto_sign_BYTES);
 
     if (mix->id > 0) {
-        net_epoll_send(mix->prev_mix, mix->net_state.epoll_fd);
+        net_epoll_send(mix->prev_mix, mix->ns.epoll_fd);
     }
 
     mix_add_noise(NULL, mixer);
@@ -543,7 +543,7 @@ void mix_new_keys(mix_s *mix, mixer_s *mixer, byte_buffer_s *buf)
             bb_to_bb(writebuf, buf, mix->id * sizeof mixer->pk);
         }
         bb_write(writebuf, mixer->pk, sizeof mixer->pk);
-        net_epoll_send(mix->next_mix, mix->net_state.epoll_fd);
+        net_epoll_send(mix->next_mix, mix->ns.epoll_fd);
     }
 
     else {
@@ -593,7 +593,7 @@ int mix_connect_prev(u64 srv_id)
     return sock_fd;
 }
 
-int mix_listen_conn(net_server_state *ns, const char *port, const bool set_nb)
+int mix_listen_conn(nss_s *ns, const char *port, const bool set_nb)
 {
     int listen_socket = net_start_listen_socket(port, set_nb);
     if (listen_socket == -1) {
@@ -607,22 +607,22 @@ int mix_listen_conn(net_server_state *ns, const char *port, const bool set_nb)
 int mix_net_sync(mix_s *mix)
 {
     u64 id = mix->id;
-    net_server_state *net_state = &mix->net_state;
+    nss_s *ns = &mix->ns;
 
     if (mix->is_last) {
-        mix_listen_conn(net_state, mix_listen_ports[id], true);
+        mix_listen_conn(ns, mix_listen_ports[id], true);
     }
     else {
-        int listen_socket = net_start_listen_socket(mix_listen_ports[id], false);
-        int next_mix_sfd = net_accept(listen_socket, 0);
-        if (next_mix_sfd == -1) {
+        int listen_fd = net_start_listen_socket(mix_listen_ports[id], false);
+        int mix_fd = net_accept(listen_fd, 0);
+        if (mix_fd == -1) {
             fprintf(stderr, "fatal error on listening socket %s\n", mix_listen_ports[id]);
             return -1;
         }
 
-        connection_init(mix->next_mix, 50000, 50000, mix_process_mix_msg, mix->net_state.epoll_fd, next_mix_sfd);
-        socket_set_nonblocking(next_mix_sfd);
-        close(listen_socket);
+        connection_init(mix->next_mix, 50000, 50000, mix_process_mix_msg, mix->ns.epoll_fd, mix_fd);
+        socket_set_nonblocking(mix_fd);
+        close(listen_fd);
     }
 
     if (mix->id > 0) {
@@ -631,7 +631,7 @@ int mix_net_sync(mix_s *mix)
             fprintf(stderr, "Failed to connect to neighbour in mixchain\n");
             return -1;
         }
-        connection_init(mix->prev_mix, 50000, 50000, mix_process_mix_msg, mix->net_state.epoll_fd, prev_mix_sfd);
+        connection_init(mix->prev_mix, 50000, 50000, mix_process_mix_msg, mix->ns.epoll_fd, prev_mix_sfd);
         socket_set_nonblocking(prev_mix_sfd);
     }
     printf("[Mix server %ld: initialised]\n", mix->id);
@@ -642,7 +642,7 @@ void mix_entry_client_onconnect(void *s, connection *conn)
 {
     mix_s *mix = (mix_s *) s;
     bb_write(&conn->write_buf, mix->broadcast->data, header_BYTES);
-    net_epoll_send(conn, mix->net_state.epoll_fd);
+    net_epoll_send(conn, mix->ns.epoll_fd);
 }
 
 void mix_exit_broadcast_box(mix_s *s, mixer_s *mixer, u64 type)
@@ -651,29 +651,29 @@ void mix_exit_broadcast_box(mix_s *s, mixer_s *mixer, u64 type)
     memset(buf, 0, sizeof buf);
     net_serialize_header(buf, type, 0, mixer->round, type);
 
-    connection *conn = s->net_state.clients;
+    connection *conn = s->ns.clients;
     while (conn) {
         bb_write(&conn->write_buf, buf, sizeof buf);
-        net_epoll_send(conn, s->net_state.epoll_fd);
+        net_epoll_send(conn, s->ns.epoll_fd);
         conn = conn->next;
     }
 }
 
 void mix_entry_broadcast_round(mix_s *mix, mixer_s *mixer)
 {
-    connection *conn = mix->net_state.clients;
+    connection *conn = mix->ns.clients;
     byte_buffer_s *broadcast_buf = mixer->broadcast;
 
     while (conn) {
         bb_write(&conn->write_buf, broadcast_buf->data, broadcast_buf->read_limit);
-        net_epoll_send(conn, mix->net_state.epoll_fd);
+        net_epoll_send(conn, mix->ns.epoll_fd);
         conn = conn->next;
     }
 }
 
 int mix_entry_sync(mix_s *mix)
 {
-    net_server_state *net_state = &mix->net_state;
+    nss_s *net_state = &mix->ns;
     int listen_fd = net_start_listen_socket(mix_entry_pkg_listenport, 0);
 
     for (int i = 0; i < num_pkg_servers; i++) {
@@ -687,7 +687,7 @@ int mix_entry_sync(mix_s *mix)
         return -1;
     }
 
-    mix_listen_conn(&mix->net_state, mix_entry_client_listenport, 1);
+    mix_listen_conn(&mix->ns, mix_entry_client_listenport, 1);
     mix_new_keys(mix, &mix->af_data, NULL);
     mix_new_keys(mix, &mix->dial_data, NULL);
 
@@ -763,7 +763,7 @@ void mix_run(mix_s *mix,
              void on_accept(void *, connection *),
              int on_read(void *, connection *, byte_buffer_s *))
 {
-    net_server_state *es = &mix->net_state;
+    nss_s *es = &mix->ns;
     struct epoll_event *events = es->events;
 
     mix->dial_data.next_round = time(0) + mix->af_data.round_duration;
@@ -783,13 +783,13 @@ void mix_run(mix_s *mix,
                 continue;
             }
             else if (&es->listen_conn == conn) {
-                net_epoll_client_accept(&mix->net_state, on_accept, on_read);
+                net_epoll_client_accept(&mix->ns, on_accept, on_read);
             }
             else if (events[i].events & EPOLLIN) {
                 net_epoll_read(mix, conn);
             }
             else if (events[i].events & EPOLLOUT) {
-                net_epoll_send_queue(&mix->net_state, conn);
+                net_epoll_send_queue(&mix->ns, conn);
             }
         }
     }
@@ -827,8 +827,12 @@ int mix_main(int argc, char **argv)
 
     mix_s *mix = calloc(1, sizeof *mix);
     mix_init(mix, (u64) id, num_threads);
-    mix_net_init(mix);
-    mix_entry_sync(mix);
+    if (mix->id == 0) {
+        mix_entry_sync(mix);
+    }
+    else {
+        mix_net_sync(mix);
+    }
     mix_run(mix, on_accept, on_read);
     free(mix);
 

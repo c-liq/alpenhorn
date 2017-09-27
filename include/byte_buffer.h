@@ -9,8 +9,6 @@
 #include <unistd.h>
 
 typedef struct byte_buffer byte_buffer_s;
-typedef byte_buffer_s byte_buffer_t[1];
-
 struct byte_buffer
 {
     uint8_t *data;
@@ -25,6 +23,7 @@ struct byte_buffer
     bool alloced;
 };
 
+typedef byte_buffer_s byte_buffer_t[1];
 
 int bb_init(byte_buffer_s *buf, uint64_t size, bool resizable);
 

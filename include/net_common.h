@@ -50,9 +50,9 @@ struct connection
 	void *srv_state;
 };
 
-typedef struct net_server_state net_server_state;
+typedef struct nss nss_s;
 
-struct net_server_state
+struct nss
 {
 	int epoll_fd;
 	connection listen_conn;
@@ -86,7 +86,7 @@ int connection_init(connection *conn,
 
 void net_process_read(void *owner, connection *conn);
 
-int net_epoll_client_accept(net_server_state *srv_state, void on_accept(void *, connection *),
+int net_epoll_client_accept(nss_s *srv_state, void on_accept(void *, connection *),
 							int on_read(void *, connection *, byte_buffer_s *));
 
 int net_serialize_header(uint8_t *header,
@@ -95,9 +95,9 @@ int net_serialize_header(uint8_t *header,
                          u64 round,
                          u64 misc);
 
-void net_epoll_send_queue(net_server_state *net_state, connection *conn);
+void net_epoll_send_queue(nss_s *net_state, connection *conn);
 
-int net_epoll_queue_write(net_server_state *owner, connection *conn, uint8_t *buffer, u64 data_size, bool copy);
+int net_epoll_queue_write(nss_s *owner, connection *conn, uint8_t *buffer, u64 data_size, bool copy);
 int alp_serialize_header(byte_buffer_s *buf,
                          uint64_t type,
                          uint64_t length,

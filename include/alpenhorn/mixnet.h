@@ -99,7 +99,7 @@ struct mix_s
     bool is_last;
     mixer_s af_data;
     mixer_s dial_data;
-    net_server_state net_state;
+    nss_s ns;
     bool pkg_preprocess_check;
     long num_threads;
     connection *next_mix;

@@ -17,7 +17,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Invalid server id %d\n", sid);
 		return 1;
 	}
-	pkg_server *s = calloc(1, sizeof(struct pkg_server));
+	pkg *s = calloc(1, sizeof(struct pkg));
 
 	pkg_server_init(s, (uint64_t) sid, 10, 4, "users");
 	int res = pkg_server_startup(s);

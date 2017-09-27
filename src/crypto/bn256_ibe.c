@@ -1,6 +1,3 @@
-#include <sodium.h>
-#include <bn256/twistpoint_fp2.h>
-#include <bn256.h>
 #include "bn256_ibe.h"
 
 
@@ -36,7 +33,7 @@ int bn256_ibe_decrypt(uint8_t *out, uint8_t *c, size_t clen, uint8_t *pk, twistp
 	uint8_t secret_key[crypto_ghash_BYTES];
 	bn256_ibe_build_sk(secret_key, pk, c, pair_val_serialized);
 
-	int res = crypto_secret_nonce_open(out, c + g1_bytes, clen - g1_bytes, secret_key);
+	int res = crypto_salsa_decrypt(out, c + g1_bytes, clen - g1_bytes, secret_key);
 
 	sodium_memzero(secret_key, crypto_ghash_BYTES);
 	return res;
@@ -73,7 +70,7 @@ ssize_t bn256_ibe_encrypt(uint8_t *out,
 	bn256_serialize_gt(pair_qid_ppub_serialized, pairing_qid_ppub);
 	uint8_t secret_key[crypto_ghash_BYTES];
 	bn256_ibe_build_sk(secret_key, qid_serialized, out, pair_qid_ppub_serialized);
-	ssize_t res = crypto_secret_nonce_seal(out + g1_bytes, msg, msg_len, secret_key);
+	ssize_t res = crypto_salsa_encrypt(out + g1_bytes, msg, msg_len, secret_key);
 
 	sodium_memzero(secret_key, sizeof secret_key);
 	if (res < 0) {

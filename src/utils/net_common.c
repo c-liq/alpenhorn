@@ -23,7 +23,7 @@ int net_accept(int listen_sfd, int set_nb)
     return new_sfd;
 }
 
-int net_epoll_client_accept(net_server_state *srv_state,
+int net_epoll_client_accept(nss_s *srv_state,
                             void on_accept(void *, connection *),
                             int on_read(void *, connection *, byte_buffer_s *))
 {
@@ -59,7 +59,7 @@ int net_epoll_client_accept(net_server_state *srv_state,
 
 }
 
-int net_epoll_queue_write(net_server_state *owner,
+int net_epoll_queue_write(nss_s *owner,
                           connection *conn,
                           uint8_t *buffer,
                           u64 data_size,
@@ -109,7 +109,7 @@ int net_epoll_queue_write(net_server_state *owner,
     return 0;
 }
 
-void net_epoll_send_queue(net_server_state *net_state, connection *conn)
+void net_epoll_send_queue(nss_s *net_state, connection *conn)
 {
     int close_connection = 0;
     send_item *current_item;

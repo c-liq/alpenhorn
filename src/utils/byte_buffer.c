@@ -1,5 +1,5 @@
 
-#include "alpenhorn/byte_buffer.h"
+#include "byte_buffer.h"
 
 
 static inline void _bb_upd_read(byte_buffer_s *buf, uint64_t count)
@@ -169,10 +169,21 @@ int bb_init(byte_buffer_s *buf, uint64_t capacity, bool resizable)
     return 0;
 }
 
+int bb_to_bb(byte_buffer_s *out, byte_buffer_s *in, uint64_t count) {
+    if (bb_check_size(out, count) || in->read_limit < count) {
+        return -1;
+    }
+
+    memcpy(out->write_pos, in->read_pos, count);
+    bb_write_virtual(out, count);
+    bb_read_virtual(in, count);
+    return 0;
+}
+
 ssize_t bb_write_from_fd(byte_buffer_s *buf, int socket_fd)
 {
     if (bb_check_size(buf, 4096)) {
-        return NULL;
+        return -1;
     }
 
     ssize_t res = read(socket_fd, buf->write_pos, buf->write_limit);
