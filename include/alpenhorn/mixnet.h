@@ -7,8 +7,8 @@
 #include "bloom.h"
 #include "net_common.h"
 #include "mixnet_config.h"
+#include <signal.h>
 
-//static const char *mix_server_ips[] = {"52.56.191.146", "52.56.95.46", "52.56.99.122"};
 static const char *mix_server_ips[] = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
 
 static const char *mix_listen_ports[] = {"5000", "5001", "5002", "5003"};
@@ -53,7 +53,6 @@ struct mixer
     uint64_t inc_msg_length;
     uint64_t out_msg_length;
     laplace_s laplace;
-    uint64_t last_noise_count;
     uint64_t round;
     uint64_t round_duration;
     int32_t window_duration;
@@ -95,52 +94,29 @@ struct mixer_config
 struct mix_s
 {
     uint64_t id;
-    FILE *log_file;
     uint64_t num_inc_onion_layers;
     uint64_t num_out_onion_layers;
     bool is_last;
     mixer_s af_data;
     mixer_s dial_data;
     net_server_state net_state;
-
-#if USE_PBC
-    struct pairing_s pairing;
-    struct element_s ibe_gen_elem;
-    struct element_s af_noise_Zr_elem;
-    struct element_s af_noise_G1_elem;
-#endif
     bool pkg_preprocess_check;
-    uint64_t num_threads;
+    long num_threads;
     connection *next_mix;
     connection *prev_mix;
     connection pkg_conns[num_pkg_servers];
     u8 sig_sk[crypto_sign_SECRETKEYBYTES];
     u8 mix_sig_pks[num_mix_servers][crypto_sign_PUBLICKEYBYTES];
     byte_buffer_t broadcast;
+#if USE_PBC
+    struct pairing_s pairing;
+    struct element_s ibe_gen_elem;
+    struct element_s noise_Zr_elem;
+    struct element_s noise_G1_elem;
+#endif
 };
 
-int mix_init(mix_s *mix, u64 server_id, u64 num_threads);
-void mix_dial_gen_noise_msg(u8 *msg);
-void mix_af_gen_noise_msg(u8 *msg);
-
-void mix_entry_add_message(byte_buffer_s *buf, mixer_s *mixer);
-void mix_new_round(mix_s *mix, mixer_s *mixer);
-void mix_entry_new_round(mix_s *mix);
-void mix_entry_new_dial_round(mix_s *mix);
-void mix_exit_broadcast_box(mix_s *s, mixer_s *mixer, u64 type);
-int mix_net_init(mix_s *mix);
-int mix_exit_process_client(void *owner, net_header *header, connection *conn, byte_buffer_s *buf);
-void mix_run(mix_s *mix,
-             void on_accept(void *, connection *),
-             int on_read(void *, net_header *, connection *pConnection, byte_buffer_s *pBuffer));
-int mix_entry_sync(mix_s *mix);
-int mix_main(int argc, char **argv);
-int sim_mix_main(int argc, char **argv);
-
-#endif //ALPENHORN_MIX_H
-
 typedef struct mix_thread_args mix_thread_args;
-
 struct mix_thread_args
 {
     mix_s *mix;
@@ -148,3 +124,29 @@ struct mix_thread_args
     uint64_t num_msgs;
     mixer_s *mixer;
 };
+
+int mix_init(mix_s *mix, u64 server_id, long num_threads);
+
+void mix_entry_add_message(byte_buffer_s *buf, mixer_s *mixer);
+
+void mix_new_round(mix_s *mix, mixer_s *mixer);
+
+void mix_exit_broadcast_box(mix_s *s, mixer_s *mixer, u64 type);
+
+int mix_net_init(mix_s *mix);
+
+int mix_exit_process_client(void *owner, connection *conn, byte_buffer_s *buf);
+
+void mix_run(mix_s *mix,
+             void on_accept(void *, connection *),
+             int on_read(void *, connection *, byte_buffer_s *));
+
+int mix_entry_sync(mix_s *mix);
+
+int mix_main(int argc, char **argv);
+
+
+
+#endif //ALPENHORN_MIX_H
+
+

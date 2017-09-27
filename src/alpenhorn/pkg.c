@@ -707,7 +707,7 @@ pkg_mix_read(void *srv, connection *conn)
 		  curr = curr->next;
 	  }*/
 	}
-	else if (conn->msg_type == AF_START_GEN_KEYS) {
+	else if (conn->msg_type == PKG_REFRESH_KEYS) {
 		pkg_new_round(pkg);
 	}
 	return 0;

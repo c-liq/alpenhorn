@@ -20,13 +20,13 @@ struct bloomfilter_s
 	uint64_t prefix_len;
 };
 
-void bloom_calc_partitions(const long m_target,
+void bloom_calc_partitions(long m_target,
                            uint64_t *m_actual_bytes,
-                           const uint64_t num_partitions,
+                           uint64_t num_partitions,
                            uint64_t *partition_lengths_bytes,
                            uint64_t *partition_lengths_bits,
                            const uint64_t *ptable,
-                           const uint64_t ptable_size);
+                           uint64_t ptable_size);
 
 void bloom_add_elem(struct bloomfilter_s *bf, uint8_t *data, uint64_t data_len);
 int bloom_lookup(struct bloomfilter_s *bf, uint8_t *data, uint64_t data_len);

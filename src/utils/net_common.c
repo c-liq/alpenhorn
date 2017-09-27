@@ -25,10 +25,10 @@ int net_accept(int listen_sfd, int set_nb)
 
 int net_epoll_client_accept(net_server_state *srv_state,
                             void on_accept(void *, connection *),
-                            int on_read(void *, net_header *, connection *, byte_buffer_s *))
+                            int on_read(void *, connection *, byte_buffer_s *))
 {
     for (;;) {
-        int new_sockfd = net_accept(srv_state->listen_socket, 1);
+        int new_sockfd = net_accept(srv_state->listen_conn.sock_fd, 1);
         if (new_sockfd == -1) {
             if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
                 return 0;
@@ -173,7 +173,7 @@ void net_epoll_send_queue(net_server_state *net_state, connection *conn)
 int connection_init(connection *conn,
                     u64 read_buf_size,
                     u64 write_buf_size,
-                    int (*process)(void *, net_header *, connection *, byte_buffer_s *),
+                    int (*process)(void *, connection *, byte_buffer_s *),
                     int epoll_fd,
                     int socket_fd)
 {
@@ -202,20 +202,12 @@ int connection_init(connection *conn,
     return 0;
 }
 
-int net_serialize_header(uint8_t *header,
-                         u64 msg_type,
-                         u64 msg_length,
-                         u64 af_round,
-                         u64 dial_round)
+int net_serialize_header(uint8_t *header, u64 type, u64 length, u64 round, u64 misc)
 {
-    if (!header) {
-        return -1;
-    }
-
-    serialize_uint64(header, msg_type);
-    serialize_uint64(header + net_msg_type_BYTES, msg_length);
-    serialize_uint64(header + (net_msg_len_BYTES + net_msg_type_BYTES), af_round);
-    serialize_uint64(header + 24, dial_round);
+    serialize_uint64(header, type);
+    serialize_uint64(header + 8, length);
+    serialize_uint64(header + 16, round);
+    serialize_uint64(header + 24, misc);
 
     return 0;
 }
@@ -337,20 +329,18 @@ void net_process_read(void *owner, connection *conn)
                 return;
             }
             alp_deserialize_header(header, buf);
-
         }
 
         if (buf->read_limit < header->len + header_BYTES) {
             return;
         }
 
-
         byte_buffer_t message_buf;
-        bb_init(buf, header->len, true);
+        bb_init(message_buf, header->len, true);
         bb_to_bb(message_buf, buf, header->len);
 
         if (conn->process) {
-            conn->process(owner, header, conn, buf);
+            conn->process(owner, conn, buf);
         }
 
         bb_clear(message_buf);
@@ -434,7 +424,7 @@ int net_epoll_send(connection *conn, int epoll_fd)
     return 0;
 }
 
-int net_start_listen_socket(const char *port, const int set_nb)
+int net_start_listen_socket(const char *port, const bool set_nb)
 {
     int listen_sfd;
     struct addrinfo hints;
