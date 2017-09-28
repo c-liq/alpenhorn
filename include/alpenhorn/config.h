@@ -81,7 +81,7 @@ static const uint8_t user_ids[10][user_id_BYTES] = {
 	"chris", "alice", "bob", "eve", "charlie",
 	"jim", "megan", "john", "jill", "steve"};
 
-static const uint8_t user_publickeys[10][64] = {
+static const char mix_sig_pks[10][65] = {
 	"dce2ce56f88900d2fc09128fd308954ece30fbda56b1202fd21ece8cb8e231bf",
 	"a11a8d3b6325efa5b6b5372f1a54783bf5b9b0816e7aad6c848bd4936b19a493",
 	"deb27d637dbb5e82234439dc6410dcff2720412affe09d69adaafeb775ca6eb1",
@@ -93,9 +93,8 @@ static const uint8_t user_publickeys[10][64] = {
 	"031ca754e5896d5e84eb21866439e1b631225193619734f364de90f228485f94",
 	"b1fcd02a40da1e342f2c8404c7438e24d673666fe8160e5d23c7278244abc085"};
 
-static const uint8_t user_lt_secret_sig_keys[10][128] = {
-	"6581ce40d6971c2fd1d2ca07fe5280be823a327bca5bb8d3d110ec906247493cdce2ce56f8"
-		"8900d2fc09128fd308954ece30fbda56b1202fd21ece8cb8e231bf",
+static const char mix_sig_sks[10][129] = {
+	"6581ce40d6971c2fd1d2ca07fe5280be823a327bca5bb8d3d110ec906247493cdce2ce56f88900d2fc09128fd308954ece30fbda56b1202fd21ece8cb8e231bf",
 	"112425a435b38a6867722004400e228157a3b7722925c90db891ed31fd018ab9a11a8d3b63"
 		"25efa5b6b5372f1a54783bf5b9b0816e7aad6c848bd4936b19a493",
 	"458d01cfc4f208aebe02a07f84214be38d0a6a858c80af5a8d04b76241907d06deb27d637d"

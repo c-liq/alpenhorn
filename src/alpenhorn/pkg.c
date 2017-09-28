@@ -6,7 +6,7 @@ typedef struct pkg_thread_args pkg_thread_args;
 
 struct pkg_thread_args
 {
-    pkg *server;
+    pkg_s *server;
     u64 begin;
     u64 end;
     uint8_t *data;
@@ -62,7 +62,7 @@ void pkg_configure_curl(struct upload_status *up, CURL *curl, struct curl_slist 
 }
 
 int
-pkg_registration_request(pkg *server,
+pkg_registration_request(pkg_s *server,
                          const uint8_t *user_id,
                          uint8_t *sig_key)
 {
@@ -143,7 +143,7 @@ pkg_registration_request(pkg *server,
     return 0;
 }
 
-pkg_pending_client *pkg_lookup_pending_reg(pkg *server, uint8_t *user_id)
+pkg_pending_client *pkg_lookup_pending_reg(pkg_s *server, uint8_t *user_id)
 {
     pkg_pending_client *pc = server->pending_registration_requests;
     while (pc) {
@@ -155,7 +155,7 @@ pkg_pending_client *pkg_lookup_pending_reg(pkg *server, uint8_t *user_id)
     return pc;
 }
 
-void pkg_delete_registration_request(pkg *server, pkg_pending_client *pc)
+void pkg_delete_registration_request(pkg_s *server, pkg_pending_client *pc)
 {
     if (server->pending_registration_requests == pc) {
         server->pending_registration_requests = pc->next;
@@ -173,7 +173,7 @@ void pkg_delete_registration_request(pkg *server, pkg_pending_client *pc)
 }
 
 int
-pkg_confirm_registration(pkg *server, uint8_t *user_id, uint8_t *sig)
+pkg_confirm_registration(pkg_s *server, uint8_t *user_id, uint8_t *sig)
 {
     pkg_pending_client *pc = pkg_lookup_pending_reg(server, user_id);
     if (!pc) {
@@ -200,7 +200,7 @@ pkg_confirm_registration(pkg *server, uint8_t *user_id, uint8_t *sig)
 }
 
 int
-pkg_server_init(pkg *server,
+pkg_server_init(pkg_s *server,
                 u64 server_id,
                 u64 num_clients,
                 int num_threads,
@@ -281,7 +281,7 @@ void thpool_auth_client(void *arg)
     pkg_client *client = conn->client_state;
 
     if (!client) {
-        pkg *srv = (pkg *) conn->srv_state;
+        pkg_s *srv = (pkg_s *) conn->srv_state;
         uint8_t *user_id = conn->read_buf.data + header_BYTES + round_BYTES;
 
         int index = pkg_client_lookup(srv, user_id);
@@ -306,7 +306,7 @@ void *
 pkg_client_auth_data(void *args)
 {
     pkg_thread_args *th_args = (pkg_thread_args *) args;
-    pkg *srv = th_args->server;
+    pkg_s *srv = th_args->server;
     // printf("Thread %d processing clients from %d to %d\n", th_args->thread_id,
     // th_args->begin, th_args->end);
     for (u64 i = th_args->begin; i < th_args->end; i++) {
@@ -320,7 +320,7 @@ void *
 pkg_client_parallel_init(void *args)
 {
     pkg_thread_args *th_args = (pkg_thread_args *) args;
-    pkg *srv = th_args->server;
+    pkg_s *srv = th_args->server;
     uint8_t *data = th_args->data;
     // printf("Thread %d processing clients from %d to %d\n", th_args->thread_id,
     // th_args->begin, th_args->end);
@@ -334,7 +334,7 @@ pkg_client_parallel_init(void *args)
 }
 
 int
-pkg_parallel_operation(pkg *server, void *(*operator)(void *), uint8_t *data_ptr, u64 data_elem_length)
+pkg_parallel_operation(pkg_s *server, void *(*operator)(void *), uint8_t *data_ptr, u64 data_elem_length)
 {
 
     long num_threads = server->num_threads;
@@ -376,7 +376,7 @@ pkg_parallel_operation(pkg *server, void *(*operator)(void *), uint8_t *data_ptr
 }
 
 int
-pkg_client_lookup(pkg *server, uint8_t *user_id)
+pkg_client_lookup(pkg_s *server, uint8_t *user_id)
 {
     int index = -1;
     for (int i = 0; i < server->num_clients; i++) {
@@ -429,7 +429,7 @@ pkg_client_init(pkg_client* client,
 }
 #else
 void
-pkg_client_init(pkg_client *client, pkg *server, const uint8_t *user_id, const uint8_t *lt_sig_key)
+pkg_client_init(pkg_client *client, pkg_s *server, const uint8_t *user_id, const uint8_t *lt_sig_key)
 {
     client->server = server;
     client->auth_response_ibe_key_ptr = client->eph_client_data + header_BYTES + bn256_bls_sig_message_bytes;
@@ -442,7 +442,7 @@ pkg_client_init(pkg_client *client, pkg *server, const uint8_t *user_id, const u
 }
 #endif
 void
-pkg_server_shutdown(pkg *server)
+pkg_server_shutdown(pkg_s *server)
 {
     if (!server)
         return;
@@ -460,12 +460,12 @@ pkg_client_free(pkg_client *client)
 void
 pkg_net_broadcast(void *s, connection *conn)
 {
-    pkg *pkg_server = s;
+    pkg_s *pkg_server = s;
     bb_write(&conn->write_buf, pkg_server->eph_broadcast_message, header_BYTES + pkg_broadcast_msg_BYTES);
     net_epoll_send(conn, conn->sock_fd);
 }
 void
-pkg_new_round(pkg *server)
+pkg_new_round(pkg_s *server)
 {
     pkg_new_ibe_keypair(server);
     crypto_box_keypair(server->broadcast_dh_pkey_ptr, server->eph_secret_dh_key);
@@ -487,7 +487,7 @@ pkg_new_round(pkg *server)
 }
 
 int
-pkg_auth_client(pkg *server, pkg_client *client, uint8_t *auth_msg_buf)
+pkg_auth_client(pkg_s *server, pkg_client *client, uint8_t *auth_msg_buf)
 {
     u64 round_val = deserialize_uint64(auth_msg_buf);
     if (round_val != server->current_round) {
@@ -527,7 +527,7 @@ pkg_auth_client(pkg *server, pkg_client *client, uint8_t *auth_msg_buf)
 }
 
 void
-pkg_encrypt_client_response(pkg *server, pkg_client *client)
+pkg_encrypt_client_response(pkg_s *server, pkg_client *client)
 {
     serialize_uint64(client->eph_client_data + net_msg_type_BYTES,
                      pkg_enc_auth_res_BYTES);
@@ -585,7 +585,7 @@ pkg_sign_for_client(pkg* server, pkg_client* client)
 }
 
 #else
-void pkg_new_ibe_keypair(pkg *server)
+void pkg_new_ibe_keypair(pkg_s *server)
 {
     bn256_scalar_random(server->eph_secret_key_elem_zr);
     bn256_scalarmult_base_g1(server->eph_pub_key_elem_g1, server->eph_secret_key_elem_zr);
@@ -593,7 +593,7 @@ void pkg_new_ibe_keypair(pkg *server)
     bn256_serialize_g1(server->eph_broadcast_message + header_BYTES, server->eph_pub_key_elem_g1);
 }
 
-void pkg_extract_client_sk(pkg *server, pkg_client *client)
+void pkg_extract_client_sk(pkg_s *server, pkg_client *client)
 {
     twistpoint_fp2_t client_sk;
     twistpoint_fp2_scalarmult_vartime(client_sk,
@@ -603,7 +603,7 @@ void pkg_extract_client_sk(pkg *server, pkg_client *client)
     bn256_serialize_g2(client->auth_response_ibe_key_ptr, client_sk);
 }
 
-void pkg_sign_for_client(pkg *server, pkg_client *client)
+void pkg_sign_for_client(pkg_s *server, pkg_client *client)
 {
     serialize_uint64(client->rnd_sig_msg, server->current_round);
     bn256_bls_sign_message(client->eph_client_data + header_BYTES,
@@ -615,7 +615,7 @@ void pkg_sign_for_client(pkg *server, pkg_client *client)
 
 static const char *pkg_cl_listen_ports[] = {"7500", "7501", "7502"};
 
-bool pkg_net_auth_client(pkg *s, connection *conn)
+bool pkg_net_auth_client(pkg_s *s, connection *conn)
 {
     pkg_client *client_state = conn->client_state;
     if (!client_state) {
@@ -637,7 +637,7 @@ bool pkg_net_auth_client(pkg *s, connection *conn)
     return true;
 }
 
-void remove_client(pkg *s, connection *conn)
+void remove_client(pkg_s *s, connection *conn)
 {
     nss_s *net_state = &s->net_state;
     epoll_ctl(net_state->epoll_fd, EPOLL_CTL_DEL, conn->sock_fd, &conn->event);
@@ -656,7 +656,7 @@ void remove_client(pkg *s, connection *conn)
 int
 pkg_mix_read(void *srv, connection *conn, byte_buffer_s *buf)
 {
-    pkg *pkg = (pkg *) srv;
+    pkg_s *pkg = (pkg_s *) srv;
     net_header *header = &conn->header;
     if (header->type == PKG_REFRESH_KEYS) {
         pkg_new_round(pkg);
@@ -667,7 +667,7 @@ pkg_mix_read(void *srv, connection *conn, byte_buffer_s *buf)
 int
 pkg_net_process_client_msg(void *srv, connection *conn, byte_buffer_s *buf)
 {
-    pkg *s = (pkg *) srv;
+    pkg_s *s = (pkg_s *) srv;
     net_header *header = &conn->header;
     if (header->type == CLIENT_AUTH_REQ) {
         thpool_add_work(s->thread_pool, thpool_auth_client, conn);
@@ -698,7 +698,7 @@ pkg_net_process_client_msg(void *srv, connection *conn, byte_buffer_s *buf)
 }
 
 int
-pkg_server_startup(pkg *pkg)
+pkg_server_startup(pkg_s *pkg)
 {
     nss_s *s = &pkg->net_state;
     s->owner = pkg;
@@ -729,7 +729,7 @@ pkg_server_startup(pkg *pkg)
 }
 
 void
-pkg_server_run(pkg *s)
+pkg_server_run(pkg_s *s)
 {
     nss_s *net_state = &s->net_state;
     struct epoll_event *events = net_state->events;

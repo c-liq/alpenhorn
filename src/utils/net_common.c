@@ -331,7 +331,7 @@ void net_process_read(void *owner, connection *conn)
             alp_deserialize_header(header, buf);
         }
 
-        if (buf->read_limit < header->len + header_BYTES) {
+        if (buf->read_limit < header->len) {
             return;
         }
 
@@ -340,7 +340,7 @@ void net_process_read(void *owner, connection *conn)
         bb_to_bb(message_buf, buf, header->len);
 
         if (conn->process) {
-            conn->process(owner, conn, buf);
+            conn->process(owner, conn, message_buf);
         }
 
         bb_clear(message_buf);
@@ -391,7 +391,7 @@ int net_epoll_send(connection *conn, int epoll_fd)
     int close = 0;
     byte_buffer_s *wbuf = &conn->write_buf;
 
-    while (wbuf->write_limit > 0) {
+    while (wbuf->read_limit > 0) {
         ssize_t count = bb_read_to_fd(wbuf, conn->sock_fd);
         if (count == -1) {
             if (errno != EAGAIN) {
@@ -412,12 +412,12 @@ int net_epoll_send(connection *conn, int epoll_fd)
         return -1;
     }
 
-    if (wbuf->write_limit != 0 && !(conn->event.events & EPOLLOUT)) {
+    if (wbuf->read_limit != 0 && !(conn->event.events & EPOLLOUT)) {
         conn->event.events = EPOLLOUT | EPOLLET;
         epoll_ctl(epoll_fd, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
     }
 
-    else if (wbuf->write_limit == 0 && conn->event.events & EPOLLOUT) {
+    else if (wbuf->read_limit == 0 && conn->event.events & EPOLLOUT) {
         conn->event.events = EPOLLIN | EPOLLET;
         epoll_ctl(epoll_fd, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
     }

@@ -62,7 +62,7 @@ struct mixer
     u8 sk[crypto_box_SECRETKEYBYTES];
     u8 mix_pks[num_mix_servers][crypto_box_PUBLICKEYBYTES];
     pthread_mutex_t mutex;
-    byte_buffer_s *broadcast;
+    byte_buffer_t broadcast;
     void (*clear_container)(mixer_s *mixer);
     void (*init_container)(mixer_s *mixer);
     void (*distribute)(mixer_s *mixer);
@@ -73,10 +73,13 @@ struct mixer
     u64 batch_msg_type;
     u64 round_msg_type;
     u64 auth_msg_type;
+    u64 last_noise_count;
+    char *name;
 };
 
 struct mixer_config
 {
+    char *name;
     u64 msg_length;
     u64 laplace_mu;
     u64 laplace_b;

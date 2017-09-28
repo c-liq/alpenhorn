@@ -1,4 +1,5 @@
 
+#include <utils.h>
 #include "byte_buffer.h"
 
 
@@ -6,7 +7,7 @@ static inline void _bb_upd_read(byte_buffer_s *buf, uint64_t count)
 {
     buf->read_pos += count;
     buf->read += count;
-    buf->read_limit = count;
+    buf->read_limit -= count;
 }
 
 static inline void _bb_upd_write(byte_buffer_s *buf, uint64_t count)
@@ -33,12 +34,13 @@ int bb_check_size(byte_buffer_s *buf, uint64_t count)
         fprintf(stderr, "failed to resize byte buffer, realloc failure\n");
         return -1;
     }
-
+    printf("Resized from %lu to %lu\n", buf->capacity, new_capacity);
     buf->data = new_buf;
     buf->read_pos = buf->data + buf->read;
     buf->write_pos = buf->data + buf->written;
     buf->capacity = new_capacity;
     buf->write_limit = new_capacity - buf->written;
+
     return 0;
 }
 
@@ -89,10 +91,21 @@ int bb_write_u64(byte_buffer_s *buf, uint64_t num)
 int bb_read_u64(uint64_t *out, byte_buffer_s *buf)
 {
     if (buf->read_limit < sizeof out) {
+
         return -1;
     }
 
-    *out = be64toh(*buf->read_pos);
+    u8 *ptr = buf->read_pos;
+
+    *out += (u64) ptr[7] << 0;
+    *out += (u64) ptr[6] << 8;
+    *out += (u64) ptr[5] << 16;
+    *out += (u64) ptr[5] << 24;
+    *out += (u64) ptr[3] << 32;
+    *out += (u64) ptr[2] << 40;
+    *out += (u64) ptr[1] << 48;
+    *out += (u64) ptr[0] << 56;
+
     _bb_upd_read(buf, sizeof out);
     return 0;
 }
@@ -196,7 +209,6 @@ ssize_t bb_write_from_fd(byte_buffer_s *buf, int socket_fd)
 
 ssize_t bb_read_to_fd(byte_buffer_s *buf, int socket_fd)
 {
-
     ssize_t res = write(socket_fd, buf->read_pos, buf->read_limit);
     if (res > 0) {
         _bb_upd_read(buf, (uint64_t) res);

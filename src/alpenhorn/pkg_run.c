@@ -17,9 +17,9 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Invalid server id %d\n", sid);
 		return 1;
 	}
-	pkg *s = calloc(1, sizeof(struct pkg));
+	pkg_s *s = calloc(1, sizeof(pkg_s));
 
-	pkg_server_init(s, (uint64_t) sid, 10, 4, "users");
+	pkg_server_init(s, (uint64_t) sid, 10, 4, NULL);
 	int res = pkg_server_startup(s);
 	if (res) {
 		fprintf(stderr, "failed to connect to mix entry server\n");

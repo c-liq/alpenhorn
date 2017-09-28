@@ -3,7 +3,8 @@
 #include "xxhash.h"
 #include <math.h>
 
-uint64_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id) {
+uint64_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id)
+{
     if (!c || !user_id)
         return 0;
 
@@ -11,12 +12,14 @@ uint64_t af_calc_mailbox_num(client_s *c, const uint8_t *user_id) {
     return hash % c->af_num_mailboxes;
 }
 
-uint64_t dial_calc_mailbox_num(client_s *c, const uint8_t *user_id) {
+uint64_t dial_calc_mailbox_num(client_s *c, const uint8_t *user_id)
+{
     uint64_t hash = XXH64(user_id, user_id_BYTES, 0);
     return hash % c->dial_num_mailboxes;
 }
 
-static void delete_friend_request(client_s *c, friend_request_s *req) {
+static void delete_friend_request(client_s *c, friend_request_s *req)
+{
     if (!req)
         return;
     if (req == c->friend_requests)
@@ -29,7 +32,8 @@ static void delete_friend_request(client_s *c, friend_request_s *req) {
     free(req);
 }
 
-int client_register(sign_keypair *sig_keys, char *user_id) {
+int client_register(sign_keypair *sig_keys, char *user_id)
+{
     if (!sig_keys || !user_id)
         return -1;
 
@@ -75,7 +79,8 @@ int client_register(sign_keypair *sig_keys, char *user_id) {
 }
 
 int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key,
-                                uint8_t *msgs_buf) {
+                                uint8_t *msgs_buf)
+{
 
     uint64_t net_msg_size_bytes = header_BYTES + cli_pkg_reg_confirm_BYTES;
     uint8_t reg_confirm_msg[net_msg_size_bytes];
@@ -116,7 +121,7 @@ int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key,
         }
 
         uint8_t response_buf[header_BYTES + pkg_broadcast_msg_BYTES +
-                             header_BYTES];
+            header_BYTES];
         res = net_read_blocking(socket_fd, response_buf, sizeof response_buf);
 
         if (res) {
@@ -130,11 +135,13 @@ int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key,
     return 0;
 }
 
-uint8_t *client_get_public_key(client_s *c) {
+uint8_t *client_get_public_key(client_s *c)
+{
     return c->lt_sig_keypair.public_key;
 }
 
-int client_call_friend(client_s *c, uint8_t *user_id, uint64_t intent) {
+int client_call_friend(client_s *c, uint8_t *user_id, uint64_t intent)
+{
     if (!c || !user_id)
         return -1;
 
@@ -149,7 +156,8 @@ int client_call_friend(client_s *c, uint8_t *user_id, uint64_t intent) {
     return 0;
 }
 
-int client_add_friend(client_s *c, uint8_t *user_id) {
+int client_add_friend(client_s *c, uint8_t *user_id)
+{
     if (!c || !user_id)
         return -1;
 
@@ -163,7 +171,8 @@ int client_add_friend(client_s *c, uint8_t *user_id) {
     return 0;
 }
 
-int client_confirm_friend(client_s *c, uint8_t *user_id) {
+int client_confirm_friend(client_s *c, uint8_t *user_id)
+{
     if (!c || !user_id)
         return -1;
 
@@ -178,7 +187,8 @@ int client_confirm_friend(client_s *c, uint8_t *user_id) {
 }
 
 int dial_queue_call(client_s *c, const uint8_t *user_id,
-                    const uint64_t intent) {
+                    const uint64_t intent)
+{
     if (!c || !user_id || intent > c->num_intents)
         return -1;
 
@@ -197,7 +207,12 @@ int dial_queue_call(client_s *c, const uint8_t *user_id,
 
 }
 
-int dial_build_call(client_s *c) {
+int dial_onion_encrypt_request(client_s *pClient)
+{
+    return 0;
+}
+int dial_build_call(client_s *c)
+{
     if (!c)
         return -1;
 
@@ -223,7 +238,8 @@ int dial_build_call(client_s *c) {
 }
 
 int dial_call_friend(client_s *c, const uint8_t *user_id,
-                     const uint64_t intent) {
+                     const uint64_t intent)
+{
     if (!c || !user_id || intent > c->num_intents)
         return -1;
 
@@ -251,7 +267,8 @@ int dial_call_friend(client_s *c, const uint8_t *user_id,
     return 0;
 }
 
-int af_add_friend(client_s *c, const uint8_t *user_id) {
+int af_add_friend(client_s *c, const uint8_t *user_id)
+{
     if (!c || !user_id)
         return -1;
 
@@ -269,7 +286,8 @@ int af_add_friend(client_s *c, const uint8_t *user_id) {
     return 0;
 }
 
-int af_confirm_friend(client_s *c, const char *user_id) {
+int af_confirm_friend(client_s *c, const char *user_id)
+{
     if (!c || !user_id) {
         fprintf(stderr, "no user id supplied to accept request\n");
         return -1;
@@ -303,20 +321,23 @@ int af_confirm_friend(client_s *c, const char *user_id) {
     return 0;
 }
 
-struct af_parallel_info {
+struct af_parallel_info
+{
     uint8_t *ptr;
     uint64_t num_messages;
     uint64_t round;
     client_s *client;
 };
 
-void *af_parallel_mb_task(void *args) {
+void *af_parallel_mb_task(void *args)
+{
     struct af_parallel_info *pargs = (struct af_parallel_info *) args;
     af_process_mb(pargs->client, pargs->ptr, pargs->num_messages, pargs->round);
     return NULL;
 }
 
-int af_parallel_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages, uint64_t round) {
+int af_parallel_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages, uint64_t round)
+{
     double start_timer = get_time();
     uint64_t num_threads = 4;
     pthread_t threads[num_threads];
@@ -360,7 +381,8 @@ int af_parallel_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages,
 }
 
 int af_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages,
-                  uint64_t round) {
+                  uint64_t round)
+{
     if (!c || !mailbox)
         return -1;
 
@@ -375,7 +397,8 @@ int af_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages,
     return 0;
 }
 
-int af_fake_request(client_s *c) {
+int af_fake_request(client_s *c)
+{
     if (!c)
         return -1;
 
@@ -390,7 +413,8 @@ int af_fake_request(client_s *c) {
     return 0;
 }
 
-int dial_fake_request(client_s *c) {
+int dial_fake_request(client_s *c)
+{
     if (!c)
         return -1;
 
@@ -409,7 +433,8 @@ int dial_fake_request(client_s *c) {
 }
 
 int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round,
-                    uint64_t num_tokens) {
+                    uint64_t num_tokens)
+{
     if (!c || !mb_data)
         return -1;
     double start = get_time();
@@ -455,7 +480,8 @@ int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round,
     return 0;
 }
 
-int af_create_pkg_auth_request(client_s *c) {
+int af_create_pkg_auth_request(client_s *c)
+{
     if (!c)
         return -1;
 
@@ -756,7 +782,8 @@ int af_update_pkg_public_keys(client_s *c)
 
 #else
 
-int af_accept_request(client_s *c, friend_request_s *req) {
+int af_accept_request(client_s *c, friend_request_s *req)
+{
     printf("Responding to friend request from %s\n", req->user_id);
     net_serialize_header(c->friend_request_buf,
                          CLIENT_AF_MSG,
@@ -765,7 +792,7 @@ int af_accept_request(client_s *c, friend_request_s *req) {
                          c->dialling_round);
 
     uint8_t *dr_ptr = c->friend_request_buf + header_BYTES + mb_BYTES +
-                      g1_serialized_bytes + crypto_ghash_BYTES + crypto_NBYTES;
+        g1_serialized_bytes + crypto_ghash_BYTES + crypto_NBYTES;
     uint8_t *user_id_ptr = dr_ptr + round_BYTES;
     uint8_t *dh_pk_ptr = user_id_ptr + user_id_BYTES;
     uint8_t *lt_sig_key_ptr = dh_pk_ptr + crypto_pk_BYTES;
@@ -773,7 +800,7 @@ int af_accept_request(client_s *c, friend_request_s *req) {
     uint8_t *multisig_ptr = client_sig_ptr + crypto_sign_BYTES;
 
     keywheel_s *new_kw =
-            kw_from_request(&c->keywheel, req->user_id, dh_pk_ptr, req->dh_pk);
+        kw_from_request(&c->keywheel, req->user_id, dh_pk_ptr, req->dh_pk);
     if (!new_kw) {
         fprintf(stderr, "Client: Couldn't construct keywheel for new contact\n");
         return -1;
@@ -790,9 +817,9 @@ int af_accept_request(client_s *c, friend_request_s *req) {
     bn256_serialize_g1(multisig_ptr, c->pkg_multisig_combined_g1);
     // Encrypt the request using IBE
     ssize_t rs =
-            bn256_ibe_encrypt(c->friend_request_buf + header_BYTES + mb_BYTES,
-                              dr_ptr, af_request_BYTES, c->pkg_eph_pub_combined_g1,
-                              new_kw->user_id, user_id_BYTES);
+        bn256_ibe_encrypt(c->friend_request_buf + header_BYTES + mb_BYTES,
+                          dr_ptr, af_request_BYTES, c->pkg_eph_pub_combined_g1,
+                          new_kw->user_id, user_id_BYTES);
 
     if (rs < 0) {
         fprintf(stderr, "ibe encryption failure\n");
@@ -808,7 +835,8 @@ int af_accept_request(client_s *c, friend_request_s *req) {
     return 0;
 }
 
-int af_create_request(client_s *c, uint8_t *friend_user_id) {
+int af_create_request(client_s *c, uint8_t *friend_user_id)
+{
     if (!c)
         return -1;
 
@@ -820,7 +848,7 @@ int af_create_request(client_s *c, uint8_t *friend_user_id) {
                          c->dialling_round);
 
     uint8_t *dr_ptr = c->friend_request_buf + header_BYTES + mb_BYTES +
-                      g1_serialized_bytes + crypto_NBYTES;
+        g1_serialized_bytes + crypto_NBYTES;
     uint8_t *user_id_ptr = dr_ptr + round_BYTES;
     uint8_t *dh_pub_ptr = user_id_ptr + user_id_BYTES;
     uint8_t *lt_sig_key_ptr = dh_pub_ptr + crypto_pk_BYTES;
@@ -859,15 +887,16 @@ int af_create_request(client_s *c, uint8_t *friend_user_id) {
     return 0;
 }
 
-int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round) {
+int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round)
+{
     if (!c || !request_buf)
         return -1;
     uint8_t serialized_g2[g2_serialized_bytes];
     bn256_serialize_g2(serialized_g2, c->pkg_ibe_secret_combined_g2);
     uint8_t request_buffer[af_request_BYTES];
     ssize_t result = bn256_ibe_decrypt(
-            request_buffer, request_buf, af_ibeenc_request_BYTES, c->hashed_id,
-            c->pkg_ibe_secret_combined_g2);
+        request_buffer, request_buf, af_ibeenc_request_BYTES, c->hashed_id,
+        c->pkg_ibe_secret_combined_g2);
 
     if (result) {
         return -1;
@@ -896,8 +925,8 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round) {
     }
 
     result = crypto_sign_verify_detached(
-            personal_sig_ptr, dialling_round_ptr,
-            round_BYTES + user_id_BYTES + crypto_sign_PUBLICKEYBYTES, lt_sig_key_ptr);
+        personal_sig_ptr, dialling_round_ptr,
+        round_BYTES + user_id_BYTES + crypto_sign_PUBLICKEYBYTES, lt_sig_key_ptr);
 
     if (result) {
         printf("Personal sig verification failed\n");
@@ -948,7 +977,8 @@ int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round) {
     return 0;
 }
 
-int af_update_pkg_public_keys(client_s *c) {
+int af_update_pkg_public_keys(client_s *c)
+{
     if (!c)
         return -1;
 
@@ -963,7 +993,8 @@ int af_update_pkg_public_keys(client_s *c) {
     return 0;
 }
 
-int af_process_auth_responses(client_s *c) {
+int af_process_auth_responses(client_s *c)
+{
     if (!c)
         return -1;
 
@@ -990,7 +1021,12 @@ int af_process_auth_responses(client_s *c) {
 
 #endif
 
-int af_build_request(client_s *c) {
+void af_onion_encrypt_request(client_s *pClient)
+{
+
+}
+int af_build_request(client_s *c)
+{
     if (!c)
         return -1;
 
@@ -1004,7 +1040,8 @@ int af_build_request(client_s *c) {
 
     if (request->req) {
         af_accept_request(c, request->req);
-    } else {
+    }
+    else {
         af_create_request(c, request->user_id);
     }
 
@@ -1020,7 +1057,8 @@ int client_init(client_s *c,
                 const sign_keypair *sign_keys,
                 void (*on_recv_call)(incoming_call_s *),
                 void (*on_recv_friend_request)(friend_request_s *),
-                void (*on_friend_confirm)(friend_request_s *)) {
+                void (*on_friend_confirm)(friend_request_s *))
+{
     if (!c || !user_id1 || !sign_keys)
         return -1;
 
@@ -1111,7 +1149,8 @@ client_s *client_alloc(const uint8_t *user_id,
                        const sign_keypair *signing_keys,
                        void (*on_recv_call)(incoming_call_s *),
                        void (*on_recv_friend_request)(friend_request_s *),
-                       void (*on_friend_confirm)(friend_request_s *)) {
+                       void (*on_friend_confirm)(friend_request_s *))
+{
 
     client_s *client = calloc(1, sizeof *client);
     if (!client) {
@@ -1128,29 +1167,27 @@ client_s *client_alloc(const uint8_t *user_id,
     return client;
 }
 
-int do_action(client_s *c, action *a) {
+int do_action(client_s *c, action *a)
+{
     if (!c || !a)
         return -1;
 
     switch (a->type) {
-        case ADD_FRIEND:
-            af_add_friend(c, a->user_id);
-            break;
-        case CONFIRM_FRIEND:
-            af_confirm_friend(c, a->user_id);
-            break;
-        case DIAL_FRIEND:
-            dial_queue_call(c, (uint8_t *) a->user_id, a->intent);
-            break;
-        case PRINT_KW_TABLE:
-            kw_print_table(&c->keywheel);
-            break;
+    case ADD_FRIEND:af_add_friend(c, a->user_id);
+        break;
+    case CONFIRM_FRIEND:af_confirm_friend(c, a->user_id);
+        break;
+    case DIAL_FRIEND:dial_queue_call(c, (uint8_t *) a->user_id, a->intent);
+        break;
+    case PRINT_KW_TABLE:kw_print_table(&c->keywheel);
+        break;
     }
     free(a);
     return 0;
 }
 
-action *action_stack_pop(client_s *c) {
+action *action_stack_pop(client_s *c)
+{
     if (!c)
         return NULL;
 
@@ -1168,7 +1205,8 @@ action *action_stack_pop(client_s *c) {
     return popped;
 }
 
-int action_stack_push(client_s *c, action *new_action) {
+int action_stack_push(client_s *c, action *new_action)
+{
     if (!c || !new_action)
         return -1;
 
@@ -1181,7 +1219,8 @@ int action_stack_push(client_s *c, action *new_action) {
 }
 
 int net_send_message(client_s *s, connection *conn, uint8_t *msg,
-                     uint64_t msg_size_bytes) {
+                     uint64_t msg_size_bytes)
+{
     if (!s || !conn || !msg)
         return -1;
 
@@ -1189,7 +1228,8 @@ int net_send_message(client_s *s, connection *conn, uint8_t *msg,
     return net_epoll_send(conn, conn->sock_fd);
 }
 
-void client_update_dial_keys(client_s *client, uint8_t *buffer) {
+void client_update_dial_keys(client_s *client, uint8_t *buffer)
+{
     uint8_t *ptr = buffer;
     for (int i = 0; i < num_mix_servers; i++) {
         memcpy(client->mix_dial_pks[i], ptr, crypto_pk_BYTES);
@@ -1197,7 +1237,8 @@ void client_update_dial_keys(client_s *client, uint8_t *buffer) {
     }
 }
 
-void client_update_af_keys(client_s *client, uint8_t *buffer) {
+void client_update_af_keys(client_s *client, uint8_t *buffer)
+{
     uint8_t *ptr = buffer;
     for (int i = 0; i < num_mix_servers; i++) {
         memcpy(client->mix_af_pks[i], ptr, crypto_pk_BYTES);
@@ -1205,7 +1246,8 @@ void client_update_af_keys(client_s *client, uint8_t *buffer) {
     }
 }
 
-int client_net_init(client_s *c) {
+int client_net_init(client_s *c)
+{
     if (!c)
         return -1;
 
@@ -1230,50 +1272,49 @@ int client_net_init(client_s *c) {
     return 0;
 }
 
-int mix_entry_process_msg(void *client_ptr, net_header *header, connection *conn, byte_buffer_s *buf) {
+int mix_entry_process_msg(void *client_ptr, connection *conn, byte_buffer_s *buf)
+{
     if (!client_ptr || !conn) {
         return -1;
     }
 
     client_s *client = (client_s *) client_ptr;
     client_net *net_state = &client->net_state;
+    net_header *header = &conn->header;
 
     switch (header->type) {
-        case NEW_AF_ROUND:
-            client_update_af_keys(client, conn->read_buf.read_pos);
-            client->af_round = header->round;
-            client->af_num_mailboxes = header->misc;
-            af_build_request(client);
-            net_epoll_send(client->mix_entry, net_state->epoll_fd);
-            break;
-        case NEW_DIAL_ROUND:
-            client_update_dial_keys(client, conn->read_buf.read_pos);
-            client->dialling_round = header->round;
-            client->dial_num_mailboxes = header->misc;
-            dial_build_call(client);
-            net_epoll_send(client->mix_entry, net_state->epoll_fd);
-            break;
-        case MIX_SYNC:
-            client->af_round = header->round;
-            client->dialling_round = header->misc;
-            printf("AF round: %lu | Dial round: %lu\n", client->af_round, client->dialling_round);
-            break;
-        default:
-            fprintf(stderr, "Invalid message from Mix Entry\n");
-            return -1;
+    case NEW_AF_ROUND:client_update_af_keys(client, conn->read_buf.read_pos);
+        client->af_round = header->round;
+        client->af_num_mailboxes = header->misc;
+        af_build_request(client);
+        net_epoll_send(client->mix_entry, net_state->epoll_fd);
+        break;
+    case NEW_DIAL_ROUND:client_update_dial_keys(client, conn->read_buf.read_pos);
+        client->dialling_round = header->round;
+        client->dial_num_mailboxes = header->misc;
+        dial_build_call(client);
+        net_epoll_send(client->mix_entry, net_state->epoll_fd);
+        break;
+    case MIX_SYNC:client->af_round = header->round;
+        client->dialling_round = header->misc;
+        printf("AF round: %lu | Dial round: %lu\n", client->af_round, client->dialling_round);
+        break;
+    default:fprintf(stderr, "Invalid message from Mix Entry\n");
+        return -1;
     }
     return 0;
 }
 
-int client_net_pkg_auth(client_s *cn) {
+int client_net_pkg_auth(client_s *cn)
+{
     if (!cn)
         return -1;
 
     for (int i = 0; i < num_pkg_servers; i++) {
         connection *conn = &cn->net_state.pkg_connections[i];
         int res =
-                net_send_message(cn, conn, cn->pkg_auth_requests[i],
-                                 header_BYTES + cli_pkg_single_auth_req_BYTES);
+            net_send_message(cn, conn, cn->pkg_auth_requests[i],
+                             header_BYTES + cli_pkg_single_auth_req_BYTES);
         if (res) {
             fprintf(stderr, "error during pkg authentication\n");
             return -1;
@@ -1283,77 +1324,77 @@ int client_net_pkg_auth(client_s *cn) {
     return 0;
 }
 
-int client_net_process_pkg(void *client_ptr, connection *conn, net_header *header, byte_buffer_s *buf) {
+int client_net_process_pkg(void *client_ptr, connection *conn, byte_buffer_s *buf)
+{
     if (!client_ptr || !conn)
         return -1;
 
     client_s *c = (client_s *) client_ptr;
     client_net *net_state = &c->net_state;
+    net_header *header = &conn->header;
 
     switch (header->type) {
-        case PKG_BR_MSG:
-            bb_read(c->pkg_broadcast_msgs[conn->id], &conn->read_buf, pkg_broadcast_msg_BYTES);
-            net_state->num_broadcast_responses++;
-            if (net_state->num_broadcast_responses == num_pkg_servers) {
-                af_update_pkg_public_keys(c);
-                af_create_pkg_auth_request(c);
-                client_net_pkg_auth(c);
-            }
-            break;
+    case PKG_BR_MSG:bb_read(c->pkg_broadcast_msgs[conn->id], &conn->read_buf, pkg_broadcast_msg_BYTES);
+        net_state->num_broadcast_responses++;
+        if (net_state->num_broadcast_responses == num_pkg_servers) {
+            af_update_pkg_public_keys(c);
+            af_create_pkg_auth_request(c);
+            client_net_pkg_auth(c);
+        }
+        break;
 
-        case PKG_AUTH_RES_MSG:
-            memcpy(c->pkg_auth_responses[conn->id],
-                   conn->read_buf.data + header_BYTES,
-                   pkg_enc_auth_res_BYTES);
-            net_state->num_auth_responses++;
-            if (net_state->num_auth_responses == num_pkg_servers) {
-                af_process_auth_responses(c);
-                net_state->num_auth_responses = 0;
-                net_state->num_broadcast_responses = 0;
-            }
-            break;
-        default:
-            fprintf(stderr, "Invalid message received from PKG server\n");
-            return -1;
+    case PKG_AUTH_RES_MSG:
+        memcpy(c->pkg_auth_responses[conn->id],
+               conn->read_buf.data + header_BYTES,
+               pkg_enc_auth_res_BYTES);
+        net_state->num_auth_responses++;
+        if (net_state->num_auth_responses == num_pkg_servers) {
+            af_process_auth_responses(c);
+            net_state->num_auth_responses = 0;
+            net_state->num_broadcast_responses = 0;
+        }
+        break;
+    default:fprintf(stderr, "Invalid message received from PKG server\n");
+        return -1;
     }
     return 0;
 }
 
-int mix_last_process_msg(void *client_ptr, net_header *header, connection *conn, byte_buffer_s *buf) {
+int mix_last_process_msg(void *client_ptr, connection *conn, byte_buffer_s *buf)
+{
     if (!client_ptr || !conn)
         return -1;
 
     client_s *client = (client_s *) client_ptr;
+    net_header *header = &conn->header;
 
     switch (header->type) {
-        case DIAL_MB:
-            dial_process_mb(client, conn->read_buf.data + header_BYTES, header->round, header->misc);
-            kw_advance_table(&client->keywheel);
-            break;
-        case AF_MB:
-            client->af_mb_num_messages = header->misc;
-            af_process_mb(client, buf->data, header->misc, client->af_round);
-            break;
-        case NEW_AFMB_AVAIL: {
-            alp_serialize_header(&conn->write_buf, CLIENT_AF_MB_REQUEST, user_id_BYTES, header->round, 0);
-            bb_write(&conn->write_buf, client->user_id, user_id_BYTES);
-            net_epoll_send(conn, conn->sock_fd);
-            break;
-        }
-        case NEW_DMB_AVAIL: {
-            alp_serialize_header(&conn->write_buf, CLIENT_DIAL_MB_REQUEST, user_id_BYTES, header->round, 0);
-            bb_write(&conn->write_buf, client->user_id, user_id_BYTES);
-            net_epoll_send(conn, conn->sock_fd);
-            break;
-        }
-        default:
-            fprintf(stderr, "Invalid message from Mix distribution server\n");
-            return -1;
+    case DIAL_MB:dial_process_mb(client, conn->read_buf.data + header_BYTES, header->round, header->misc);
+        kw_advance_table(&client->keywheel);
+        break;
+    case AF_MB:client->af_mb_num_messages = header->misc;
+        af_process_mb(client, buf->data, header->misc, client->af_round);
+        break;
+    case NEW_AFMB_AVAIL: {
+        alp_serialize_header(&conn->write_buf, CLIENT_AF_MB_REQUEST, user_id_BYTES, header->round, 0);
+        bb_write(&conn->write_buf, client->user_id, user_id_BYTES);
+        net_epoll_send(conn, conn->sock_fd);
+        break;
+    }
+    case NEW_DMB_AVAIL: {
+        alp_serialize_header(&conn->write_buf, CLIENT_DIAL_MB_REQUEST, user_id_BYTES, header->round, 0);
+        bb_write(&conn->write_buf, client->user_id, user_id_BYTES);
+        net_epoll_send(conn, conn->sock_fd);
+        break;
+    }
+    default:fprintf(stderr, "Invalid message from Mix distribution server\n");
+        return -1;
     }
     return 0;
 }
 
-int client_run(client_s *client) {
+int client_run(client_s *client)
+{
     if (!client)
         return -1;
 
@@ -1361,30 +1402,40 @@ int client_run(client_s *client) {
     client_net *net_state = &client->net_state;
 
     int last_sockfd =
-            net_connect(mix_server_ips[num_mix_servers - 1], mix_listen_ports[num_mix_servers - 1], 1);
+        net_connect(mix_server_ips[num_mix_servers - 1], mix_listen_ports[num_mix_servers - 1], 1);
     if (last_sockfd == -1) {
         fprintf(stderr, "could not connect to mix distribution server\n");
         return -1;
     }
-    connection_init(&net_state->mix_last, NULL, read_buf_SIZE, NULL);
+    connection_init(&net_state->mix_last,
+                    read_buf_SIZE,
+                    write_buf_SIZE,
+                    mix_last_process_msg,
+                    net_state->epoll_fd,
+                    last_sockfd);
 
     int entry_sockfd = net_connect(mix_server_ips[0], mix_entry_client_listenport, 0);
     if (entry_sockfd == -1) {
         fprintf(stderr, "could not connect to mix entry server\n");
         return -1;
     }
-    connection_init(&net_state->mix_entry, NULL, read_buf_SIZE, NULL);
+    connection_init(&net_state->mix_last,
+                    read_buf_SIZE,
+                    write_buf_SIZE,
+                    mix_entry_process_msg,
+                    net_state->epoll_fd,
+                    entry_sockfd);
 
     int res =
-            net_read_blocking(net_state->mix_entry.sock_fd,
-                              net_state->mix_entry.read_buf.data, header_BYTES);
+        net_read_blocking(net_state->mix_entry.sock_fd,
+                          net_state->mix_entry.read_buf.data, header_BYTES);
     if (res == -1) {
         perror("client read");
         return -1;
     }
 
     client->af_round =
-            deserialize_uint64(net_state->mix_entry.read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
+        deserialize_uint64(net_state->mix_entry.read_buf.data + (net_msg_len_BYTES + net_msg_type_BYTES));
     client->dialling_round = deserialize_uint64(net_state->mix_entry.read_buf.data + 24);
     client->keywheel.table_round = client->dialling_round;
 
@@ -1400,12 +1451,12 @@ int client_run(client_s *client) {
         return -1;
     }
 
-    for (uint64_t i = 0; i < num_pkg_servers; i++) {
+    for (int i = 0; i < num_pkg_servers; i++) {
         int new_pkg_sockfd = net_connect(pkg_server_ips[i], pkg_cl_listen_ports[i], 1);
         if (new_pkg_sockfd == -1) {
             return -1;
         }
-        connection_init(&net_state->pkg_connections[i], read_buf_SIZE, NULL, NULL);
+        connection_init(&net_state->pkg_connections[i], read_buf_SIZE, write_buf_SIZE, client_net_process_pkg, net_state->epoll_fd, new_pkg_sockfd);
         net_state->pkg_connections[i].id = i;
     }
 
@@ -1414,7 +1465,8 @@ int client_run(client_s *client) {
     return 0;
 }
 
-void *client_process_loop(void *clptr) {
+void *client_process_loop(void *clptr)
+{
     client_s *client = (client_s *) clptr;
     client_net *net_state = &client->net_state;
     struct epoll_event *events = net_state->events;
@@ -1439,11 +1491,14 @@ void *client_process_loop(void *clptr) {
                         conn->sock_fd);
                 client->running = false;
                 break;
-            } else if (events[i].data.fd == net_state->interrupt_fd) {
+            }
+            else if (events[i].data.fd == net_state->interrupt_fd) {
                 continue;
-            } else if (events[i].events & EPOLLIN) {
+            }
+            else if (events[i].events & EPOLLIN) {
                 net_epoll_read(client, conn);
-            } else if (events[i].events & EPOLLOUT) {
+            }
+            else if (events[i].events & EPOLLOUT) {
                 net_epoll_send(conn, client->net_state.epoll_fd);
             }
         }
