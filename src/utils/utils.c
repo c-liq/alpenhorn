@@ -26,11 +26,8 @@ uint64_t sizeof_serialized_bytes(uint64_t size)
 	return size * 2 + 1;
 }
 
-
-
-void serialize_uint64(uint8_t *out, const uint64_t input)
+void serialize_u64(uint8_t *out, uint64_t input)
 {
-
 	out[0] = (uint8_t) (input >> 56);
 	out[1] = (uint8_t) (input >> 48);
 	out[2] = (uint8_t) (input >> 40);

@@ -22,7 +22,7 @@ struct laplace
 
 void printhex(char *msg, uint8_t *data, size_t len);
 uint64_t deserialize_uint64(uint8_t *in);
-void serialize_uint64(uint8_t *out, uint64_t input);
+void serialize_u64(uint8_t *out, uint64_t input);
 uint32_t deserialize_uint32(uint8_t *in);
 uint64_t sizeof_serialized_bytes(uint64_t size);
 void serialize_uint32(uint8_t *out, uint32_t in);

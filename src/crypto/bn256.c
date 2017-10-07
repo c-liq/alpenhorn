@@ -45,6 +45,13 @@ void bn256_scalarmult_base_g1(curvepoint_fp_t out, scalar_t const scl)
 	curvepoint_fp_makeaffine(out);
 }
 
+void bn256_g1_random(curvepoint_fp_t out) {
+    scalar_t r;
+    scalar_setrandom(r, bn_n);
+
+    bn256_scalarmult_base_g1(out, r);
+}
+
 void bn256_scalarmult_base_g2(twistpoint_fp2_t out, scalar_t scl)
 {
 	twistpoint_fp2_scalarmult_vartime(out, bn_twistgen, scl);
@@ -366,25 +373,22 @@ int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg,
 	return 0;
 }
 
-size_t serialize_fpe(void *out, fpe_t op)
+void serialize_fpe(void *out, fpe_struct_t *op)
 {
 	mpz_t x;
 	mpz_init(x);
 	fp2mpz2(x, op);
-	size_t count;
-	mpz_export(out, &count, 1, fpe_bytes, 1, 0, x);
+    mpz_export(out, NULL, 1, fpe_bytes, 1, 0, x);
 	mpz_clear(x);
-	return count;
 }
 
-int deserialize_fpe(fpe_t out, uint8_t *in)
+void deserialize_fpe(fpe_struct_t *out, uint8_t *in)
 {
 	mpz_t tmp;
 	mpz_init(tmp);
 	mpz_import(tmp, 1, 1, fpe_bytes, 1, 0, in);
 	mpz2fp2(out, tmp);
 	mpz_clear(tmp);
-	return 0;
 }
 
 void bn256_deserialize_g1(curvepoint_fp_t out, uint8_t *in)
@@ -408,24 +412,18 @@ void bn256_deserialize_g2(twistpoint_fp2_t out, uint8_t *in)
 	fp2e_setzero(out->m_t);
 }
 
-size_t bn256_serialize_g1(uint8_t *out, curvepoint_fp_t g1_elem)
+void bn256_serialize_g1(uint8_t *out, curvepoint_fp_struct_t *g1_elem)
 {
 	fpe_t fp1, fp2;
 	fpe_set(fp1, g1_elem->m_x);
 	fpe_set(fp2, g1_elem->m_y);
-	size_t total_count = 0;
-	size_t count = serialize_fpe(out, fp1);
-	total_count += count;
-	count = serialize_fpe(out + fpe_bytes, fp2);
-	total_count += count;
-	return total_count;
+
+    serialize_fpe(out, fp1);
+    serialize_fpe(out + fpe_bytes, fp2);
 }
 
-size_t bn256_serialize_g1_xonly(uint8_t *out, curvepoint_fp_t g1_elem)
-{
-	size_t total_count = 0;
-	total_count = serialize_fpe(out, g1_elem->m_x);
-	return total_count;
+void bn256_serialize_g1_xonly(uint8_t *out, curvepoint_fp_struct_t *g1_elem) {
+    serialize_fpe(out, g1_elem->m_x);
 }
 
 void bn256_deserialize_g1_xonly(curvepoint_fp_t out, uint8_t *in)
@@ -437,7 +435,7 @@ void bn256_deserialize_g1_xonly(curvepoint_fp_t out, uint8_t *in)
 	fpe_setzero(out->m_t);
 }
 
-size_t bn256_serialize_gt(uint8_t *out, fp12e_t gt_elem)
+void bn256_serialize_gt(uint8_t *out, fp12e_struct_t *gt_elem)
 {
 	fpe_t fpe_elems[12];
 	fp2e_to_2fpe(fpe_elems[0], fpe_elems[1], gt_elem->m_a->m_a);
@@ -446,53 +444,52 @@ size_t bn256_serialize_gt(uint8_t *out, fp12e_t gt_elem)
 	fp2e_to_2fpe(fpe_elems[6], fpe_elems[7], gt_elem->m_b->m_a);
 	fp2e_to_2fpe(fpe_elems[8], fpe_elems[9], gt_elem->m_b->m_b);
 	fp2e_to_2fpe(fpe_elems[10], fpe_elems[11], gt_elem->m_b->m_c);
-	size_t total_count = 0;
+
 	uint8_t *ptr = out;
 	for (int i = 0; i < 12; i++) {
-		size_t tmp_count = serialize_fpe(ptr, fpe_elems[i]);
+        serialize_fpe(ptr, fpe_elems[i]);
 		ptr += fpe_bytes;
-		total_count += tmp_count;
-	}
-	return total_count;
+    }
 }
 
-void bn256_deserialize_and_sum_g1(curvepoint_fp_t out, uint8_t *in,
+void bn256_deserialize_and_sum_g1(curvepoint_fp_struct_t *out, uint8_t *in,
                                   size_t count)
 {
 	if (count < 1) return;
 
-	uint8_t *ptr = in;
-	curvepoint_fp_t tmp;
-	bn256_deserialize_g1(tmp, ptr);
+    curvepoint_fp_t tmp;
+    bn256_deserialize_g1(tmp, in);
 	curvepoint_fp_set(out, tmp);
-	ptr += g1_bytes;
+    in += g1_bytes;
 	fpe_setone(out->m_z);
 
 	for (size_t i = 1; i < count; i++) {
-		bn256_deserialize_g1(tmp, ptr);
+        bn256_deserialize_g1(tmp, in);
 		curvepoint_fp_add_vartime(out, out, tmp);
-		ptr += g1_bytes;
+        in += g1_bytes;
 	}
 }
 
-void bn256_deserialize_and_sum_g2(twistpoint_fp2_t out, void *in,
+void bn256_deserialize_and_sum_g2(twistpoint_fp2_struct_t *out, void *in,
                                   size_t count)
 {
-	uint8_t *ptr = in;
-	twistpoint_fp2_setneutral(out);
-	fp2e_setone(out->m_z);
+    if (count < 1) return;
 
-	twistpoint_fp2_t tmp;
-	for (size_t i = 0; i < count; i++) {
-		bn256_deserialize_g2(tmp, ptr);
+    twistpoint_fp2_t tmp;
+    bn256_deserialize_g2(tmp, in);
+    twistpoint_fp2_set(out, tmp);
+    fp2e_setone(out->m_z);
+
+    for (size_t i = 1; i < count; i++) {
+        in += g2_bytes;
+        bn256_deserialize_g2(tmp, in);
 		twistpoint_fp2_add_vartime(out, out, tmp);
-		ptr += g2_bytes;
 	}
 }
 
 void bn256_sum_g1(curvepoint_fp_t out, curvepoint_fp_t *in, size_t count)
 {
-	if (!in || count < 1) return;
+    if (count < 1) return;
 
 	curvepoint_fp_set(out, in[0]);
 	fpe_setone(out->m_z);
@@ -502,31 +499,30 @@ void bn256_sum_g1(curvepoint_fp_t out, curvepoint_fp_t *in, size_t count)
 	}
 }
 
-void bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_t in[],
-                  const size_t count)
-{
-	if (!in || count <= 1) return;
+int bn256_sum_g2(twistpoint_fp2_t out, twistpoint_fp2_struct_t *in,
+                 const size_t count) {
+    if (count < 1) return -1;
 
-	twistpoint_fp2_set(out, in[0]);
+    twistpoint_fp2_set(out, &in[0]);
 	fp2e_setone(out->m_z);
 	for (size_t i = 1; i < count; i++) {
-		twistpoint_fp2_add_vartime(out, out, in[i]);
-	}
+        twistpoint_fp2_add_vartime(out, out, &in[i]);
+    }
+
+    return 0;
 }
 
-size_t bn256_serialize_g2(uint8_t *out, twistpoint_fp2_t in)
+void bn256_serialize_g2(uint8_t *out, twistpoint_fp2_t in)
 {
 	fpe_t fpe_elems[4];
 	fp2e_to_2fpe(fpe_elems[0], fpe_elems[1], in->m_x);
 	fp2e_to_2fpe(fpe_elems[2], fpe_elems[3], in->m_y);
-	size_t total_count = 0;
-	uint8_t *ptr = out;
+
+    uint8_t *ptr = out;
 	for (int i = 0; i < 4; i++) {
-		size_t tmp_count = serialize_fpe(ptr, fpe_elems[i]);
+        serialize_fpe(ptr, fpe_elems[i]);
 		ptr += fpe_bytes;
-		total_count += tmp_count;
 	}
-	return total_count;
 }
 
 void bn256_pair(fp12e_t rop, twistpoint_fp2_t op1, curvepoint_fp_t op2)

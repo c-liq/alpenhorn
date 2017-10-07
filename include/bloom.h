@@ -1,47 +1,44 @@
-#ifndef ALPENHORN_BLOOM_H
-#define ALPENHORN_BLOOM_H
+#ifndef BLOOM_FILTER_H
+#define BLOOM_FILTER_H
 
-#include "alpenhorn/config.h"
-struct bloomfilter_s;
+#include <stdio.h>
+#include <stdint.h>
+#include <math.h>
+#include "xxhash.h"
+#include <stdlib.h>
+#include "prime_gen.h"
 
-typedef struct bloomfilter_s bloomfilter_s;
-
-struct bloomfilter_s
-{
-	uint8_t *base_ptr;
-	uint8_t *bloom_ptr;
-	uint64_t size_bytes;
-	uint64_t *partition_lengths_bits;
-	uint64_t num_partitions;
-	uint64_t hash_key;
-	uint64_t *partition_offsets;
-	double target_falsepos_rate;
-	uint64_t total_size_bytes;
-	uint64_t prefix_len;
+typedef struct bloom bloom_s;
+struct bloom {
+  uint8_t *base_ptr;
+  uint8_t *bloom_ptr;
+  uint64_t size;
+  uint64_t *partition_lengths;
+  uint64_t num_partitions;
+  uint8_t **partition_ptrs;
+  double false_pos_rate;
+  uint64_t total_size;
+  uint64_t prefix_len;
+  uint64_t num_elems;
+  uint64_t capacity;
 };
 
-void bloom_calc_partitions(long m_target,
-                           uint64_t *m_actual_bytes,
-                           uint64_t num_partitions,
-                           uint64_t *partition_lengths_bytes,
-                           uint64_t *partition_lengths_bits,
-                           const uint64_t *ptable,
-                           uint64_t ptable_size);
+bloom_s *bloom_alloc(double p, uint64_t n, uint8_t *data, uint64_t prefix_len);
 
-void bloom_add_elem(struct bloomfilter_s *bf, uint8_t *data, uint64_t data_len);
-int bloom_lookup(struct bloomfilter_s *bf, uint8_t *data, uint64_t data_len);
-int bloom_init(bloomfilter_s *bf,
-               double p,
-               uint64_t n,
-               uint64_t hash_key,
-               uint8_t *data,
-               uint64_t prefix_len);
-void bloom_clear(struct bloomfilter_s *bf);
-void bloom_free(struct bloomfilter_s *bf);
-void bloom_print_stats(bloomfilter_s *bf);
-bloomfilter_s *bloom_alloc(double p,
-                           uint64_t n,
-                           uint64_t hash_key,
-                           uint8_t *data,
-                           uint64_t prefix_len);
-#endif  // ALPENHORN_BLOOM_H
+int bloom_init(bloom_s *bf, double p, uint64_t n, uint8_t *data, uint64_t prefix_len);
+
+void bloom_clear(bloom_s *bf);
+
+void bloom_free(bloom_s *bf);
+
+int bloom_add_elem(bloom_s *bf, uint8_t *data, uint64_t data_len);
+
+int bloom_lookup(bloom_s *bf, uint8_t *data, uint64_t data_len);
+
+int bloom_lookup_constant_time(bloom_s *bf, uint8_t *data, uint64_t data_len);
+
+void bloom_print(bloom_s *bf);
+
+uint64_t bloom_remaining_capacity(bloom_s *bf);
+
+#endif  // BLOOM_FILTER_H

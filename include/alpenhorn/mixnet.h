@@ -57,7 +57,7 @@ struct mixer
     uint64_t round_duration;
     int32_t window_duration;
     uint64_t *mb_counts;
-    mailbox_container_s box_container;
+  mailbox_container_s mailboxes;
     u8 pk[crypto_box_PUBLICKEYBYTES];
     u8 sk[crypto_box_SECRETKEYBYTES];
     u8 mix_pks[num_mix_servers][crypto_box_PUBLICKEYBYTES];
@@ -97,8 +97,8 @@ struct mixer_config
 struct mix_s
 {
     uint64_t id;
-    uint64_t num_inc_onion_layers;
-    uint64_t num_out_onion_layers;
+  uint64_t num_in_layers;
+  uint64_t num_out_layers;
     bool is_last;
     mixer_s af_data;
     mixer_s dial_data;
@@ -130,7 +130,7 @@ struct mix_thread_args
 
 int mix_init(mix_s *mix, u64 server_id, long num_threads);
 
-void mix_entry_add_message(byte_buffer_s *buf, mixer_s *mixer);
+void mix_entry_add_message(byte_buffer *buf, mixer_s *mixer);
 
 void mix_new_round(mix_s *mix, mixer_s *mixer);
 
@@ -138,11 +138,11 @@ void mix_exit_broadcast_box(mix_s *s, mixer_s *mixer, u64 type);
 
 int mix_net_init(mix_s *mix);
 
-int mix_exit_process_client(void *owner, connection *conn, byte_buffer_s *buf);
+int mix_exit_process_client(void *owner, connection *conn, byte_buffer *buf);
 
 void mix_run(mix_s *mix,
              void on_accept(void *, connection *),
-             int on_read(void *, connection *, byte_buffer_s *));
+             int on_read(void *, connection *, byte_buffer *));
 
 int mix_entry_sync(mix_s *mix);
 

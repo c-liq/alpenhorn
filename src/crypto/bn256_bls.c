@@ -2,6 +2,7 @@
 #include <bn256/curvepoint_fp.h>
 #include <bn256/twistpoint_fp2.h>
 #include <bn256_bls.h>
+#include <assert.h>
 
 twistpoint_fp2_t twistgen = {{{{{490313, 4260028, -821156, -818020, 106592, -171108, 757738, 545601, 597403,
                                  366066, -270886, -169528, 3101279, 2043941, -726481, 382478, -650880, -891316,
@@ -16,8 +17,8 @@ twistpoint_fp2_t twistgen = {{{{{490313, 4260028, -821156, -818020, 106592, -171
 
 void bn256_bls_keygen(bn256_bls_keypair *kp)
 {
-	bn256_scalar_random(kp->secret_key);
-	bn256_scalarmult_base_g2(kp->public_key, kp->secret_key);
+    bn256_scalar_random(kp->sk);
+    bn256_scalarmult_base_g2(kp->public_key, kp->sk);
 	twistpoint_fp2_makeaffine(kp->public_key);
 }
 
@@ -30,14 +31,17 @@ void bn256_bls_sign_message(uint8_t *out_buf, uint8_t *msg, uint64_t msg_len, sc
 	bn256_serialize_g1_xonly(out_buf, sig_g1);
 }
 
-int bn256_bls_verify_message(twistpoint_fp2_t p, uint8_t *signature, uint8_t *msg, size_t msg_len)
-{
-	curvepoint_fp_t h;
+int bn256_bls_verify(twistpoint_fp2_t p, uint8_t *signature, uint8_t *msg, size_t msg_len) {
+    assert(p);
+    assert(msg_len > 0);
+    assert(msg);
+    assert(signature);
+    curvepoint_fp_t h = {{{{{0}}}}};
 	bn256_hash_g1(h, msg, msg_len);
 	curvepoint_fp_makeaffine(h);
-	curvepoint_fp_t sig2;
+    curvepoint_fp_t sig2 = {{{{{0}}}}};
 	bn256_deserialize_g1_xonly(sig2, signature);
-	fp12e_t u, v;
+    fp12e_t u = {{{{{{{0}}}}}}}, v = {{{{{{{0}}}}}}};
 	bn256_pair(u, twistgen, sig2);
 	bn256_pair(v, p, h);
 	int v1 = fp12e_iseq(u, v);
@@ -58,7 +62,7 @@ int bn256_bls_verify_from_point(twistpoint_fp2_t public_key, curvepoint_fp_t sig
 	return fp12e_iseq(u, v);
 }
 
-int bn256_bls_verify_multisig(twistpoint_fp2_t *public_keys,
+int bn256_bls_verify_multisig(twistpoint_fp2_struct_t *public_keys,
                               size_t num_participants,
                               uint8_t *signatures,
                               uint8_t *msg,

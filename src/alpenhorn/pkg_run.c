@@ -17,14 +17,14 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Invalid server id %d\n", sid);
 		return 1;
 	}
-	pkg_s *s = calloc(1, sizeof(pkg_s));
+    pkg *s = calloc(1, sizeof(pkg));
 
-	pkg_server_init(s, (uint64_t) sid, 10, 4, NULL);
+    pkg_server_init(s, (uint64_t) sid, 10, 4, "users");
 	int res = pkg_server_startup(s);
 	if (res) {
 		fprintf(stderr, "failed to connect to mix entry server\n");
 		exit(EXIT_FAILURE);
 	}
-	printf("[PKG %d successfully initialised]\n", s->srv_id);
+    printf("[PKG %ld successfully initialised]\n", s->id);
 	pkg_server_run(s);
 }

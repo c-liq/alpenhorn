@@ -1,8 +1,7 @@
 #ifndef ALPENHORN_NET_COMMON_H
 #define ALPENHORN_NET_COMMON_H
 
-#include "alpenhorn/config.h"
-#include "utils.h"
+#include "byte_buffer.h"
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <fcntl.h>
@@ -15,31 +14,31 @@
 typedef struct send_item send_item;
 struct send_item
 {
-	uint8_t *buffer;
-	u64 bytes_written;
-	u64 write_remaining;
+  byte_buffer *data;
 	send_item *next;
 	bool copied;
 };
 
 typedef struct net_header net_header;
 struct net_header {
-	u64 type;
-	u64 len;
-	u64 round;
-	u64 misc;
+  uint64_t type;
+  uint64_t len;
+  uint64_t round;
+  uint64_t misc;
 };
 
 typedef struct connection connection;
+
 struct connection
 {
 	int sock_fd;
 	int id;
-	byte_buffer_s read_buf;
-    byte_buffer_s write_buf;
+  byte_buffer read_buf;
+  byte_buffer write_buf;
+  byte_buffer_t msg_buf;
     net_header header;
     struct epoll_event event;
-	int (*process)(void *owner, connection *conn, byte_buffer_s *buf);
+  int (*process)(void *owner, connection *conn, byte_buffer *buf);
 	connection *next;
 	connection *prev;
 	bool connected;
@@ -49,6 +48,8 @@ struct connection
 	void *client_state;
 	void *srv_state;
 };
+
+typedef struct connection connection_t[1];
 
 typedef struct nss nss_s;
 
@@ -78,31 +79,40 @@ int socket_set_nonblocking(int socket);
 int net_start_listen_socket(const char *port, bool set_nb);
 
 int connection_init(connection *conn,
-					u64 read_buf_size,
-					u64 write_buf_size,
-					int (*process)(void *, connection *, byte_buffer_s *),
-					int epoll_fd,
-					int socket_fd);
+                    uint64_t rbuf_size,
+                    uint64_t wbuf_size,
+                    int (*process)(void *, connection *, byte_buffer *),
+                    int epfd,
+                    int sockfd);
 
 void net_process_read(void *owner, connection *conn);
 
 int net_epoll_client_accept(nss_s *srv_state, void on_accept(void *, connection *),
-							int on_read(void *, connection *, byte_buffer_s *));
+                            int on_read(void *, connection *, byte_buffer *));
 
 int net_serialize_header(uint8_t *header,
-                         u64 type,
-                         u64 length,
-                         u64 round,
-                         u64 misc);
-
-void net_epoll_send_queue(nss_s *net_state, connection *conn);
-
-int net_epoll_queue_write(nss_s *owner, connection *conn, uint8_t *buffer, u64 data_size, bool copy);
-int alp_serialize_header(byte_buffer_s *buf,
                          uint64_t type,
                          uint64_t length,
                          uint64_t round,
                          uint64_t misc);
 
-int alp_deserialize_header(net_header *header, byte_buffer_s *buf);
+void net_epoll_send_queue(nss_s *net_state, connection *conn);
+
+int net_epoll_queue_write(nss_s *owner, connection *conn, byte_buffer *buffer, bool copy);
+
+int alp_serialize_header(byte_buffer *buf,
+                         uint64_t type,
+                         uint64_t length,
+                         uint64_t round,
+                         uint64_t misc);
+
+int alp_deserialize_header(net_header *header, byte_buffer *buf);
+
+int net_connect_init(connection *conn,
+                     const char *addr,
+                     const char *port,
+                     int epoll_fd,
+                     int set_nb,
+                     uint64_t buf_size,
+                     int (*process)(void *, connection *, byte_buffer *));
 #endif //ALPENHORN_NET_COMMON_H

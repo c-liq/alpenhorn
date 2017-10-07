@@ -8,8 +8,7 @@
 #include <bn256/twistpoint_fp2.h>
 #include "crypto_salsa.h"
 
-
-#define bn256_ibe_oh (g1_bytes + crypto_NBYTES + crypto_MACBYTES)
+#define bn256_ibe_oh (g1_bytes + crypto_secretbox_NONCEBYTES + crypto_secretbox_MACBYTES)
 
 typedef struct bn256_ibe_master_kp bn256_ibe_master_kp;
 struct bn256_ibe_master_kp

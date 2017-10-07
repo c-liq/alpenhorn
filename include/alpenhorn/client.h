@@ -12,188 +12,138 @@
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
-
-#if USE_PBC
-#include "pbc_bls.h"
-#include "pbc_ibe.h"
-#else
 #include "bn256_bls.h"
 #include "bn256_ibe.h"
-#endif
 
-struct client;
-struct friend_request;
-struct incoming_call;
-struct pending_friend_req;
-struct pending_call;
-typedef struct client client_s;
-typedef struct friend_request friend_request_s;
-typedef struct incoming_call incoming_call_s;
+typedef struct client client;
+
+typedef struct friend_request friend_request;
+
+typedef struct call call;
+
 typedef struct client_net client_net;
-typedef struct pending_friend_req pending_friend_req;
-typedef struct pending_call pending_call;
+
 typedef struct sign_keypair sign_keypair;
-struct sign_keypair
-{
-	uint8_t public_key[crypto_sign_PUBLICKEYBYTES];
-	uint8_t secret_key[crypto_sign_SECRETKEYBYTES];
+
+typedef struct mix_data mix_data;
+
+typedef struct pkg_data pkg_data;
+
+typedef struct client_event_fns client_event_fns;
+
+typedef struct mix_client_config {
+  u64 num_boxes;
+  u64 msg_length;
+  u64 msg_type;
+  u64 mb_request_type;
+  int (*build_message)(client *);
+} mix_client_config;
+
+struct mix_data {
+  u64 round;
+  u64 num_boxes;
+  u8 mix_pks[num_mix_servers][crypto_box_PUBLICKEYBYTES];
+  u64 msg_length;
+  u64 encrypted_msg_length;
+  u64 msg_type;
+  u64 mb_request_type;
+  byte_buffer_t msg_buffer;
+  int (*build_message)(client *);
+  void *datap;
 };
 
-enum actions
-{
-	ADD_FRIEND = '1',
-	CONFIRM_FRIEND = '2',
-	DIAL_FRIEND = '3',
-	PRINT_KW_TABLE = '4',
+struct pkg_data {
+  u64 num_servers;
+  u64 num_auth_responses;
+  u64 num_broadcasts;
+  twistpoint_fp2_t pkg_sig_pk;
+  curvepoint_fp_t pkg_master_pk;
+  u8 bc_ibe_keys[num_pkg_servers][bn256_ibe_pkg_pk_BYTES];
+  u8 bc_dh_pks[num_pkg_servers][crypto_box_PUBLICKEYBYTES];
+  u8 auth_responses[num_pkg_servers][pkg_enc_auth_res_BYTES];
+  u8 symmetric_keys[num_pkg_servers][crypto_box_SECRETKEYBYTES];
+  curvepoint_fp_t pkg_multisig;
+  twistpoint_fp2_t identity_sk;
+  u8 hashed_id[g2_serialized_bytes];
+  connection *pkg_conns;
+};
+/*
+
+struct mix_client {
+    mix_data *protocol_data;
+    u64 num_protocols;
+    u64 user_id[user_id_BYTES];
+    u64 num_servers;
+    u8 *mix_sig_pks;
+    connection mix_entry;
+    connection mix_exit;
+
+};
+*/
+
+struct client_event_fns {
+  void (*call_received)(call *);
+  void (*call_sent)(call *);
+  void (*friend_request_sent)(friend_request *);
+  void (*friend_request_received)(friend_request *);
+  void (*friend_request_confirmed)(friend_request *);
 };
 
-typedef struct action action;
-
-struct action
-{
-	enum actions type;
-	char user_id[user_id_BYTES];
-	uint64_t intent;
-	action *next;
+struct client {
+  u8 user_id[user_id_BYTES];
+  u8 sig_pk[crypto_sign_PUBLICKEYBYTES];
+  u8 sig_sk[crypto_sign_SECRETKEYBYTES];
+  keywheel_table kw_table;
+  mix_data af_data;
+  mix_data dial_data;
+  pkg_data pkg_state;
+  u8 session_key_buf[crypto_ghash_BYTES];
+  double bloom_p_val;
+  u64 num_intents;
+  list *friend_requests;
+  bool running;
+  client_event_fns *event_fns;
+  list *outgoing_requests;
+  list *outgoing_calls;
+  pthread_mutex_t *mutex;
+  connection_t mix_entry;
+  connection_t mix_last;
+  int epoll_fd;
+  u8 mix_sig_pks[num_mix_servers][crypto_sign_PUBLICKEYBYTES];
 };
 
-struct pending_friend_req
-{
-	uint8_t user_id[user_id_BYTES];
-	friend_request_s *req;
-	pending_friend_req *next;
+struct friend_request {
+  u8 user_id[user_id_BYTES];
+  u8 dh_pk[crypto_box_PKBYTES];
+  u64 dialling_round;
+  u8 sig_pk[crypto_sign_PUBLICKEYBYTES];
+  u8 cert[g1_serialized_bytes];
+  u8 user_sig[client_sigmsg_BYTES];
+  bool outgoing;
 };
 
-struct pending_call
-{
-	uint8_t user_id[user_id_BYTES];
-	uint64_t intent;
-	pending_call *next;
+struct call {
+  u8 user_id[user_id_BYTES];
+  u8 session_key[crypto_ghash_BYTES];
+  u64 round;
+  u64 intent;
 };
 
-struct client_net
-{
-	connection mix_entry;
-	connection mix_last;
-	connection pkg_connections[num_pkg_servers];
-	struct epoll_event *events;
-	int epoll_fd;
-	int num_broadcast_responses;
-	int num_auth_responses;
-	action *action_stack;
-	pthread_mutex_t aq_lock;
-	int interrupt_fd;
-};
+client *client_alloc(const u8 *user_id, client_event_fns *event_fns, u8 *pk, u8 *sk);
 
-struct client
-{
-	uint8_t user_id[user_id_BYTES];
-	sign_keypair lt_sig_keypair;
-	uint64_t dialling_round;
-	keywheel_table_s keywheel;
-	uint64_t af_round;
-	uint64_t dial_num_mailboxes;
-	uint64_t af_num_mailboxes;
-	uint8_t hashed_id[g2_serialized_bytes];
-	uint8_t pkg_auth_requests[num_pkg_servers][cli_pkg_single_auth_req_BYTES];
-	uint8_t pkg_auth_responses[num_pkg_servers][pkg_enc_auth_res_BYTES];
-	uint8_t friend_request_buf[onionenc_friend_request_BYTES];
-	uint8_t dial_request_buf[ onionenc_dial_token_BYTES];
-	uint8_t session_key_buf[crypto_ghash_BYTES];
-	uint8_t mix_af_pks[num_mix_servers][crypto_pk_BYTES];
-	uint8_t mix_dial_pks[num_mix_servers][crypto_pk_BYTES];
-	uint8_t pkg_broadcast_msgs[num_pkg_servers][pkg_broadcast_msg_BYTES];
-	uint8_t pkg_eph_symmetric_keys[num_pkg_servers][crypto_generichash_BYTES];
-	double bloom_p_val;
-	uint64_t num_intents;
-	friend_request_s *friend_requests;
-	client_net net_state;
-	bool running;
-	void (*on_recv_call)(incoming_call_s *);
-	void (*on_friend_request)(friend_request_s *);
-	void (*on_friend_confirm)(friend_request_s *);
-	uint64_t af_mb_num_messages;
-	byte_buffer_s af_mb_buffer;
-	pending_friend_req *friend_request_queue;
-	pending_call *outgoing_call_queue;
-	FILE *log_file;
-#if USE_PBC
-	pairing_s pairing;
-	element_s pkg_lt_sig_keys_combined;
-	element_s pkg_eph_pub_combined_g1;
-	element_s ibe_gen_element_g1;
-	element_s bls_gen_element_g2;
-	element_s pkg_friend_elem;
-	element_s pkg_multisig_combined_g1;
-	element_s pkg_ibe_secret_combined_g2;
-#else
-	twistpoint_fp2_t pkg_lt_sig_keys_combined;
-	curvepoint_fp_t pkg_eph_pub_combined_g1;
-	curvepoint_fp_t pkg_multisig_combined_g1;
-	twistpoint_fp2_t pkg_ibe_secret_combined_g2;
-#endif
+int client_init(client *c, const u8 *user_id, client_event_fns *event_fns, u8 *pk, u8 *sk);
 
-    connection *mix_entry;
-};
+int client_run(client *cn);
 
-struct friend_request
-{
-	uint8_t user_id[user_id_BYTES];
-	uint8_t dh_pk[crypto_pk_BYTES];
-	uint64_t dialling_round;
-	uint8_t lt_sig_key[crypto_sign_PUBLICKEYBYTES];
-	friend_request_s *next;
-	friend_request_s *prev;
-};
+void *client_process_loop(void *client_p);
 
-struct incoming_call
-{
-	uint8_t user_id[user_id_BYTES];
-	uint8_t session_key[crypto_ghash_BYTES];
-	uint64_t round;
-	uint64_t intent;
-};
+int alp_add_friend(client *c, u8 *user_id);
 
-client_s *client_alloc(const uint8_t *user_id,
-                       const sign_keypair *signing_keys,
-                       void (*on_recv_call)(incoming_call_s *),
-                       void (*on_recv_friend_request)(friend_request_s *),
-                       void (*on_friend_confirm)(friend_request_s *));
-int client_init(client_s *c,
-                const uint8_t *user_id,
-                const sign_keypair *signing_keys,
-                void (*on_recv_call)(incoming_call_s *),
-                void (*on_recv_friend_request)(friend_request_s *),
-                void (*on_friend_confirm)(friend_request_s *));
-int af_create_pkg_auth_request(client_s *c);
-int af_create_request(client_s *c, uint8_t *friend_user_id);
-int af_process_auth_responses(client_s *c);
-int af_decrypt_request(client_s *c, uint8_t *request_buf, uint64_t round);
-int af_add_friend(client_s *c, const uint8_t *user_id);
-int af_process_mb(client_s *c, uint8_t *mailbox, uint64_t num_messages, uint64_t round);
-int af_accept_request(client_s *c, friend_request_s *pRequest);
-int dial_call_friend(client_s *c, const uint8_t *user_id, uint64_t intent);
-int dial_process_mb(client_s *c, uint8_t *mb_data, uint64_t round, uint64_t num_tokens);
-int dial_fake_request(client_s *c);
-int af_fake_request(client_s *c);
-int client_net_init(client_s *c);
-int net_send_message(client_s *s, struct connection *conn, uint8_t *msg, uint64_t msg_size_bytes);
-int mix_entry_process_msg(void *client, connection *conn, byte_buffer_s *buf);
-int client_net_pkg_auth(client_s *cn);
-int client_net_process_pkg(void *c, connection *conn, byte_buffer_s *buf);
-int mix_last_process_msg(void *client, connection *conn, byte_buffer_s *buf);
-int client_run(client_s *cn);
-void *client_process_loop(void *c);
-int action_stack_push(client_s *c, action *new_action);
-action *action_stack_pop(client_s *c);
-int client_confirm_friend(client_s *c, uint8_t *user_id);
-int client_add_friend(client_s *c, uint8_t *user_id);
-int client_call_friend(client_s *c, uint8_t *user_id, uint64_t intent);
-uint8_t *client_get_public_key(client_s *c);
-int af_confirm_friend(client_s *c, const char *user_id);
-int client_confirm_registration(uint8_t *user_id, uint8_t *sig_key, uint8_t *msgs_buf);
-int client_register(sign_keypair *sig_keys, char *user_id);
-int af_update_pkg_public_keys(client_s *c);
-int af_build_request(client_s *c);
+int alp_call_friend(client *c, u8 *user_id, u64 intent);
+
+int alp_confirm_registration(u8 *user_id, u8 *sig_key, u8 *msgs_buf);
+
+int alp_register(char *user_id, u8 *pk, u8 *sk);
+
 
 #endif // ALPENHORN_CLIENT_H

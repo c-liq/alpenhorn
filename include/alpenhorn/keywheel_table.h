@@ -3,18 +3,18 @@
 
 #include "config.h"
 #include "utils.h"
-#include "client.h"
+
 
 struct keywheel;
 struct keywheel_table;
 struct keywheel_unsynced;
-typedef struct keywheel_table keywheel_table_s;
-typedef struct keywheel keywheel_s;
+typedef struct keywheel_table keywheel_table;
+typedef struct keywheel keywheel;
 typedef struct keywheel_unsynced keywheel_unsynced;
 
 struct keywheel_table
 {
-	keywheel_s *keywheels;
+  keywheel *keywheels;
 	size_t num_keywheels;
 	keywheel_unsynced *unsynced_keywheels;
 	size_t num_unsynced;
@@ -24,33 +24,34 @@ struct keywheel_table
 
 struct keywheel
 {
-	uint8_t user_id[user_id_BYTES];
-	uint8_t key_state[intent_BYTES + crypto_generichash_BYTES_MAX];
+  u8 user_id[user_id_BYTES];
+  u8 key_state[intent_BYTES + crypto_generichash_BYTES_MAX];
 	uint64_t dialling_round;
-	keywheel_s *next;
-	keywheel_s *prev;
+  keywheel *next;
+  keywheel *prev;
 };
 
 struct keywheel_unsynced
 {
-	uint8_t user_id[user_id_BYTES];
-	uint8_t public_key[crypto_pk_BYTES];
-	uint8_t secret_key[crypto_box_SECRETKEYBYTES];
+  u8 user_id[user_id_BYTES];
+  u8 public_key[crypto_box_PKBYTES];
+  u8 secret_key[crypto_box_SECRETKEYBYTES];
 	uint64_t round_sent;
 	keywheel_unsynced *next;
 	keywheel_unsynced *prev;
 };
 
-int kw_table_init(keywheel_table_s *table, uint64_t dial_round, char *table_file);
-int kw_dialling_token(uint8_t *out, keywheel_table_s *table, const uint8_t *userid, uint64_t intent);
-int kw_session_key(uint8_t *out, keywheel_table_s *table, const uint8_t *user_id);
-void kw_advance_table(keywheel_table_s *table);
-int kw_new_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *pk, uint8_t *sk, uint64_t round_sentt);
-int kw_complete_keywheel(keywheel_table_s *table, const uint8_t *user_id, uint8_t *friend_pk, const uint64_t round_sync);
-keywheel_s *kw_from_request(keywheel_table_s *table, const uint8_t *user_id, uint8_t *dh_pk_out, uint8_t *friend_pk);
-int kw_save(keywheel_table_s *table);
-int kw_load(keywheel_table_s *table, uint64_t dial_round, char *file_path);
-void kw_print_table(keywheel_table_s *table);
-keywheel_unsynced *kw_unsynced_lookup(keywheel_table_s *table, const uint8_t *user_id);
-
+int kw_table_init(keywheel_table *table, uint64_t dial_round, char *table_file);
+int kw_dialling_token(u8 *out, keywheel_table *table, u8 *userid, uint64_t intent);
+int kw_session_key(u8 *out, keywheel_table *table, u8 *user_id);
+void kw_advance_table(keywheel_table *table);
+int kw_new_keywheel(keywheel_table *table, u8 *user_id, u8 *pk, u8 *sk, uint64_t round_sentt);
+int kw_complete_keywheel(keywheel_table *table, u8 *user_id, u8 *friend_pk, uint64_t round_sync);
+keywheel *kw_from_request(keywheel_table *table, u8 *user_id, u8 *dh_pk_out, u8 *friend_pk);
+int kw_save(keywheel_table *table);
+int kw_load(keywheel_table *table, uint64_t dial_round, char *file_path);
+void kw_print_table(keywheel_table *table);
+keywheel_unsynced *kw_unsynced_lookup(keywheel_table *table, const u8 *user_id);
+keywheel *kw_lookup(keywheel_table *table, const u8 *user_id);
+int kw_call_keys(u8 *session, u8 *token, keywheel_table *table, const u8 *user_id, u64 intent);
 #endif //ALPENHORN_KEYWHEEL_H

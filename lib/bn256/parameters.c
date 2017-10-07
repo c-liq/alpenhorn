@@ -53,7 +53,7 @@ EXTERN const char *bn_pplus1_div4_str = "162501374239116509331991096855899764357
 
 EXTERN const scalar_t bn_v_scalar = {1868033, 0, 0, 0};
 
-EXTERN const const scalar_t
+EXTERN const scalar_t
 	pMinus3Div4 = {0x86172b1b17822599, 0x7b96e234482d6d67, 0x6a9bfb2e18613708, 0x23ed4078d2a8e1fe};
 
 EXTERN const scalar_t pMinus1Div2 = {0xc2e56362f044b33, 0xf72dc468905adacf, 0xd537f65c30c26e10, 0x47da80f1a551c3fc};

@@ -1,223 +1,247 @@
-#include <stdio.h>
-#include <stdint.h>
-#include "utils.h"
-#include <math.h>
-#include "xxhash.h"
-#include "prime_gen.h"
 #include "bloom.h"
 
-#define MAX_PREFIX_SZ 256
+static inline int bloom_calc_partitions(bloom_s *bf, long target_size, long k, primes_s *primes);
 
-void bloom_calc_partitions(const long m_target,
-                           uint64_t *m_actual_bytes,
-                           const uint64_t num_partitions,
-                           uint64_t *partition_lengths_bytes,
-                           uint64_t *partition_lengths_bits,
-                           const uint64_t *ptable,
-                           const uint64_t ptable_size)
-{
+static inline long binary_search_nearest(const uint64_t *elem_array, size_t num_elems, uint64_t value);
 
-	long pdex = 0;
-	long l = 0;
-	long r = ptable_size - 1;
-	long mid = 0;
+static inline uint64_t unsigned_abs(uint64_t a, uint64_t b);
 
-	uint64_t target_avg = m_target / num_partitions;
+static inline int bloom_calc_partitions(bloom_s *bf, long target_size, long k, primes_s *primes) {
+    uint64_t avg_part_size = (uint64_t) ceil(target_size / k);
+    long avg_index = binary_search_nearest(primes->primes, primes->count, avg_part_size);
+    long sum = 0;
+    long start_index = avg_index - k + 1 >= 0 ? avg_index - k + 1 : 0;
+    for (long i = start_index; i <= avg_index; i++) {
+        sum += primes->primes[i];
+    }
 
-	while (l <= r) {
-		mid = (l + r + 1) / 2;
-		if (target_avg < ptable[mid]) {
-			r = mid - 1;
-		}
-		else if (target_avg > ptable[mid]) {
-			l = mid + 1;
+    long min = labs(sum - target_size);
+    long lowest_index = start_index;
 
-		}
-		else {
-			break;
-		}
-	}
+    long j = avg_index + 1;
+    long delta = 0;
+    while (1) {
+        sum += primes->primes[j] - primes->primes[lowest_index];
+        delta = labs(sum - target_size);
+        if (delta >= min) {
+            break;
+        }
+        min = delta;
+        j++;
+        lowest_index++;
+    }
 
-	pdex = ptable[mid] == target_avg ? mid : mid - 1;
-	long sum = 0;
-	long diff = 0;
+    uint64_t *part_lengths_bytes = malloc(sizeof(uint64_t) * k);
+    if (!part_lengths_bytes) {
+        return -1;
+    }
 
-	for (long i = pdex - num_partitions + 1; i <= pdex; i++) {
-		sum += ptable[i];
-	}
+    for (uint64_t i = 0; i < k; i++) {
+        bf->partition_lengths[i] = primes->primes[lowest_index + i];
+        part_lengths_bytes[i] = (uint64_t) ceil((double) bf->partition_lengths[i] / 8);
+        bf->size += part_lengths_bytes[i];
+    }
 
-	long min = sum - m_target;
-	min = min >= 0 ? min : -min;
-	long j = pdex + 1;
+    bf->total_size = bf->size + bf->prefix_len;
+    if (!bf->base_ptr) {
+        bf->base_ptr = calloc(1, bf->total_size);
+        if (!bf->base_ptr) {
+            free(part_lengths_bytes);
+            return -1;
+        }
+        bf->bloom_ptr = bf->base_ptr + bf->prefix_len;
+    }
 
-	while (1) {
-		sum += ptable[j] - ptable[j - num_partitions];
-		diff = (sum - m_target) > 0 ? (sum - m_target) : -(sum - m_target);
-		if (diff >= min)
-			break;
+    uint64_t offset_sum = 0;
+    bf->partition_ptrs[0] = bf->bloom_ptr;
+    for (uint64_t i = 1; i < k; i++) {
+        offset_sum += part_lengths_bytes[i - 1];
+        bf->partition_ptrs[i] = bf->bloom_ptr + offset_sum;
+    }
 
-		min = diff;
-		j = j + 1;
-	}
-
-	uint64_t bits_size = 0;
-	for (uint64_t i = 0; i < num_partitions; i++) {
-		partition_lengths_bits[i] = ptable[j - num_partitions + i];
-		partition_lengths_bytes[i] = (uint64_t) ceil((double) partition_lengths_bits[i] / 8);
-		bits_size += partition_lengths_bits[i];
-		*m_actual_bytes += partition_lengths_bytes[i];
-	}
+    free(part_lengths_bytes);
+    return 0;
 }
 
-void bloom_add_elem(bloomfilter_s *bf, uint8_t *data, uint64_t data_len)
-{
-	uint64_t hash = XXH64(data, data_len, bf->hash_key);
-
-	for (uint64_t i = 0; i < bf->num_partitions; i++) {
-		uint64_t mod_result = hash % bf->partition_lengths_bits[i];
-		uint8_t *partition = bf->bloom_ptr + bf->partition_offsets[i];
-		partition[mod_result / 8] |= 1 << (mod_result % 8);
-	}
+static inline uint64_t unsigned_abs(uint64_t a, uint64_t b) {
+    uint64_t diff = a - b;
+    if (b > a) {
+        diff = 1 + ~diff;
+    }
+    return diff;
 }
 
-int bloom_lookup(bloomfilter_s *bf, uint8_t *data, uint64_t data_len)
-{
-	if (!bf | !data) {
-		fprintf(stderr, "invalid argument to bloom_lookup\n");
-		return -1;
-	}
+static inline long binary_search_nearest(const uint64_t *elem_array, size_t num_elems, uint64_t value) {
+    if (!elem_array || num_elems <= 0) {
+        return -1;
+    }
+    if (num_elems == 1) {
+        return elem_array[0];
+    }
 
-	uint64_t hash = XXH64(data, data_len, bf->hash_key);
+    long low = 0;
+    long high = num_elems - 1;
+    long mid = 0;
 
-	for (uint64_t i = 0; i < bf->num_partitions; i++) {
-		uint64_t mod_result = hash % bf->partition_lengths_bits[i];
-		uint8_t *partition = bf->bloom_ptr + bf->partition_offsets[i];
-		if (!(partition[mod_result / 8] & 1 << mod_result % 8)) {
-			return 0;
-		}
-	}
-	return 1;
+    while (low <= high) {
+        mid = low + (high - low) / 2;
+        if (value < elem_array[mid])
+            high = mid - 1;
+        else if (value > elem_array[mid])
+            low = ++mid;
+        else
+            break;
+    }
+
+    long index;
+    if (elem_array[mid] == value) {
+        index = mid;
+    } else {
+        uint64_t diff1 = unsigned_abs(elem_array[mid - 1], value);
+        uint64_t diff2 = unsigned_abs(elem_array[mid + 1], value);
+        index = diff1 > diff2 ? mid + 1 : mid - 1;
+    }
+
+    return index;
 }
 
-bloomfilter_s *bloom_alloc(double p, uint64_t n, uint64_t hash_key, uint8_t *bloom_data, uint64_t prefix_len)
-{
-	if (p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
-		fprintf(stderr, "invalid parameters to bloom allocator\n");
-		return NULL;
-	}
+uint64_t bloom_remaining_capacity(bloom_s *bf) {
+    if (!bf) {
+        return 0;
+    }
 
-	bloomfilter_s *bf = calloc(1, sizeof *bf);
-	if (!bf) {
-		fprintf(stderr, "calloc failure during bloom filter allocation\n");
-		return NULL;
-	}
-
-	int res = bloom_init(bf, p, n, hash_key, bloom_data, prefix_len);
-	if (res) {
-		bloom_free(bf);
-		return NULL;
-	}
-
-	return bf;
+    return bf->capacity > bf->num_elems ? bf->capacity - bf->num_elems : 0;
 }
 
-int bloom_init(bloomfilter_s *bf, double p, uint64_t n, uint64_t hash_key, uint8_t *bloom_data, uint64_t prefix_len)
-{
-	if (!bf || p <= 0 || n <= 0 || prefix_len > MAX_PREFIX_SZ) {
-		fprintf(stderr, "invalid parameters to bloom allocator\n");
-		return -1;
-	}
+int bloom_add_elem(bloom_s *bf, uint8_t *data, uint64_t data_len) {
+    if (!bf || !data || !data_len) {
+        return -1;
+    }
 
-	double m_target = ceil((n * log(p)) / log(1.0 / (pow(2.0, log(2.0)))));
-	uint64_t k = (uint64_t) round(log(2.0) * m_target / n);
-	if (m_target <= 0.0 || k <= 0) {
-		fprintf(stderr, "invalid parameters for bloom filter\n");
-		return -1;
-	}
+    uint64_t hash = XXH64(data, data_len, 0);
+    for (uint64_t i = 0; i < bf->num_partitions; i++) {
+        uint64_t partition_bit = hash % bf->partition_lengths[i];
+        bf->partition_ptrs[i][partition_bit / 8] |= 1 << (partition_bit % 8);
+    }
 
-	uint64_t *primes_table;
-	uint64_t prime_table_size = generate_primes(&primes_table, (m_target / k) + 300);
-	uint64_t actual_size = 0;
-
-	uint64_t *part_lengh_bits = calloc(k, sizeof *part_lengh_bits);
-	if (!part_lengh_bits)
-		return -1;
-	uint64_t *part_length_bytes = calloc(k, sizeof *part_length_bytes);
-	if (!part_length_bytes)
-		return -1;
-	uint64_t *part_offsets = calloc(k, sizeof *part_offsets);
-	if (!part_offsets)
-		return -1;
-
-	bloom_calc_partitions((long) m_target,
-	                      &actual_size,
-	                      k,
-	                      part_length_bytes,
-	                      part_lengh_bits,
-	                      primes_table,
-	                      prime_table_size);
-
-	uint64_t offset_sum = 0;
-	for (int i = 1; i < k; i++) {
-		offset_sum += part_length_bytes[i - 1];
-		part_offsets[i] = offset_sum;
-	}
-	free(part_length_bytes);
-	free(primes_table);
-
-	if (bloom_data != NULL) {
-		bf->base_ptr = bloom_data;
-	}
-
-	else {
-		bf->base_ptr = calloc(actual_size + prefix_len, sizeof(uint8_t));
-		if (!bf->base_ptr) {
-			fprintf(stderr, "Bloom: calloc failure\n");
-			return -1;
-		}
-	}
-
-	bf->bloom_ptr = bf->base_ptr + prefix_len;
-	bf->num_partitions = k;
-	bf->partition_lengths_bits = part_lengh_bits;
-	bf->hash_key = hash_key;
-	bf->partition_offsets = part_offsets;
-	bf->target_falsepos_rate = p;
-	bf->size_bytes = actual_size;
-	bf->total_size_bytes = actual_size + prefix_len;
-	bf->prefix_len = prefix_len;
-
-	return 0;
+    bf->num_elems++;
+    return 0;
 }
 
-void bloom_print_stats(bloomfilter_s *bf)
-{
-	printf("Bloomfilter stats\n--------\n");
-	printf("Size: %ld bytes (% ld bits)\n", bf->size_bytes, bf->size_bytes * 8);
-	printf("Number of partitions: %ld\n", bf->num_partitions);
-	printf("Target false positive rate: %.10f\n", bf->target_falsepos_rate);
-	printf("Partition sizes: ");
-	for (int i = 0; i < bf->num_partitions - 1; i++) {
-		printf("%ld, ", bf->partition_lengths_bits[i]);
-	}
-	printf("%ld\n", bf->partition_lengths_bits[bf->num_partitions - 1]);
+int bloom_lookup(bloom_s *bf, uint8_t *data, uint64_t data_len) {
+    if (!bf || !data || !data_len) {
+        return -1;
+    }
+
+    uint64_t hash = XXH64(data, data_len, 0);
+
+    for (uint64_t i = 0; i < bf->num_partitions; i++) {
+        uint64_t partition_bit = hash % bf->partition_lengths[i];
+        if (!(bf->partition_ptrs[i][partition_bit / 8] & 1 << partition_bit % 8)) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
-void bloom_clear(bloomfilter_s *bf)
-{
-	if (!bf)
-		return;
-	if (bf->partition_offsets)
-		free(bf->partition_offsets);
-	if (bf->partition_lengths_bits)
-		free(bf->partition_lengths_bits);
-	if (bf->base_ptr)
-		free(bf->base_ptr);
+int bloom_lookup_constant_time(bloom_s *bf, uint8_t *data, uint64_t data_len) {
+    if (!bf || !data || !data_len) {
+        return -1;
+    }
+    uint64_t hash = XXH64(data, data_len, 0);
+
+    int result = 0;
+    for (uint64_t i = 0; i < bf->num_partitions; i++) {
+        uint64_t partition_bit = hash % bf->partition_lengths[i];
+        if (!(bf->partition_ptrs[i][partition_bit / 8] & 1 << partition_bit % 8)) {
+            result = 1;
+        }
+    }
+    return result;
 }
 
-void bloom_free(bloomfilter_s *bf)
-{
-	bloom_clear(bf);
-	free(bf);
+bloom_s *bloom_alloc(double p, uint64_t n, uint8_t *bloom_data, uint64_t prefix_len) {
+    bloom_s *bf = calloc(1, sizeof *bf);
+
+    if (bloom_init(bf, p, n, bloom_data, prefix_len)) {
+        bloom_free(bf);
+        bf = NULL;
+    }
+
+    return bf;
+}
+
+int bloom_init(bloom_s *bf, double p, uint64_t n, uint8_t *bloom_data, uint64_t prefix_len) {
+    if (!bf || p <= 0.0 || n <= 0) {
+        return -1;
+    }
+
+    double target_size = ceil((n * log(p)) / log(1.0 / (pow(2.0, log(2.0)))));
+    uint64_t num_partitions = (uint64_t) ceil(log(2.0) * target_size / n);
+    bf->partition_ptrs = calloc(num_partitions, sizeof *bf->partition_ptrs);
+    bf->partition_lengths = calloc(num_partitions, sizeof(uint64_t));
+    if (!bf->partition_ptrs || !bf->partition_lengths) {
+        return -1;
+    }
+
+    primes_s primes;
+    if (generate_primes(&primes, (target_size / num_partitions) + 300)) {
+        return -1;
+    }
+
+    bf->prefix_len = prefix_len;
+    bf->num_partitions = num_partitions;
+    bf->false_pos_rate = p;
+
+    bf->capacity = n;
+    bf->num_elems = 0;
+
+    if (bloom_data) {
+        bf->base_ptr = bloom_data;
+        bf->bloom_ptr = bf->base_ptr + bf->prefix_len;
+    }
+
+    int res = bloom_calc_partitions(bf, (long) target_size, num_partitions, &primes);
+    free(primes.primes);
+    return res;
+}
+
+void bloom_print(bloom_s *bf) {
+    printf("Bloomfilter stats\n--------\n");
+    printf("Size: %ld bytes (% ld bits)\n", bf->size, bf->size * 8);
+    printf("Capacity: %ld (%ld used)\n", bf->capacity, bf->num_elems);
+    printf("Number of partitions: %ld\n", bf->num_partitions);
+    printf("Target false positive rate: %.10f\n", bf->false_pos_rate);
+    printf("Partition sizes (bits): ");
+    for (int i = 0; i < bf->num_partitions - 1; i++) {
+        printf("%ld, ", bf->partition_lengths[i]);
+    }
+    printf("%ld\n", bf->partition_lengths[bf->num_partitions - 1]);
+}
+
+void bloom_clear(bloom_s *bf) {
+    if (!bf)
+        return;
+
+    free(bf->partition_ptrs);
+    free(bf->partition_lengths);
+    free(bf->base_ptr);
+
+    bf->base_ptr = NULL;
+    bf->bloom_ptr = NULL;
+    bf->size = 0;
+    bf->total_size = 0;
+    bf->num_partitions = 0;
+    bf->prefix_len = 0;
+    bf->false_pos_rate = 0.0;
+    bf->partition_ptrs = NULL;
+    bf->partition_lengths = NULL;
+    bf->capacity = 0;
+    bf->num_elems = 0;
+}
+
+void bloom_free(bloom_s *bf) {
+    bloom_clear(bf);
+    free(bf);
 }
 

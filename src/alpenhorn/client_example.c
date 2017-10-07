@@ -1,19 +1,19 @@
 #include "alpenhorn/client.h"
 
-void print_friend_request(friend_request_s *req)
+void print_friend_request(friend_request *req)
 {
 	if (!req)
 		return;
 
 	printf("------------\n");
 	printf("Sender id: %s\n", req->user_id);
-	printhex("Sender DH key", req->dh_pk, crypto_pk_BYTES);
-	printhex("Sender signing key: ", req->lt_sig_key, crypto_sign_PUBLICKEYBYTES);
+    printhex("Sender DH key", req->dh_pk, crypto_box_PKBYTES);
+    printhex("Sender signing key: ", req->sig_pk, crypto_sign_PUBLICKEYBYTES);
 	printf("Dialling round: %ld\n", req->dialling_round);
 	printf("------------\n");
 }
 
-void print_call(incoming_call_s *call)
+void print_call(call *call)
 {
 	if (!call)
 		return;
@@ -21,7 +21,7 @@ void print_call(incoming_call_s *call)
 	printf("------------\nIncoming call\n------------\n");
 	printf("User ID: %s\n", call->user_id);
 	printf("Round: %ld\n", call->round);
-	printf("Intent: %d\n", call->intent);
+    printf("Intent: %ld\n", call->intent);
 	printhex("Session Key", call->session_key, crypto_ghash_BYTES);
 	printf("------------\n");
 }
@@ -39,8 +39,9 @@ void run_registration(int argc, char **argv)
 		fprintf(stderr, "Invalid username: too long or too short\n");
 	}
 
-	sign_keypair keypair;
-	client_register(&keypair, argv[2]);
+    u8 sig_pk[crypto_sign_PUBLICKEYBYTES];
+    u8 sig_sk[crypto_sign_SECRETKEYBYTES];
+    alp_register(argv[2], sig_pk, sig_sk);
 
 }
 
@@ -64,15 +65,21 @@ void run_main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	sign_keypair sig_keys;
+    u8 sig_pk[crypto_sign_PUBLICKEYBYTES];
+    u8 sig_sk[crypto_sign_SECRETKEYBYTES];
 
-  sodium_hex2bin(sig_keys.public_key, crypto_sign_PUBLICKEYBYTES, argv[3],
+    sodium_hex2bin(sig_pk, crypto_sign_PUBLICKEYBYTES, argv[3],
 				 64, NULL, NULL, NULL);
-  sodium_hex2bin(sig_keys.secret_key, crypto_sign_SECRETKEYBYTES, argv[4],
-				 128, NULL, NULL, NULL);
+    sodium_hex2bin(sig_sk, crypto_sign_SECRETKEYBYTES, argv[4],
+                   128, NULL, NULL, NULL);
 
-
-	client_s *c = client_alloc((uint8_t *) argv[2], &sig_keys, print_call, print_friend_request, print_friend_request);
+    client_event_fns fns;
+    fns.call_sent = print_call;
+    fns.call_received = print_call;
+    fns.friend_request_sent = print_friend_request;
+    fns.friend_request_confirmed = print_friend_request;
+    fns.friend_request_received = print_friend_request;
+    client *c = client_alloc((uint8_t *) argv[2], &fns, sig_pk, sig_sk);
 	client_run(c);
 
 	int running = 1;
@@ -82,7 +89,7 @@ void run_main(int argc, char **argv)
 		fgets(buf, 3, stdin);
 		size_t id_len;
 		switch (buf[0]) {
-		case ADD_FRIEND:
+            case '0':
 			printf("Enter friend's user ID: ");
 			fflush(stdout);
 			fflush(stdin);
@@ -91,9 +98,9 @@ void run_main(int argc, char **argv)
 			if (buf[id_len] != '\0') {
 				buf[id_len] = '\0';
 			}
-			client_add_friend(c, (uint8_t *) buf);
+                alp_add_friend(c, (uint8_t *) buf);
 			break;
-		case CONFIRM_FRIEND:
+            case '1':
 			printf("Enter friend's user ID: ");
 			fflush(stdout);
 			fflush(stdin);
@@ -102,10 +109,10 @@ void run_main(int argc, char **argv)
 			if (buf[id_len] == '\n') {
 				buf[id_len] = '\0';
 			}
-			client_confirm_friend(c, (uint8_t *) buf);
+                alp_add_friend(c, (uint8_t *) buf);
 			fflush(stdin);
 			break;
-		case DIAL_FRIEND: {
+            case '2': {
 			printf("Enter friend's user ID: ");
 			fflush(stdout);
 			fgets(buf, sizeof buf, stdin);
@@ -118,17 +125,16 @@ void run_main(int argc, char **argv)
 			fflush(stdout);
 			char intent_buf[4];
 			fgets(intent_buf, sizeof intent_buf, stdin);
-			int i = atoi(intent_buf);
+                long i = strtol(intent_buf, NULL, 0);
 			if (i > c->num_intents - 1 || i < 0) {
 				fprintf(stderr, "Invalid intent\n");
 				break;
 			}
-			client_call_friend(c, (uint8_t *) buf, (uint64_t) i);
+                alp_call_friend(c, (uint8_t *) buf, (uint64_t) i);
 			fflush(stdin);
 			break;
 		}
-		case PRINT_KW_TABLE:
-			kw_print_table(&c->keywheel);
+            case '3': kw_print_table(&c->kw_table);
 			break;
 		default:
 			if (buf[0] == 'Q') {
@@ -163,8 +169,8 @@ void run_confirm_registration(int argc, char **argv)
 	uint8_t sk_bytes[crypto_sign_SECRETKEYBYTES];
 	sodium_hex2bin(sk_bytes, crypto_sign_SECRETKEYBYTES, argv[3], sk_hex_length, NULL, NULL, NULL);
 
-	byte_buffer_s buffer;
-	int res = byte_buffer_init(&buffer, 2000);
+    byte_buffer buffer;
+    int res = bb_init(&buffer, 2000, false);
 	if (res) {
 		fprintf(stderr, "error initing byte buffer\n");
 	}
@@ -172,7 +178,7 @@ void run_confirm_registration(int argc, char **argv)
 	for (uint64_t i = 0; i < num_pkg_servers; i++) {
 		uint64_t msg_size = sizeof_serialized_bytes(crypto_ghash_BYTES);
 		char msg_hex[msg_size];
-		printf("Enter value from pkg %u: ", i);
+        printf("Enter value from pkg %lu: ", i);
 		fgets(msg_hex, sizeof msg_hex, stdin);
 		fflush(stdin);
 		size_t len = strlen(msg_hex);
@@ -180,10 +186,10 @@ void run_confirm_registration(int argc, char **argv)
 			fprintf(stderr, "invalid nonce hex entered\n");
 			exit(EXIT_FAILURE);
 		}
-		byte_buffer_put(&buffer, (uint8_t *) msg_hex, crypto_ghash_BYTES * 2);
-	}
+        bb_write(&buffer, (uint8_t *) msg_hex, crypto_ghash_BYTES * 2);
+    }
 
-	res = client_confirm_registration((uint8_t *) argv[2], sk_bytes, buffer.data);
+    res = alp_confirm_registration((uint8_t *) argv[2], sk_bytes, buffer.data);
 	fprintf(stderr, "MOOOOOOOOOOOOOOOOOOOOOOO\n");
 
 	if (res) {
@@ -201,7 +207,14 @@ int main(int argc, char **argv)
 {
 	#if !USE_PBC
 	bn256_init();
-	#endif
+#endif
+
+    client_event_fns event_fns;
+    event_fns.call_received = print_call;
+    event_fns.call_sent = print_call;
+    event_fns.friend_request_received = print_friend_request;
+    event_fns.friend_request_sent = print_friend_request;
+    event_fns.friend_request_confirmed = print_friend_request;
 
 	int uid;
 	if (argc < 2) {
@@ -209,7 +222,7 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	switch (atoi(argv[1])) {
+    switch (strtol(argv[1], NULL, 10)) {
 	case 1:
 		run_main(argc, argv);
 		break;
