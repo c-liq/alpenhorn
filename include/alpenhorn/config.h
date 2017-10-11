@@ -10,29 +10,18 @@
 #include "crypto_salsa.h"
 #include "byte_buffer.h"
 #include "list.h"
+#include "bn256.h"
+#include "bn256_ibe.h"
 
 typedef uint64_t u64;
 typedef uint8_t u8;
-
-#ifdef USE_PBC
-#define USE_PBC 1
-#else
-#define USE_PBC 0
-#endif
 
 #define LOG 1
 #define num_pkg_servers 1U
 #define num_mix_servers 2U
 #define num_INTENTS 5
 #define read_buf_SIZE 512
-#define write_buf_SIZE 1024
 
-#if USE_PBC
-#include <pbc/pbc.h>
-#define g1_serialized_bytes 33U
-#define g2_serialized_bytes 65U
-#else
-#include "bn256.h"
 #define g1_serialized_bytes 64U
 #define g2_serialized_bytes 128U
 #define g1_xonly_serialized_bytes 32U
@@ -40,7 +29,6 @@ typedef uint8_t u8;
 #define bn256_ibe_pkg_pk_BYTES g1_serialized_bytes
 #define bn256_ibe_client_sk_bytes g2_serialized_bytes
 
-#endif
 
 #define user_id_BYTES 60U
 #define intent_BYTES sizeof(uint64_t)
@@ -54,7 +42,7 @@ typedef uint8_t u8;
    bn256_bls_sig_message_bytes + crypto_box_PUBLICKEYBYTES + round_BYTES)
 
 #define af_ibeenc_request_BYTES \
-  (af_request_BYTES + g1_serialized_bytes + crypto_secretbox_MACBYTES + crypto_secretbox_NONCEBYTES)
+  (af_request_BYTES + bn256_ibe_ABYTES)
 
 #define pkg_auth_request_BYTES (round_BYTES + user_id_BYTES + crypto_sign_BYTES + crypto_box_PKBYTES)
 

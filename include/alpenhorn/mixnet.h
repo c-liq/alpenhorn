@@ -5,7 +5,7 @@
 #include "config.h"
 #include "utils.h"
 #include "bloom.h"
-#include "net_common.h"
+#include "net.h"
 #include "mixnet_config.h"
 #include <signal.h>
 
@@ -102,7 +102,7 @@ struct mix_s
     bool is_last;
     mixer_s af_data;
     mixer_s dial_data;
-    nss_s ns;
+  net_server ns;
     bool pkg_preprocess_check;
     long num_threads;
     connection *next_mix;
@@ -138,11 +138,11 @@ void mix_exit_broadcast_box(mix_s *s, mixer_s *mixer, u64 type);
 
 int mix_net_init(mix_s *mix);
 
-int mix_exit_process_client(void *owner, connection *conn, byte_buffer *buf);
+int mix_exit_process_client(void *owner, connection *conn);
 
 void mix_run(mix_s *mix,
              void on_accept(void *, connection *),
-             int on_read(void *, connection *, byte_buffer *));
+             int on_read(void *, connection *));
 
 int mix_entry_sync(mix_s *mix);
 

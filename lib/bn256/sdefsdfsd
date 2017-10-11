@@ -2,7 +2,7 @@ CPP=g++
 CPPFLAGS=-g -Wall -DCHECK
 
 CC=gcc
-CFLAGS=-std=c99 -O3 -fomit-frame-pointer
+CFLAGS= -fPIC -std=c99 -O3 -fomit-frame-pointer
 LFLAGS=-lm
 
 all: as check c

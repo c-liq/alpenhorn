@@ -1,5 +1,5 @@
 #include <constants.h>
-#include "net_common.h"
+#include "net.h"
 
 static inline void serialize_u64(uint8_t *out, uint64_t input) {
     out[0] = (uint8_t) (input >> 56);
@@ -38,9 +38,9 @@ int net_accept(int listen_sfd, int set_nb) {
     return new_sfd;
 }
 
-int net_epoll_client_accept(nss_s *srv_state,
-                            void on_accept(void *, connection *),
-                            int on_read(void *, connection *, byte_buffer *)) {
+int net_accept_client(net_server *srv_state,
+                      void on_accept(void *, connection *),
+                      int on_read(void *, connection *)) {
     for (;;) {
         int new_sockfd = net_accept(srv_state->listen_conn.sock_fd, 1);
         if (new_sockfd == -1) {
@@ -53,18 +53,12 @@ int net_epoll_client_accept(nss_s *srv_state,
         connection *new_conn = calloc(1, sizeof *new_conn);
         if (!new_conn) {
             perror("malloc");
-            exit(EXIT_FAILURE);
+            return -1;
         }
 
         connection_init(new_conn, 2048, 2048, on_read, srv_state->epoll_fd, new_sockfd);
-        new_conn->srv_state = srv_state->owner;
-
-        if (srv_state->clients) {
-            srv_state->clients->prev = new_conn;
-        }
-        new_conn->next = srv_state->clients;
-        new_conn->prev = NULL;
-        srv_state->clients = new_conn;
+        new_conn->server = srv_state->owner;
+        list_push_head(srv_state->clients, new_conn);
 
         if (on_accept) {
             on_accept(srv_state->owner, new_conn);
@@ -73,50 +67,29 @@ int net_epoll_client_accept(nss_s *srv_state,
 
 }
 
-void add_send_item(connection *conn, send_item *new_item);
-
-int net_epoll_queue_write(nss_s *owner, connection *conn, byte_buffer *buffer, bool copy) {
-    if (!owner || !conn || !buffer)
-        return -1;
-
+int net_queue_send_push(net_server *owner, connection *conn, byte_buffer *buffer, bool copy) {
     send_item *new_item = calloc(1, sizeof *new_item);
     if (!new_item) {
         perror("malloc");
         return -1;
     }
 
-    if (copy) {
-        new_item->data = bb_clone(buffer);
-    } else {
-        new_item->data = bb_copy_alloc(buffer);
+    new_item->data = copy ? bb_clone(buffer) : bb_copy_alloc(buffer);
+    if (!new_item->data) {
+        return -1;
     }
 
     new_item->copied = copy;
-    add_send_item(conn, new_item);
-    net_epoll_send_queue(owner, conn);
-
+    list_push_tail(conn->send_queue, new_item);
+    net_queue_write(owner, conn);
     return 0;
 }
 
-void add_send_item(connection *conn, send_item *new_item) {
-    new_item->next = NULL;
-    if (conn->send_queue_tail) {
-        conn->send_queue_tail->next = new_item;
-    }
-
-    conn->send_queue_tail = new_item;
-    if (!conn->send_queue_head) {
-        conn->send_queue_head = new_item;
-    }
-}
-
-void remove_send_item(connection *conn, send_item *item);
-
-void net_epoll_send_queue(nss_s *net_state, connection *conn) {
+void net_queue_write(net_server *net_state, connection *conn) {
     bool close = false;
 
-    while (conn->send_queue_head) {
-        send_item *item = conn->send_queue_head;
+    while (conn->send_queue->head) {
+        send_item *item = conn->send_queue->head->data;
         ssize_t count = bb_read_to_fd(item->data, conn->sock_fd);
 
         if (count == -1) {
@@ -130,7 +103,8 @@ void net_epoll_send_queue(nss_s *net_state, connection *conn) {
         }
 
         if (item->data->read_limit == 0) {
-            remove_send_item(conn, item);
+            list_pop_head(conn->send_queue);
+            free(item);
         }
     }
 
@@ -138,42 +112,24 @@ void net_epoll_send_queue(nss_s *net_state, connection *conn) {
         return;
     }
 
-    if (conn->send_queue_head && !(conn->event.events & EPOLLOUT)) {
+    if (conn->send_queue->head && !(conn->event.events & EPOLLOUT)) {
         conn->event.events = EPOLLOUT | EPOLLET;
         epoll_ctl(net_state->epoll_fd, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
-    } else if (!conn->send_queue_head && conn->event.events & EPOLLOUT) {
+    } else if (!conn->send_queue->head && conn->event.events & EPOLLOUT) {
         conn->event.events = EPOLLIN | EPOLLET;
         epoll_ctl(net_state->epoll_fd, EPOLL_CTL_MOD, conn->sock_fd, &conn->event);
     }
 }
 
-void remove_send_item(connection *conn, send_item *item) {
-    if (!item->next) {
-        conn->send_queue_tail = NULL;
-    }
-
-    conn->send_queue_head = item->next;
-
-    if (item->copied) {
-        free(item->data);
-    }
-    free(item);
-}
-
 int connection_init(connection *conn,
                     uint64_t rbuf_size,
                     uint64_t wbuf_size,
-                    int (*process)(void *, connection *, byte_buffer *),
+                    int (*process)(void *, connection *),
                     int epfd,
                     int sockfd) {
-
-    if (!conn) return -1;
-
-    int result = bb_init(&conn->read_buf, rbuf_size, true);
-    if (result) return -1;
-
-    result = bb_init(&conn->write_buf, wbuf_size, true);
-    if (result) return -1;
+    if (bb_init(&conn->read_buf, rbuf_size, true) || bb_init(&conn->write_buf, wbuf_size, true)) {
+        return -1;
+    }
 
     pthread_mutex_init(&conn->send_queue_lock, NULL);
 
@@ -181,13 +137,12 @@ int connection_init(connection *conn,
     conn->event.data.ptr = conn;
     conn->process = process;
     conn->event.events = EPOLLIN | EPOLLET;
-    if (epfd > 0 && sockfd > 0) {
-        if (epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &conn->event))
-            return -1;
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &conn->event)) {
+        return -1;
     }
+
     conn->connected = 1;
-    conn->send_queue_head = NULL;
-    conn->send_queue_tail = NULL;
+    conn->send_queue = list_alloc();
     return 0;
 }
 
@@ -231,8 +186,8 @@ int net_send_blocking(int sock_fd, uint8_t *buf, size_t n) {
     return 0;
 }
 
-int net_read_blocking(const int sock_fd, uint8_t *buf, const size_t n) {
-    int bytes_read = 0;
+int net_read_blocking(int sock_fd, uint8_t *buf, size_t n) {
+    ssize_t bytes_read = 0;
     while (bytes_read < n) {
         ssize_t tmp_read = read(sock_fd, buf + bytes_read, n - bytes_read);
         if (tmp_read <= 0) {
@@ -240,7 +195,6 @@ int net_read_blocking(const int sock_fd, uint8_t *buf, const size_t n) {
             return -1;
         }
         bytes_read += tmp_read;
-
     }
     return 0;
 }
@@ -303,7 +257,7 @@ int net_connect_init(connection *conn,
                      int epoll_fd,
                      int set_nb,
                      uint64_t buf_size,
-                     int (*process)(void *, connection *, byte_buffer *)) {
+                     int (*process)(void *, connection *)) {
     int sockfd = net_connect(addr, port, set_nb);
     if (sockfd <= 0) {
         return -1;
@@ -334,7 +288,7 @@ void net_process_read(void *owner, connection *conn) {
 
         bb_slice(conn->msg_buf, buf, header->len);
         if (conn->process) {
-            conn->process(owner, conn, conn->msg_buf);
+            conn->process(owner, conn);
         }
         bb_clear(conn->msg_buf);
         bb_compact(buf);
@@ -346,58 +300,34 @@ void net_process_read(void *owner, connection *conn) {
     }
 }
 
-int net_epoll_read(void *owner, connection *conn) {
-    bool close = false;
+int net_read(void *owner, connection *conn) {
     ssize_t count;
     for (;;) {
         byte_buffer *read_buf = &conn->read_buf;
         count = bb_write_from_fd(read_buf, conn->sock_fd);
 
         if (count == -1) {
-            if (errno != EAGAIN) {
-                perror("read");
-                close = true;
-            }
-            break;
+            return errno == EAGAIN ? 0 : errno;
         } else if (count == 0) {
-            close = true;
-            break;
+            return -1;
         }
 
         net_process_read(owner, conn);
     }
-
-    if (close) {
-        fprintf(stderr, "Epoll read: closing client_connection on sock %d | count: %lu\n", conn->sock_fd, count);
-        return -1;
-    }
-    return 0;
 }
 
-int net_epoll_send(connection *conn, int epoll_fd) {
+int net_send(connection *conn, int epoll_fd) {
     if (!conn) return -1;
 
-    int close = 0;
     byte_buffer *wbuf = &conn->write_buf;
 
     while (wbuf->read_limit > 0) {
         ssize_t count = bb_read_to_fd(wbuf, conn->sock_fd);
         if (count == -1) {
-            if (errno != EAGAIN) {
-                fprintf(stderr, "socket send error %d on %d\n", errno, conn->sock_fd);
-                close = 1;
-            }
-            break;
+            return errno == EAGAIN ? 0 : errno;
         } else if (count == 0) {
-            fprintf(stderr, "Socket send 0 bytes on %d\n", conn->sock_fd);
-            close = 1;
-            break;
+            return -1;
         }
-    }
-
-    if (close) {
-        fprintf(stderr, "Closing socket %d in epoll send\n", conn->sock_fd);
-        return -1;
     }
 
     if (wbuf->read_limit != 0 && !(conn->event.events & EPOLLOUT)) {
@@ -410,7 +340,7 @@ int net_epoll_send(connection *conn, int epoll_fd) {
     return 0;
 }
 
-int net_start_listen_socket(const char *port, const bool set_nb) {
+int net_listen_socket(const char *port, const bool set_nb) {
     int listen_sfd;
     struct addrinfo hints;
     struct addrinfo *serverinfo;
@@ -425,7 +355,7 @@ int net_start_listen_socket(const char *port, const bool set_nb) {
         freeaddrinfo(serverinfo);
         return -1;
     }
-    // Iterate through addrinfo structures until a socket is created
+
     struct addrinfo *p;
     for (p = serverinfo; p != NULL; p = p->ai_next) {
         listen_sfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);

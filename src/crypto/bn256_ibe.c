@@ -1,89 +1,73 @@
 #include "bn256_ibe.h"
 
-
-void bn256_ibe_master_keypair(bn256_ibe_master_kp *out)
-{
-	bn256_scalar_random(out->secret_key);
-	bn256_scalarmult_base_g1(out->public_key, out->secret_key);
+void bn256_ibe_master_keypair(scalar_t sk, curvepoint_fp_struct_t *pk) {
+    bn256_g1_random(pk, sk);
 }
 
-void bn256_ibe_build_sk(uint8_t *sk_out, uint8_t *qid, uint8_t *rp, uint8_t *pair_val)
+void bn256_ibe_build_sk(uint8_t *out, uint8_t *id_hash, uint8_t *rp, uint8_t *pair_hash)
 {
 	crypto_generichash_state hash_state;
-	crypto_generichash_init(&hash_state, 0, 0, crypto_ghash_BYTES);
-	crypto_generichash_update(&hash_state, qid, g2_bytes);
+    crypto_generichash_init(&hash_state, 0, 0, crypto_secretbox_KEYBYTES);
+    crypto_generichash_update(&hash_state, id_hash, g2_bytes);
 	crypto_generichash_update(&hash_state, rp, g1_bytes);
-	crypto_generichash_update(&hash_state, pair_val, gt_bytes);
-	crypto_generichash_final(&hash_state, sk_out, crypto_ghash_BYTES);
+    crypto_generichash_update(&hash_state, pair_hash, gt_bytes);
+    crypto_generichash_final(&hash_state, out, crypto_secretbox_KEYBYTES);
 }
 
 int bn256_ibe_decrypt(uint8_t *out, uint8_t *c, size_t clen, uint8_t *pk, twistpoint_fp2_t sk)
 {
-	curvepoint_fp_t rp;
+    curvepoint_fp_t rp = {{{{{0}}}}};
 	bn256_deserialize_g1(rp, c);
 
-	fp12e_t pair_val;
-	fp12e_setzero(pair_val);
-	bn256_pair(pair_val, sk, rp);
+    fp12e_t pairing;
+    fp12e_setzero(pairing);
+    bn256_pair(pairing, sk, rp);
 
-	uint8_t pair_val_serialized[gt_bytes];
-	memset(pair_val_serialized, 0, gt_bytes);
-	bn256_serialize_gt(pair_val_serialized, pair_val);
+    uint8_t pairing_bytes[gt_bytes];
+    memset(pairing_bytes, 0, gt_bytes);
+    bn256_serialize_gt(pairing_bytes, pairing);
 
-	uint8_t secret_key[crypto_ghash_BYTES];
-	bn256_ibe_build_sk(secret_key, pk, c, pair_val_serialized);
+    uint8_t secret_key[crypto_secretbox_KEYBYTES];
+    bn256_ibe_build_sk(secret_key, pk, c, pairing_bytes);
 
-	int res = crypto_salsa_decrypt(out, c + g1_bytes, clen - g1_bytes, secret_key);
-
-	sodium_memzero(secret_key, crypto_ghash_BYTES);
-	return res;
+    int result = crypto_salsa_decrypt(out, c + g1_bytes, clen - g1_bytes, secret_key);
+    sodium_memzero(secret_key, crypto_ghash_BYTES);
+    return result;
 }
 
-ssize_t bn256_ibe_encrypt(uint8_t *out,
-                          uint8_t *msg,
-                          uint64_t msg_len,
-                          curvepoint_fp_struct_t *master_pk,
-                          uint8_t *recv_id,
-                          size_t recv_id_len)
-{
-	twistpoint_fp2_t q_id;
-	twistpoint_fp2_setneutral(q_id);
-	bn256_hash_g2(q_id, recv_id, recv_id_len);
-	uint8_t qid_serialized[fpe_bytes * 4];
-	memset(qid_serialized, 0, sizeof qid_serialized);
-	bn256_serialize_g2(qid_serialized, q_id);
+int bn256_ibe_encrypt(uint8_t *out, uint8_t *msg, uint64_t msg_len, curvepoint_fp_t master_pk,
+                      uint8_t *id, size_t id_len) {
+    twistpoint_fp2_t id_hash;
+    bn256_hash_g2(id_hash, id, id_len);
+    uint8_t id_hash_bytes[g2_bytes];
+    memset(id_hash_bytes, 0, sizeof id_hash_bytes);
+    bn256_serialize_g2(id_hash_bytes, id_hash);
 
 	scalar_t r;
-	bn256_scalar_random(r);
 	curvepoint_fp_t rp;
-	curvepoint_fp_setneutral(rp);
-
-	bn256_scalarmult_base_g1(rp, r);
+    bn256_g1_random(rp, r);
 	bn256_serialize_g1(out, rp);
 
-	fp12e_t pairing_qid_ppub;
-	fp12e_setzero(pairing_qid_ppub);
-	bn256_pair(pairing_qid_ppub, q_id, master_pk);
+    fp12e_t pairing;
+    fp12e_setzero(pairing);
+    bn256_pair(pairing, id_hash, master_pk);
 
-	fp12e_pow_vartime(pairing_qid_ppub, pairing_qid_ppub, r);
-	uint8_t pair_qid_ppub_serialized[fpe_bytes * 12];
-	bn256_serialize_gt(pair_qid_ppub_serialized, pairing_qid_ppub);
-	uint8_t secret_key[crypto_ghash_BYTES];
-	bn256_ibe_build_sk(secret_key, qid_serialized, out, pair_qid_ppub_serialized);
-	ssize_t res = crypto_salsa_encrypt(out + g1_bytes, msg, msg_len, secret_key);
+    fp12e_pow_vartime(pairing, pairing, r);
+    uint8_t pairing_bytes[gt_bytes];
+    bn256_serialize_gt(pairing_bytes, pairing);
 
+    uint8_t secret_key[crypto_ghash_BYTES];
+    bn256_ibe_build_sk(secret_key, id_hash_bytes, out, pairing_bytes);
+
+    int result = crypto_salsa_encrypt(out + g1_bytes, msg, msg_len, secret_key);
 	sodium_memzero(secret_key, sizeof secret_key);
-	if (res < 0) {
-		fprintf(stderr, "[IBE encrypt] failure during symmetric encyrption\n");
-		return -1;
-	}
-	return res + fpe_bytes * 2;
+    return result;
 }
 
-void bn256_ibe_keygen(struct ibe_identity *id, uint8_t *identity, uint8_t identity_length, scalar_t master_sk)
-{
-	bn256_hash_g2(id->public_key, identity, identity_length);
-	bn256_serialize_g2(id->serialized_public_key, id->public_key);
-	twistpoint_fp2_scalarmult_vartime(id->secret_key, id->public_key, master_sk);
-	twistpoint_fp2_makeaffine(id->secret_key);
+void bn256_ibe_keygen(twistpoint_fp2_t id_pk, twistpoint_fp2_t id_sk, uint8_t *id, size_t id_len, scalar_t master_sk) {
+    bn256_hash_g2(id_pk, id, id_len);
+    bn256_serialize_g2(id, id_pk);
+    twistpoint_fp2_scalarmult_vartime(id_sk, id_pk, master_sk);
+    twistpoint_fp2_makeaffine(id_sk);
 }
+

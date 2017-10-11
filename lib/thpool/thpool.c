@@ -14,8 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <errno.h>
-#include <time.h>
 #if defined(__linux__)
 #include <sys/prctl.h>
 #endif
@@ -91,7 +89,7 @@ typedef struct thpool_
 
 
 static int thread_init(thpool_ *thpool_p, struct thread **thread_p, int id);
-static void *thread_do(struct thread *thread_p);
+static void *thread_do(void *thread_pp);
 static void thread_hold(int sig_id);
 static void thread_destroy(struct thread *thread_p);
 
@@ -280,8 +278,8 @@ int thpool_num_threads_working(thpool_ *thpool_p)
 static int thread_init(thpool_ *thpool_p, struct thread **thread_p, int id)
 {
 
-	*thread_p = (struct thread *) malloc(sizeof(struct thread));
-	if (thread_p == NULL) {
+    *thread_p = malloc(sizeof(struct thread));
+    if (*thread_p == NULL) {
 		err("thread_init(): Could not allocate memory for thread\n");
 		return -1;
 	}
@@ -289,7 +287,7 @@ static int thread_init(thpool_ *thpool_p, struct thread **thread_p, int id)
 	(*thread_p)->thpool_p = thpool_p;
 	(*thread_p)->id = id;
 
-	pthread_create(&(*thread_p)->pthread, NULL, (void *) thread_do, (*thread_p));
+    pthread_create(&(*thread_p)->pthread, NULL, thread_do, (*thread_p));
 	pthread_detach((*thread_p)->pthread);
 	return 0;
 }
@@ -312,10 +310,10 @@ static void thread_hold(int sig_id)
 * @param  thread        thread that will run this function
 * @return nothing
 */
-static void *thread_do(struct thread *thread_p)
+static void *thread_do(void *thread_pp)
 {
-
 	/* Set thread name for profiling and debuging */
+    struct thread *thread_p = (struct thread *) thread_pp;
 	char thread_name[128] = {0};
 	sprintf(thread_name, "thread-pool-%d", thread_p->id);
 
@@ -430,22 +428,22 @@ static void jobqueue_clear(jobqueue *jobqueue_p)
 
 /* Add (allocated) job to queue
  */
-static void jobqueue_push(jobqueue *jobqueue_p, struct job *newjob)
+static void jobqueue_push(jobqueue *jobqueue_p, struct job *newjob_p)
 {
 
 	pthread_mutex_lock(&jobqueue_p->rwmutex);
-	newjob->prev = NULL;
+    newjob_p->prev = NULL;
 
 	switch (jobqueue_p->len) {
 
 	case 0:  /* if no jobs in queue */
-		jobqueue_p->front = newjob;
-		jobqueue_p->rear = newjob;
+        jobqueue_p->front = newjob_p;
+            jobqueue_p->rear = newjob_p;
 		break;
 
 	default: /* if jobs in queue */
-		jobqueue_p->rear->prev = newjob;
-		jobqueue_p->rear = newjob;
+        jobqueue_p->rear->prev = newjob_p;
+            jobqueue_p->rear = newjob_p;
 
 	}
 	jobqueue_p->len++;

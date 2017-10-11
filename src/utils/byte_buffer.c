@@ -237,22 +237,22 @@ ssize_t bb_read_to_fd(byte_buffer *buf, int socket_fd)
     return res;
 }
 
-byte_buffer *bb_clone(byte_buffer *in) {
-    byte_buffer *new_bb = bb_alloc(in->capacity, in->resizable);
+byte_buffer *bb_clone(byte_buffer *buf) {
+    byte_buffer *new_bb = bb_alloc(buf->capacity, buf->resizable);
     if (!new_bb) {
         return NULL;
     }
 
-    memcpy(new_bb->data, in->data, in->written);
-    new_bb->read = in->read;
-    new_bb->written = in->written;
-    new_bb->read_limit = in->read_limit;
-    new_bb->write_limit = in->write_limit;
+    memcpy(new_bb->data, buf->data, buf->written);
+    new_bb->read = buf->read;
+    new_bb->written = buf->written;
+    new_bb->read_limit = buf->read_limit;
+    new_bb->write_limit = buf->write_limit;
 
     new_bb->read_pos = new_bb->data + new_bb->read;
     new_bb->write_pos = new_bb->data + new_bb->written;
 
-    new_bb->resizable = in->resizable;
+    new_bb->resizable = buf->resizable;
     new_bb->alloced = true;
 
     return new_bb;
@@ -275,7 +275,7 @@ int bb_copy_init(byte_buffer *new_bb, byte_buffer *in) {
     return 0;
 }
 
-static void _bb_init_static(byte_buffer *buf, uint8_t *data, uint64_t capacity) {
+/*static void _bb_init_static(byte_buffer *buf, uint8_t *data, uint64_t capacity) {
     buf->data = data;
     buf->capacity = capacity;
     buf->read_pos = buf->data;
@@ -286,7 +286,7 @@ static void _bb_init_static(byte_buffer *buf, uint8_t *data, uint64_t capacity) 
     buf->write_limit = buf->capacity;
     buf->alloced = false;
     buf->resizable = false;
-}
+}*/
 
 byte_buffer *bb_copy_alloc(byte_buffer *in) {
     byte_buffer *new_bb = calloc(1, sizeof *new_bb);
@@ -337,7 +337,6 @@ void bb_clear(byte_buffer *buf)
     buf->write_limit = 0;
     buf->read = 0;
     buf->written = 0;
-
 }
 
 void bb_free(byte_buffer *buf)

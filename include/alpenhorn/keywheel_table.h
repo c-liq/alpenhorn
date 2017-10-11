@@ -4,7 +4,6 @@
 #include "config.h"
 #include "utils.h"
 
-
 struct keywheel;
 struct keywheel_table;
 struct keywheel_unsynced;
@@ -12,33 +11,24 @@ typedef struct keywheel_table keywheel_table;
 typedef struct keywheel keywheel;
 typedef struct keywheel_unsynced keywheel_unsynced;
 
-struct keywheel_table
-{
-  keywheel *keywheels;
-	size_t num_keywheels;
-	keywheel_unsynced *unsynced_keywheels;
-	size_t num_unsynced;
-	uint64_t table_round;
-	char *table_file;
+struct keywheel_table {
+  list *keywheels;
+  list *unsynced_keywheels;
+  uint64_t table_round;
+  char *table_file;
 };
 
-struct keywheel
-{
+struct keywheel {
   u8 user_id[user_id_BYTES];
   u8 key_state[intent_BYTES + crypto_generichash_BYTES_MAX];
-	uint64_t dialling_round;
-  keywheel *next;
-  keywheel *prev;
+  uint64_t dial_round;
 };
 
-struct keywheel_unsynced
-{
+struct keywheel_unsynced {
   u8 user_id[user_id_BYTES];
   u8 public_key[crypto_box_PKBYTES];
   u8 secret_key[crypto_box_SECRETKEYBYTES];
-	uint64_t round_sent;
-	keywheel_unsynced *next;
-	keywheel_unsynced *prev;
+  uint64_t round_sent;
 };
 
 int kw_table_init(keywheel_table *table, uint64_t dial_round, char *table_file);

@@ -2,6 +2,11 @@
 #include <malloc.h>
 #include "list.h"
 
+struct x {
+  size_t x:56;
+
+};
+
 int list_push_head(list *list, void *data) {
     list_item *item = calloc(1, sizeof *item);
     if (!item) {
@@ -83,7 +88,7 @@ void *list_pop_head(list *list) {
     return data;
 }
 
-void *list_find(list *list, void *item, int cmp(void *, void *)) {
+void *list_find(list *list, const void *item, int cmp(const void *, const void *)) {
     if (!list || !item || !cmp) {
         return NULL;
     }
@@ -97,6 +102,47 @@ void *list_find(list *list, void *item, int cmp(void *, void *)) {
     }
 
     return NULL;
+}
+
+void *list_remove(list *list, void *item, int cmp(const void *, const void *)) {
+    if (!list || !item || !cmp) {
+        return NULL;
+    }
+
+    list_item *current_item = list->head;
+    while (current_item) {
+        if (!cmp(current_item->data, item)) {
+            break;
+        }
+        current_item = current_item->next;
+    }
+
+    if (!current_item) {
+        return NULL;
+    }
+
+    void *return_data = current_item->data;
+
+    if (list->size == 1) {
+        list->head = NULL;
+        list->tail = NULL;
+    } else {
+        if (current_item->next) {
+            current_item->next->prev = current_item->prev;
+        }
+        if (current_item->prev) {
+            current_item->prev->next = current_item->next;
+        }
+        if (current_item == list->head) {
+            list->head = current_item->next;
+        } else if (current_item == list->tail) {
+            list->tail = current_item->prev;
+        }
+    }
+
+    list->size--;
+    free(current_item);
+    return return_data;
 }
 
 void *list_pop_tail(list *list) {
@@ -121,5 +167,4 @@ void *list_pop_tail(list *list) {
 
     return data;
 }
-
 

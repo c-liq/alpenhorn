@@ -13,6 +13,10 @@ void print_friend_request(friend_request *req)
 	printf("------------\n");
 }
 
+void print_sent_request(friend_request *req) {
+    printf("Sent friend request to %s\n", req->user_id);
+}
+
 void print_call(call *call)
 {
 	if (!call)
@@ -216,7 +220,6 @@ int main(int argc, char **argv)
     event_fns.friend_request_sent = print_friend_request;
     event_fns.friend_request_confirmed = print_friend_request;
 
-	int uid;
 	if (argc < 2) {
 		fprintf(stderr, "Usage: \n");
 		exit(EXIT_FAILURE);

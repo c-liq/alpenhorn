@@ -57,7 +57,7 @@ int bb_compact(byte_buffer *buf);
 
 void bb_reset(byte_buffer *buf);
 
-byte_buffer *bb_clone(byte_buffer *in);
+byte_buffer *bb_clone(byte_buffer *buf);
 
 int bb_copy_init(byte_buffer *new_bb, byte_buffer *in);
 
@@ -67,14 +67,7 @@ void bb_reset_zero(byte_buffer *buf);
 
 int bb_slice(byte_buffer_t out, byte_buffer_t in, uint64_t count);
 
-static void _bb_init_static(byte_buffer *buf, uint8_t *data, uint64_t capacity);
 
 void bb_print(byte_buffer *);
-
-#define bb_init_static(buf, capacity) \
-            uint8_t bb_tmp_buffer_##buf[capacity]; \
-            _bb_init_static(buf, bb_tmp_buffer_##buf, capacity)
-
-
 
 #endif //ALPENHORN_bb_H

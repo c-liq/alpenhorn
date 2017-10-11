@@ -5,7 +5,7 @@
 #include "crypto.h"
 #include "config.h"
 #include "keywheel_table.h"
-#include "net_common.h"
+#include "net.h"
 #include "utils.h"
 #include <pthread.h>
 #include <stdbool.h>
@@ -63,7 +63,7 @@ struct pkg_data {
   u8 auth_responses[num_pkg_servers][pkg_enc_auth_res_BYTES];
   u8 symmetric_keys[num_pkg_servers][crypto_box_SECRETKEYBYTES];
   curvepoint_fp_t pkg_multisig;
-  twistpoint_fp2_t identity_sk;
+  twistpoint_fp2_t id_sk;
   u8 hashed_id[g2_serialized_bytes];
   connection *pkg_conns;
 };

@@ -1,6 +1,4 @@
 #include "alpenhorn/pbc_ibe.h"
-#include "alpenhorn/pbc_cfg.h"
-
 
 struct ibe_params
 {
@@ -26,11 +24,7 @@ ibe_params *ibe_alloc(char *pb_params, const char *gen)
 int ibe_pbc_extract(element_s *out, element_s *master_priv_key, const uint8_t *id, const uint64_t id_length)
 {
 	uint8_t id_hash[crypto_ghash_BYTES];
-	int res = crypto_generichash(id_hash, crypto_ghash_BYTES, id, id_length, NULL, 0);
-	if (res) {
-		fprintf(stderr, "Hash error\n");
-		return res;
-	}
+    crypto_generichash(id_hash, crypto_ghash_BYTES, id, id_length, NULL, 0);
 	element_from_hash(out, id_hash, crypto_ghash_BYTES);
 	element_pow_zn(out, out, master_priv_key);
 	return 0;
@@ -89,7 +83,7 @@ ssize_t ibe_pbc_encrypt(uint8_t *out, uint8_t *msg, uint64_t msg_len, element_s 
 	                       rp_length,
 	                       pairing_value_serialized,
 	                       pairing_val_length);
-	ssize_t res = crypto_secret_nonce_seal(out + rp_length, msg, msg_len, secret_key);
+    ssize_t res = crypto_salsa_encrypt(out + rp_length, msg, msg_len, secret_key);
 	if (res < 0) {
 		fprintf(stderr, "[IBE encrypt] failure during symmetric encyrption\n");
 	}
@@ -130,7 +124,7 @@ ibe_pbc_decrypt(uint8_t *out,
 	                       u_priv_pairing,
 	                       u_priv_pairing_size);
 	ssize_t
-		res = crypto_secret_nonce_open(out, c + g1_serialized_bytes, clen - g1_serialized_bytes, secret_key);
+        res = crypto_salsa_decrypt(out, c + g1_serialized_bytes, clen - g1_serialized_bytes, secret_key);
 	sodium_memzero(secret_key, sizeof secret_key);
 
 	if (res < 0) {
