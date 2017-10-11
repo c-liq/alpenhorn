@@ -25,7 +25,7 @@ void bn256_bls_keygen(bn256_bls_keypair *kp)
 void bn256_bls_sign_message(uint8_t *out_buf, uint8_t *msg, uint64_t msg_len, scalar_t secret_key)
 {
 	curvepoint_fp_t sig_g1;
-	bn256_hash_g1(sig_g1, msg, msg_len);
+    bn256_hash_g1(sig_g1, msg_len, msg);
 	curvepoint_fp_scalarmult_vartime(sig_g1, sig_g1, secret_key);
 	curvepoint_fp_makeaffine(sig_g1);
 	bn256_serialize_g1_xonly(out_buf, sig_g1);
@@ -37,7 +37,7 @@ int bn256_bls_verify(twistpoint_fp2_t p, uint8_t *signature, uint8_t *msg, size_
     assert(msg);
     assert(signature);
     curvepoint_fp_t h = {{{{{0}}}}};
-	bn256_hash_g1(h, msg, msg_len);
+    bn256_hash_g1(h, msg_len, msg);
 	curvepoint_fp_makeaffine(h);
     curvepoint_fp_t sig2 = {{{{{0}}}}};
 	bn256_deserialize_g1_xonly(sig2, signature);
@@ -55,7 +55,7 @@ int bn256_bls_verify_from_point(twistpoint_fp2_t public_key, curvepoint_fp_t sig
                                 size_t msg_len)
 {
 	curvepoint_fp_t sig_from_msg;
-	bn256_hash_g1(sig_from_msg, msg, msg_len);
+    bn256_hash_g1(sig_from_msg, msg_len, msg);
 	fp12e_t u, v;
 	bn256_pair(u, twistgen, signature);
 	bn256_pair(v, public_key, sig_from_msg);
@@ -71,7 +71,7 @@ int bn256_bls_verify_multisig(twistpoint_fp2_struct_t *public_keys,
 	twistpoint_fp2_t combined_key;
 	bn256_sum_g2(combined_key, public_keys, num_participants);
 	curvepoint_fp_t sig_from_msg;
-	bn256_hash_g1(sig_from_msg, msg, msg_len);
+    bn256_hash_g1(sig_from_msg, msg_len, msg);
 	curvepoint_fp_t combined_sig;
 	bn256_deserialize_and_sum_g1(combined_sig, signatures, num_participants);
 	fp12e_t u, v;

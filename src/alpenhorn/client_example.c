@@ -209,16 +209,7 @@ void run_confirm_registration(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	#if !USE_PBC
 	bn256_init();
-#endif
-
-    client_event_fns event_fns;
-    event_fns.call_received = print_call;
-    event_fns.call_sent = print_call;
-    event_fns.friend_request_received = print_friend_request;
-    event_fns.friend_request_sent = print_friend_request;
-    event_fns.friend_request_confirmed = print_friend_request;
 
 	if (argc < 2) {
 		fprintf(stderr, "Usage: \n");

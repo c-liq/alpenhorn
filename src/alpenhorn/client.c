@@ -547,7 +547,7 @@ int client_init(client *c, const u8 *user_id, client_event_fns *event_fns, u8 *p
     c->bloom_p_val = pow(10.0, -10.0);
 
     twistpoint_fp2_t userid_hash;
-    bn256_hash_g2(userid_hash, c->user_id, user_id_BYTES);
+    bn256_hash_g2(userid_hash, user_id_BYTES, c->user_id);
     bn256_serialize_g2(c->pkg_state.hashed_id, userid_hash);
 
     bn256_sum_g2(c->pkg_state.pkg_sig_pk, pkg_lt_pks, num_pkg_servers);

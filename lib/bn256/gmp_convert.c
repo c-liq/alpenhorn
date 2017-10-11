@@ -160,7 +160,6 @@ void mpz2fp2(fpe_t rop, const mpz_t op)
 	mpz_clear(vp);
 	mpz_clear(acc);
 	mpz_clear(tmp);
-
 }
 
 void mpz2fp(fpe_t rop, const mpz_t op)

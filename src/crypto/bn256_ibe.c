@@ -38,7 +38,7 @@ int bn256_ibe_decrypt(uint8_t *out, uint8_t *c, size_t clen, uint8_t *pk, twistp
 int bn256_ibe_encrypt(uint8_t *out, uint8_t *msg, uint64_t msg_len, curvepoint_fp_t master_pk,
                       uint8_t *id, size_t id_len) {
     twistpoint_fp2_t id_hash;
-    bn256_hash_g2(id_hash, id, id_len);
+    bn256_hash_g2(id_hash, id_len, id);
     uint8_t id_hash_bytes[g2_bytes];
     memset(id_hash_bytes, 0, sizeof id_hash_bytes);
     bn256_serialize_g2(id_hash_bytes, id_hash);
@@ -65,7 +65,7 @@ int bn256_ibe_encrypt(uint8_t *out, uint8_t *msg, uint64_t msg_len, curvepoint_f
 }
 
 void bn256_ibe_keygen(twistpoint_fp2_t id_pk, twistpoint_fp2_t id_sk, uint8_t *id, size_t id_len, scalar_t master_sk) {
-    bn256_hash_g2(id_pk, id, id_len);
+    bn256_hash_g2(id_pk, id_len, id);
     bn256_serialize_g2(id, id_pk);
     twistpoint_fp2_scalarmult_vartime(id_sk, id_pk, master_sk);
     twistpoint_fp2_makeaffine(id_sk);

@@ -1,3 +1,4 @@
+#include <string.h>
 #include "bn256.h"
 
 extern const scalar_t bn_pminus2;
@@ -17,22 +18,70 @@ extern const scalar_t pMinus3Div4;
 extern const scalar_t pMinus1Div2;
 extern const scalar_t bn_n;
 
-static fpe_t fpe_bn_p;
 static fpe_t fpe_sqrt_neg3;
 static fpe_t fpe_j;
 static fpe_t one;
 static fpe_t curve_b;
-static fpe_t fpe_bn_n;
 static fp2e_t twist_b;
 static fpe_t fpe_b0;
 static fpe_t fpe_b1;
 static scalar_t cofactor;
 static mpz_t mpz_bn_p;
-static mpz_t mpz_bn_n;
 static mpz_t mpz_sqrt_neg3;
 static mpz_t mpz_j;
 
-static bool running = 0;
+static bool initialised = 0;
+
+static void fpe_cube(fpe_t rop, fpe_t op);
+static void mpz2scalar(scalar_t rop, mpz_ptr op);
+static void fpe_get_weierstrass(fpe_t y, const fpe_t x);
+static void mpz_fpe_get_weierstrass(mpz_ptr y, mpz_ptr x);
+static void fp2e_get_weierstrass(fp2e_t y, const fp2e_t x);
+static void mpz_2_fpe_hash(fpe_t out, size_t msg_len, const uint8_t msg[msg_len]);
+
+static void fpe_cube(fpe_t rop, fpe_t op) {
+    fpe_t tmp;
+    fpe_set(tmp, op);
+    fpe_mul(rop, tmp, tmp);
+    fpe_mul(rop, rop, tmp);
+}
+
+static void mpz2scalar(scalar_t rop, mpz_ptr op) {
+    mpz_t tmp;
+    mpz_init_set(tmp, op);
+    for (int i = 0; i < 4; i++) {
+        unsigned long long x = mpz_get_ui(tmp);
+        rop[i] = x;
+        mpz_tdiv_q_2exp(tmp, tmp, 64);
+    }
+    mpz_clear(tmp);
+}
+
+static void fpe_get_weierstrass(fpe_t y, const fpe_t x) {
+    fpe_t t;
+    fpe_square(t, x);
+    fpe_mul(t, t, x);
+    fpe_add(y, t, curve_b);
+}
+
+static void mpz_fpe_get_weierstrass(mpz_ptr y, mpz_ptr x) {
+    mpz_t t;
+    mpz_init(t);
+    mpz_mul(t, x, x);
+    mpz_mod(t, t, mpz_bn_p);
+    mpz_mul(t, t, x);
+    mpz_mod(t, t, mpz_bn_p);
+    mpz_add_ui(y, t, 3);
+    mpz_mod(y, y, mpz_bn_p);
+    mpz_clear(t);
+}
+
+static void fp2e_get_weierstrass(fp2e_t y, const fp2e_t x) {
+    fp2e_t t;
+    fp2e_square(t, x);
+    fp2e_mul(t, t, x);
+    fp2e_add(y, t, twist_b);
+}
 
 void bn256_scalar_random(scalar_t out) {
     scalar_setrandom(out, bn_n);
@@ -49,57 +98,19 @@ void bn256_g1_random(curvepoint_fp_t g1_out, scalar_t scalar_out) {
     curvepoint_fp_makeaffine(g1_out);
 }
 
+void bn256_g2_random(twistpoint_fp2_t g2_out, scalar_t scalar_out) {
+    scalar_setrandom(scalar_out, bn_n);
+    bn256_scalarmult_base_g2(g2_out, scalar_out);
+    twistpoint_fp2_makeaffine(g2_out);
+}
+
 void bn256_scalarmult_base_g2(twistpoint_fp2_t out, scalar_t scl) {
     twistpoint_fp2_scalarmult_vartime(out, bn_twistgen, scl);
     twistpoint_fp2_makeaffine(out);
 }
 
-void fpe_cube(fpe_t rop, fpe_t op) {
-    fpe_t tmp;
-    fpe_set(tmp, op);
-    fpe_mul(rop, tmp, tmp);
-    fpe_mul(rop, rop, tmp);
-}
-
-void mpz2scalar(scalar_t rop, mpz_t op) {
-    mpz_t tmp;
-    mpz_init_set(tmp, op);
-    for (int i = 0; i < 4; i++) {
-        unsigned long long x = mpz_get_ui(tmp);
-        rop[i] = x;
-        mpz_tdiv_q_2exp(tmp, tmp, 64);
-    }
-    mpz_clear(tmp);
-}
-
-void fpe_get_weierstrass(fpe_t y, const fpe_t x) {
-    fpe_t t;
-    fpe_square(t, x);
-    fpe_mul(t, t, x);
-    fpe_add(y, t, curve_b);
-}
-
-void mpz_fpe_get_weierstrass(mpz_t y, mpz_t x) {
-    mpz_t t;
-    mpz_init(t);
-    mpz_mul(t, x, x);
-    mpz_mod(t, t, mpz_bn_p);
-    mpz_mul(t, t, x);
-    mpz_mod(t, t, mpz_bn_p);
-    mpz_add_ui(y, t, 3);
-    mpz_mod(y, y, mpz_bn_p);
-    mpz_clear(t);
-}
-
-void fp2e_get_weierstrass(fp2e_t y, const fp2e_t x) {
-    fp2e_t t;
-    fp2e_square(t, x);
-    fp2e_mul(t, t, x);
-    fp2e_add(y, t, twist_b);
-}
-
 int bn256_init() {
-    if (running) {
+    if (initialised) {
         return 1;
     }
 
@@ -109,10 +120,10 @@ int bn256_init() {
     mpz2fp2(fpe_b0, mpz_b0);
     mpz2fp2(fpe_b1, mpz_b1);
     _2fpe_to_fp2e(twist_b, fpe_b0, fpe_b1);
+
+    mpz_t mpz_bn_n;
     mpz_init_set_str(mpz_bn_n, bn_nstr, 10);
-    mpz_init_set_str(mpz_bn_p, bn_pstr, 10);
-    mpz2fp2(fpe_bn_p, mpz_bn_p);
-    mpz2fp2(fpe_bn_n, mpz_bn_n);
+
     fpe_setone(curve_b);
     fpe_triple(curve_b, curve_b);
 
@@ -130,22 +141,22 @@ int bn256_init() {
     mpz2fp(fpe_sqrt_neg3, mpz_sqrt_neg3);
     mpz_clear(mpz_b0);
     mpz_clear(mpz_b1);
-    running = true;
+    mpz_clear(mpz_bn_n);
+    initialised = true;
     return 0;
 }
 
 void bn256_clear() {
-    if (!running)
+    if (!initialised)
         return;
 
     mpz_clear(mpz_j);
     mpz_clear(mpz_sqrt_neg3);
     mpz_clear(mpz_bn_p);
-    mpz_clear(mpz_bn_n);
-    running = false;
+    initialised = false;
 }
 
-int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len) {
+int bn256_hash_g1(curvepoint_fp_t out, size_t msg_len, uint8_t msg[msg_len]) {
     uint8_t hash[crypto_generichash_BYTES];
     crypto_generichash(hash, crypto_generichash_BYTES, msg, msg_len, NULL, 0);
 
@@ -197,10 +208,6 @@ int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len) {
         mpz_fpe_get_weierstrass(xi_3_plusb[i], x[i]);
     }
 
-    int l1, l2, l3;
-    l1 = mpz_legendre(xi_3_plusb[0], mpz_bn_p);
-    l2 = mpz_legendre(xi_3_plusb[1], mpz_bn_p);
-    l3 = mpz_legendre(xi_3_plusb[2], mpz_bn_p);
     gmp_randstate_t rstate;
     gmp_randinit_default(rstate);
     mpz_t r[3];
@@ -234,10 +241,10 @@ int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len) {
         mpz_mod(y, y, mpz_bn_p);
     }
 
-    mpz2fp(rop->m_x, x[i]);
-    mpz2fp(rop->m_y, y);
-    fpe_setone(rop->m_z);
-    fpe_setzero(rop->m_t);
+    mpz2fp(out->m_x, x[i]);
+    mpz2fp(out->m_y, y);
+    fpe_setone(out->m_z);
+    fpe_setzero(out->m_t);
 
     mpz_clear(t);
     mpz_clear(y);
@@ -252,30 +259,22 @@ int bn256_hash_g1(curvepoint_fp_t rop, uint8_t *msg, size_t msg_len) {
     mpz_clear(xi_3_plusb[0]);
     mpz_clear(xi_3_plusb[1]);
     mpz_clear(xi_3_plusb[2]);
-    return l1 + l2 + l3;
+    return 0;
 }
 
+/*
 int xbn256_hash_g1(curvepoint_fp_t out, uint8_t *msg, size_t msg_len) {
-    uint8_t hash[crypto_generichash_BYTES];
-    crypto_generichash(hash, crypto_generichash_BYTES, msg, sizeof msg_len, NULL,
-                       0);
-
-    mpz_t mpz_hash;
-    mpz_init(mpz_hash);
-    mpz_import(mpz_hash, crypto_generichash_BYTES, 1, 1, 1, 0, hash);
-    mpz_mod(mpz_hash, mpz_hash, mpz_bn_p);
-
-    fpe_t x, y;
-    mpz2fp2(x, mpz_hash);
+    fpe_t x;
+    mpz_2_fpe_hash(x, msg_len, msg);
+    fpe_t y;
 
     int is_negative = fpe_legendre(x);
 
     for (;;) {
-        fpe_t tmp = {{{0}}};
+        fpe_t tmp;
         fpe_cube(tmp, x);
         fpe_add(tmp, tmp, curve_b);
-        int res = fpe_sqrt(y, tmp);
-        if (res) {
+        if (fpe_sqrt(y, tmp)) {
             if (is_negative) {
                 fpe_neg(y, y);
             }
@@ -289,10 +288,9 @@ int xbn256_hash_g1(curvepoint_fp_t out, uint8_t *msg, size_t msg_len) {
     }
     return 0;
 }
+*/
 
-int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg,
-                  const ssize_t msg_len) {
-    fpe_t t_single;
+static void mpz_2_fpe_hash(fpe_t out, size_t msg_len, const uint8_t msg[msg_len]) {
     mpz_t tmp_hash;
     mpz_init(tmp_hash);
 
@@ -301,13 +299,19 @@ int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg,
                        0);
     mpz_import(tmp_hash, crypto_generichash_BYTES, 1, 1, 1, 0, hash);
     mpz_mod(tmp_hash, tmp_hash, mpz_bn_p);
-    mpz2fp(t_single, tmp_hash);
+    mpz2fp(out, tmp_hash);
     mpz_clear(tmp_hash);
+}
 
-    fp2e_t t;
-    _2fpe_to_fp2e(t, t_single, t_single);
+int bn256_hash_g2(twistpoint_fp2_struct_t *out, size_t msg_len, const uint8_t msg[msg_len]) {
+    fpe_struct_t t_single = {{0}};
 
-    fp2e_t w;
+    mpz_2_fpe_hash(&t_single, msg_len, msg);
+
+    fp2e_t t = {{{0}}};
+    _2fpe_to_fp2e(t, &t_single, &t_single);
+
+    fp2e_t w = {{{0}}};
     fp2e_mul(w, t, t);
 
     fp2e_add(w, w, twist_b);
@@ -319,8 +323,8 @@ int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg,
     fp2e_set_fpe(fp2e_sqrtneg3, fpe_sqrt_neg3);
     fp2e_mul(w, w, fp2e_sqrtneg3);
 
-    fp2e_t x[3];
-    fp2e_t fp2e_j;
+    fp2e_t x[3] = {{{{0}}}};
+    fp2e_t fp2e_j = {{{0}}};
     fp2e_set_fpe(fp2e_j, fpe_j);
 
     fp2e_mul(x[0], w, t);
@@ -335,7 +339,7 @@ int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg,
     fp2e_invert(x[2], x[2]);
     fp2e_add(x[2], x[2], fp2e_one);
 
-    fp2e_t x_3_plusb[3];
+    fp2e_t x_3_plusb[3] = {{{{0}}}, {{{0}}}, {{{0}}}};
     for (int i = 0; i < 3; i++) {
         fp2e_get_weierstrass(x_3_plusb[i], x[i]);
     }
@@ -347,7 +351,7 @@ int bn256_hash_g2(twistpoint_fp2_struct_t *out, const uint8_t *msg,
     i = i < 0 ? i + 3 : i;
     int negative = fp2e_legendre(t);
 
-    fp2e_t y;
+    fp2e_t y = {{{0}}};
     fp2e_sqrt(y, x_3_plusb[i]);
 
     if (negative) {
@@ -364,6 +368,8 @@ void serialize_fpe(void *out, fpe_struct_t *op) {
     mpz_t x;
     mpz_init(x);
     fp2mpz2(x, op);
+
+    memset(out, 0, fpe_bytes);
     mpz_export(out, NULL, 1, fpe_bytes, 1, 0, x);
     mpz_clear(x);
 }
@@ -384,28 +390,33 @@ void bn256_deserialize_g1(curvepoint_fp_t out, uint8_t *in) {
 }
 
 void bn256_deserialize_g2(twistpoint_fp2_t out, uint8_t *in) {
-    fpe_t fp1, fp2, fp3, fp4;
-    deserialize_fpe(fp1, in);
-    deserialize_fpe(fp2, in + fpe_bytes);
-    deserialize_fpe(fp3, in + fpe_bytes * 2);
-    deserialize_fpe(fp4, in + fpe_bytes * 3);
-    _2fpe_to_fp2e(out->m_x, fp1, fp2);
-    _2fpe_to_fp2e(out->m_y, fp3, fp4);
+    fpe_t fp_elems[4] = {{{{0}}}};
+    deserialize_fpe(fp_elems[0], in);
+    deserialize_fpe(fp_elems[1], in + fpe_bytes);
+    deserialize_fpe(fp_elems[2], in + fpe_bytes * 2);
+    deserialize_fpe(fp_elems[3], in + fpe_bytes * 3);
+    _2fpe_to_fp2e(out->m_x, fp_elems[0], fp_elems[1]);
+    _2fpe_to_fp2e(out->m_y, fp_elems[2], fp_elems[3]);
     fp2e_setone(out->m_z);
     fp2e_setzero(out->m_t);
 }
 
 void bn256_serialize_g1(uint8_t *out, curvepoint_fp_struct_t *g1_elem) {
-    fpe_t fp1, fp2;
-    fpe_set(fp1, g1_elem->m_x);
-    fpe_set(fp2, g1_elem->m_y);
-
-    serialize_fpe(out, fp1);
-    serialize_fpe(out + fpe_bytes, fp2);
+    curvepoint_fp_makeaffine(g1_elem);
+    serialize_fpe(out, g1_elem->m_x);
+    serialize_fpe(out + fpe_bytes, g1_elem->m_y);
 }
 
 void bn256_serialize_g1_xonly(uint8_t *out, curvepoint_fp_struct_t *g1_elem) {
+    curvepoint_fp_makeaffine(g1_elem);
     serialize_fpe(out, g1_elem->m_x);
+}
+
+void bn256_serialize_g2_xonly(uint8_t *out, twistpoint_fp2_t g2_elem) {
+    fpe_t tmp1, tmp2;
+    fp2e_to_2fpe(tmp1, tmp2, g2_elem->m_x);
+    serialize_fpe(out, tmp1);
+    serialize_fpe(out + fpe_bytes, tmp2);
 }
 
 void bn256_deserialize_g1_xonly(curvepoint_fp_t out, uint8_t *in) {
@@ -425,32 +436,28 @@ void bn256_serialize_gt(uint8_t *out, fp12e_struct_t *gt_elem) {
     fp2e_to_2fpe(fpe_elems[8], fpe_elems[9], gt_elem->m_b->m_b);
     fp2e_to_2fpe(fpe_elems[10], fpe_elems[11], gt_elem->m_b->m_c);
 
-    uint8_t *ptr = out;
     for (int i = 0; i < 12; i++) {
-        serialize_fpe(ptr, fpe_elems[i]);
-        ptr += fpe_bytes;
+        serialize_fpe(out, fpe_elems[i]);
+        out += fpe_bytes;
     }
 }
 
-void bn256_deserialize_and_sum_g1(curvepoint_fp_struct_t *out, uint8_t *in,
-                                  size_t count) {
+void bn256_deserialize_and_sum_g1(curvepoint_fp_struct_t *out, uint8_t *in, size_t count) {
     if (count < 1) return;
 
     curvepoint_fp_t tmp;
     bn256_deserialize_g1(tmp, in);
     curvepoint_fp_set(out, tmp);
-    in += g1_bytes;
     fpe_setone(out->m_z);
 
     for (size_t i = 1; i < count; i++) {
+        in += g1_bytes;
         bn256_deserialize_g1(tmp, in);
         curvepoint_fp_add_vartime(out, out, tmp);
-        in += g1_bytes;
     }
 }
 
-void bn256_deserialize_and_sum_g2(twistpoint_fp2_struct_t *out, uint8_t *in,
-                                  size_t count) {
+void bn256_deserialize_and_sum_g2(twistpoint_fp2_struct_t *out, uint8_t *in, size_t count) {
     if (count < 1) return;
 
     twistpoint_fp2_t tmp;

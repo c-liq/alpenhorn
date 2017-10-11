@@ -306,7 +306,7 @@ pkg_client_init(pkg_client *client, pkg *server, const u8 *user_id, const u8 *lt
     memcpy(client->sig_pk, lt_sig_key, crypto_sign_PUBLICKEYBYTES);
     memcpy(client->certificate_msg + round_BYTES, client->user_id, user_id_BYTES);
     memcpy(client->certificate_msg + round_BYTES + user_id_BYTES, client->sig_pk, crypto_sign_PUBLICKEYBYTES);
-    bn256_hash_g2(client->hashed_id, user_id, user_id_BYTES);
+    bn256_hash_g2(client->hashed_id, user_id_BYTES, user_id);
 }
 
 void pkg_server_shutdown(pkg *server) {

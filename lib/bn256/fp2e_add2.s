@@ -1,4 +1,4 @@
-# File:   dclxvi-20130329/fp2e_add2.s
+# File:   dclxvi-20110718/fp2e_add2.s
 # Author: Ruben Niederhagen, Peter Schwabe
 # Public Domain
 
